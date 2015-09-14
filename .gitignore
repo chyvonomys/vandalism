@@ -1,0 +1,12 @@
+*.o
+*.xcodeproj
+*.dylib
+*.dSYM
+.DS_Store
+*~
+
+# target
+proto
+
+# imgui config
+imgui.ini
