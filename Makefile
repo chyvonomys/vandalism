@@ -6,13 +6,15 @@ BINS=proto client.dylib
 
 all: $(BINS)
 
-proto: proto.cpp
+proto: proto.cpp client.h
 	$(COMPILER) -g $(CFLAGS) $(LDFLAGS) -lobjc -o $@ $<
 
 .cpp.o:
 	$(COMPILER) -g -c -o $@ $<
 
 OBJS=client.o imgui.o imgui_draw.o imgui_demo.o
+
+client.o: client.h client.cpp vandalism.cpp
 
 client.dylib: $(OBJS)
 	$(COMPILER) -g -Xlinker -dylib -o $@ $(OBJS)

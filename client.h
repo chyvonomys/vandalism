@@ -38,8 +38,14 @@ struct input_data
     bool mouseleft;
 };
 
-typedef void (*UPDATE_AND_RENDER_FUNC)(input_data *input,
-                                       offscreen_buffer *buffer,
-                                       triangles *tris);
+struct output_data
+{
+    offscreen_buffer *buffer;
+    triangles *bake_tris;
+    triangles *curr_tris;
+    bool bake_flag;
+};
+
+typedef void (*UPDATE_AND_RENDER_FUNC)(input_data *input, output_data *output);
 typedef void (*SETUP_FUNC)();
 typedef void (*CLEANUP_FUNC)();

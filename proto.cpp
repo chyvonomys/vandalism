@@ -379,14 +379,15 @@ int main()
         fs.setup();
 
         RenderTarget rt;
-        rt.setup(bufferWidthPx, bufferHeightPx);
+        rt.setup(viewportWidthPx, viewportHeightPx);
         
         BufferPresenter blit;
         blit.setup(bufferWidthPx, bufferHeightPx);
         check_gl_errors("after setup");
 
-        Mesh mesh;
-        mesh.setup();
+        Mesh bgmesh, fgmesh;
+        bgmesh.setup();
+        fgmesh.setup();
 
         GLubyte *pixels = new GLubyte[bufferWidthPx * bufferHeightPx * 4];
 
@@ -395,18 +396,34 @@ int main()
         buffer.width = bufferWidthPx;
         buffer.height = bufferHeightPx;
 
-        GLfloat *xys = new GLfloat[500 * 3 * 2]; // 500 triangles 3 xy vertices each
+        const uint32 VERTS_PER_TRI = 3;
+        const uint32 VERT_DIM = 2;
 
-        triangles tris;
-        tris.data = xys;
-        tris.size = 0;
-        tris.capacity = 500 * 3;
+        const uint32 BAKE_TRIS_CNT = 5000;
+        const uint32 CURR_TRIS_CNT = 500;
+
+        GLfloat *bake_xys = new GLfloat[BAKE_TRIS_CNT * VERTS_PER_TRI * VERT_DIM];
+        GLfloat *curr_xys = new GLfloat[CURR_TRIS_CNT * VERTS_PER_TRI * VERT_DIM];
+
+        triangles bake_tris;
+        bake_tris.data = bake_xys;
+        bake_tris.size = 0;
+        bake_tris.capacity = BAKE_TRIS_CNT * VERTS_PER_TRI;
+
+        triangles curr_tris;
+        curr_tris.data = curr_xys;
+        curr_tris.size = 0;
+        curr_tris.capacity = CURR_TRIS_CNT * VERTS_PER_TRI;
 
         MeshPresenter render;
         render.setup();
         
         input_data input;
         input.nFrames = 0;
+        output_data output;
+        output.bake_tris = &bake_tris;
+        output.curr_tris = &curr_tris;
+        output.buffer = &buffer;
 
         void *lib_handle = ::dlopen("client.dylib", RTLD_LAZY);
 
@@ -519,22 +536,30 @@ int main()
 
             TIME; // update ---------------------------------------------------------
 
-            (*upd_and_rnd)(&input, &buffer, &tris);
+            (*upd_and_rnd)(&input, &output);
 
             glViewport(viewportLeftPx, viewportBottomPx,
                        viewportWidthPx, viewportHeightPx);
             blit.draw(pixels);
 
-            mesh.update(tris.data, tris.size);
-
-            rt.before();
-            render.draw(mesh.m_vao, mesh.m_vtxCnt);
-            rt.after();
+            if (output.bake_flag)
+            {
+                bgmesh.update(output.bake_tris->data, output.bake_tris->size);
+                // flag processed
+                // TODO: ??
+                output.bake_flag = false;
+                rt.before();
+                render.draw(bgmesh.m_vao, bgmesh.m_vtxCnt);
+                rt.after();
+            }
 
             glViewport(viewportLeftPx, viewportBottomPx,
                        viewportWidthPx, viewportHeightPx);
 
             fs.draw(rt.m_tex);
+
+            fgmesh.update(output.curr_tris->data, output.curr_tris->size);
+            render.draw(fgmesh.m_vao, fgmesh.m_vtxCnt);
 
             TIME; // finish ---------------------------------------------------------
             
@@ -551,12 +576,14 @@ int main()
         (*cleanup)();
 
         render.cleanup();
-        mesh.cleanup();
+        bgmesh.cleanup();
+        fgmesh.cleanup();
         blit.cleanup();
         rt.cleanup();
         fs.cleanup();
 
-        delete [] xys;
+        delete [] bake_xys;
+        delete [] curr_xys;
         delete [] pixels;
 
         ::dlclose(lib_handle);
@@ -794,6 +821,11 @@ void RenderTarget::before()
 {
     glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
     glViewport(0, 0, m_width, m_height);
+
+    glClearColor(1.0, 1.0, 1.0, 0.0);
+
+    GLbitfield clear_bits = GL_COLOR_BUFFER_BIT;
+    glClear(clear_bits);
 }
 
 void RenderTarget::after()
@@ -966,7 +998,6 @@ void MeshPresenter::setup()
         "  }                                                 \n";
 
     m_program = ::create_program(vertex_src, nullptr, fragment_src);
-
 }
 
 void MeshPresenter::cleanup()
@@ -976,15 +1007,13 @@ void MeshPresenter::cleanup()
 
 void MeshPresenter::draw(GLuint vao, uint32 vtxCnt)
 {
-    glClearColor(0.0, 0.0, 0.0, 0.0);
-
-    GLbitfield clear_bits = GL_COLOR_BUFFER_BIT;
-    glClear(clear_bits);
-    
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glUseProgram(m_program);
     glBindVertexArray(vao);
     glDrawArrays(GL_TRIANGLES, 0, vtxCnt);
     glBindVertexArray(0);
     glUseProgram(0);
+    glDisable(GL_BLEND);
 }
 

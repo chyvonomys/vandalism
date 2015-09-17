@@ -519,7 +519,9 @@ void clear_buffer(offscreen_buffer *buffer, const color &col)
     }
 }
 
-float mx__, my__, mx_, my_;
+#include "vandalism.cpp"
+
+Vandalism *ism = nullptr;
 
 extern "C" void setup()
 {
@@ -540,25 +542,39 @@ extern "C" void setup()
     io.Fonts->ClearInputData();
     io.Fonts->ClearTexData();
 
-    mx__ = 0.0f;
-    my__ = 0.0f;
-    mx_ = 0.0f;
-    my_ = 0.0f;
+    ism = new Vandalism();
+    ism->setup();
 }
 
 extern "C" void cleanup()
 {
+    ism->cleanup();
+    delete ism;
     delete [] fontpixels;
     ImGui::Shutdown();
 }
 
-float p_float = 0.45;
-float p_color[3] = {0.0f, 0.5f, 0.5f};
-
-extern "C" void update_and_render(input_data *input,
-                                  offscreen_buffer *buffer,
-                                  triangles *tris)
+void fill_triangles(triangles *tris, std::vector<Vandalism::Point> points, size_t fromIdx, size_t toIdx)
 {
+    for (size_t i = fromIdx + 2; i < toIdx; ++i)
+    {
+        if (tris->size < tris->capacity)
+        {
+            tris->data[2 * (tris->size+0) + 0] = points[i-2].x;
+            tris->data[2 * (tris->size+0) + 1] = points[i-2].y;
+            tris->data[2 * (tris->size+1) + 0] = points[i-1].x;
+            tris->data[2 * (tris->size+1) + 1] = points[i-1].y;
+            tris->data[2 * (tris->size+2) + 0] = points[i-0].x;
+            tris->data[2 * (tris->size+2) + 1] = points[i-0].y;
+
+            tris->size += 3;
+        }
+    }
+}
+
+extern "C" void update_and_render(input_data *input, output_data *output)
+{
+    offscreen_buffer *buffer = output->buffer;
     clear_buffer(buffer, COLOR_GRAY);
     
     //draw_grayscale_image(buffer, 0, 200,
@@ -651,24 +667,40 @@ extern "C" void update_and_render(input_data *input,
         static_cast<float>(input->mousey) /
         static_cast<float>(buffer->height) - 1.0f;
 
-    if (tris->size == tris->capacity)
+    Vandalism::Input ism_input;
+    ism_input.altdown = false;
+    ism_input.shiftdown = false;
+    ism_input.ctrldown = false;
+    ism_input.mousex = mx;
+    ism_input.mousey = my;
+    ism_input.mousedown = input->mouseleft;
+
+    ism->update(&ism_input);
+
+    if (ism->visiblesChanged)
     {
-        tris->size = 0;
+        uint32 visiblesCount;
+        output->bake_tris->size = 0;
+        for (uint32 visIdx = 0; visIdx < ism->visibles.size(); ++visIdx)
+        {
+            uint32 startIdx = ism->visibles[visIdx].startIdx;
+            uint32 endIdx = ism->visibles[visIdx].endIdx;
+
+            fill_triangles(output->bake_tris, ism->points, startIdx, endIdx);
+        }
+        output->bake_flag = true;
+        // flag processed
+        // TODO: make this better
+        ism->visiblesChanged = false;
     }
 
-    tris->data[2 * tris->size + 0] = mx__;
-    tris->data[2 * tris->size + 1] = my__;
-    ++tris->size;
+    size_t currStart, currEnd;
+    ism->get_current_stroke(currStart, currEnd);
 
-    tris->data[2 * tris->size + 0] = mx_;
-    tris->data[2 * tris->size + 1] = my_;
-    ++tris->size;
+    output->curr_tris->size = 0;
 
-    tris->data[2 * tris->size + 0] = mx;
-    tris->data[2 * tris->size + 1] = my;
-    ++tris->size;
-
-
+    fill_triangles(output->curr_tris, ism->points, currStart, currEnd);
+        
     ImGui::NewFrame();
 
     if (false)
@@ -677,16 +709,35 @@ extern "C" void update_and_render(input_data *input,
     }
     else
     {
-        ImGui::SetNextWindowSize(ImVec2(200, 200), ImGuiSetCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(200, 300), ImGuiSetCond_FirstUseEver);
         ImGui::Begin("vandalism");
-        ImGui::Text("mouse: (%g, %g)", mx, my);
+        ImGui::Text("mouse-norm: (%g, %g)", mx, my);
+        ImGui::Text("mouse-raw: (%g, %g)",
+                    static_cast<double>(input->mousex),
+                    static_cast<double>(input->mousey));
+        
+        ImGui::Text("Alt Ctrl Shift LMB: (%d %d %d %d)",
+                    static_cast<int>(ism_input.altdown),
+                    static_cast<int>(ism_input.ctrldown),
+                    static_cast<int>(ism_input.shiftdown),
+                    static_cast<int>(ism_input.mousedown));
+
+        ImGui::Text("ism strokes: %lu", ism->strokes.size());
+        ImGui::Text("ism points: %lu", ism->points.size());
+
+        ImGui::Text("bake_tris (%d/%d) %d",
+                    output->bake_tris->size,
+                    output->bake_tris->capacity,
+                    output->bake_flag);
+
+        ImGui::Text("curr_tris (%d/%d)",
+                    output->curr_tris->size,
+                    output->curr_tris->capacity);
+
+        ImGui::Text("mode: %d", ism->currentMode);
+
         ImGui::End();
     }
 
     ImGui::Render();
-
-    mx__ = mx_;
-    my__ = my_;
-    mx_ = mx;
-    my_ = my;
 }
