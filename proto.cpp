@@ -98,6 +98,8 @@ LOAD(GLCHECKFRAMEBUFFERSTATUS, glCheckFramebufferStatus)
 LOAD(GLFRAMEBUFFERTEXTURE,     glFramebufferTexture)
 LOAD(GLDRAWBUFFERS, glDrawBuffers)
 
+LOAD(GLDEPTHFUNC, glDepthFunc)
+
 LOAD(GLFINISH, glFinish)
 LOAD(GLGETERROR, glGetError)
 LOAD(GLGETSTRING, glGetString)
@@ -397,7 +399,7 @@ int main()
         buffer.height = bufferHeightPx;
 
         const uint32 VERTS_PER_TRI = 3;
-        const uint32 VERT_DIM = 2;
+        const uint32 VERT_DIM = 3; // xy and zindex
 
         const uint32 BAKE_TRIS_CNT = 5000;
         const uint32 CURR_TRIS_CNT = 500;
@@ -805,6 +807,8 @@ void RenderTarget::setup(uint32 width, uint32 height)
     }
     glBindTexture(GL_TEXTURE_2D, 0);
 
+    // TODO: add zbuffer
+    
     glGenFramebuffers(1, &m_fbo);
 
     glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
@@ -824,7 +828,7 @@ void RenderTarget::before()
 
     glClearColor(1.0, 1.0, 1.0, 0.0);
 
-    GLbitfield clear_bits = GL_COLOR_BUFFER_BIT;
+    GLbitfield clear_bits = (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glClear(clear_bits);
 }
 
@@ -934,7 +938,7 @@ void Mesh::setup()
 {
     const GLuint POS_LOC = 0;
 
-    const GLint POS_DIM = 2;
+    const GLuint POS_DIM = 3;
 
     const GLsizei vertexSize = POS_DIM * sizeof(float);
 
@@ -966,11 +970,11 @@ void Mesh::cleanup()
     glDeleteBuffers(1, &m_vbo);
 }
 
-void Mesh::update(const float *xy, uint32 vtxCnt)
+void Mesh::update(const float *xyz, uint32 vtxCnt)
 {
     glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-    glBufferData(GL_ARRAY_BUFFER, vtxCnt * 2 * sizeof(float),
-                 xy, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, vtxCnt * 3 * sizeof(float),
+                 xyz, GL_DYNAMIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     m_vtxCnt = vtxCnt;
@@ -981,11 +985,11 @@ void MeshPresenter::setup()
 {
     const char *vertex_src =
         "  #version 330 core                             \n"
-        "  layout (location = 0) in vec2 i_msPosition;   \n"
+        "  layout (location = 0) in vec3 i_msPosition;   \n"
         "  void main()                                   \n"
         "  {                                             \n"
-        "      gl_Position.xy = i_msPosition;            \n"
-        "      gl_Position.z = 0.0f;                     \n"
+        "      gl_Position.xy = i_msPosition.xy;         \n"
+        "      gl_Position.z = i_msPosition.z;           \n"
         "      gl_Position.w = 1.0f;                     \n"
         "  }                                             \n";
 
@@ -1007,6 +1011,8 @@ void MeshPresenter::cleanup()
 
 void MeshPresenter::draw(GLuint vao, uint32 vtxCnt)
 {
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glUseProgram(m_program);
@@ -1015,5 +1021,6 @@ void MeshPresenter::draw(GLuint vao, uint32 vtxCnt)
     glBindVertexArray(0);
     glUseProgram(0);
     glDisable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
 }
 

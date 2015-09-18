@@ -23,6 +23,7 @@ struct Vandalism
     {
         uint32 startIdx;
         uint32 endIdx;
+        uint32 strokeIdx;
     };
 
     std::vector<Stroke> strokes;
@@ -111,6 +112,8 @@ struct Vandalism
         Visible vis;
         vis.startIdx = strokes.back().startIdx;
         vis.endIdx = strokes.back().endIdx;
+        vis.strokeIdx = strokes.size();
+
         visibles.push_back(vis);
         visiblesChanged = true;
     }

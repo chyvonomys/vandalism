@@ -522,6 +522,7 @@ void clear_buffer(offscreen_buffer *buffer, const color &col)
 #include "vandalism.cpp"
 
 Vandalism *ism = nullptr;
+bool firstTime;
 
 extern "C" void setup()
 {
@@ -544,6 +545,8 @@ extern "C" void setup()
 
     ism = new Vandalism();
     ism->setup();
+
+    firstTime = true;
 }
 
 extern "C" void cleanup()
@@ -554,18 +557,25 @@ extern "C" void cleanup()
     ImGui::Shutdown();
 }
 
-void fill_triangles(triangles *tris, std::vector<Vandalism::Point> points, size_t fromIdx, size_t toIdx)
+void fill_triangles(triangles *tris,
+                    const std::vector<Vandalism::Point> &points,
+                    const Vandalism::Visible &vis)
 {
-    for (size_t i = fromIdx + 2; i < toIdx; ++i)
+    for (size_t i = vis.startIdx + 2; i < vis.endIdx; ++i)
     {
         if (tris->size < tris->capacity)
         {
-            tris->data[2 * (tris->size+0) + 0] = points[i-2].x;
-            tris->data[2 * (tris->size+0) + 1] = points[i-2].y;
-            tris->data[2 * (tris->size+1) + 0] = points[i-1].x;
-            tris->data[2 * (tris->size+1) + 1] = points[i-1].y;
-            tris->data[2 * (tris->size+2) + 0] = points[i-0].x;
-            tris->data[2 * (tris->size+2) + 1] = points[i-0].y;
+            tris->data[3 * (tris->size+0) + 0] = points[i-2].x;
+            tris->data[3 * (tris->size+0) + 1] = points[i-2].y;
+            tris->data[3 * (tris->size+0) + 2] = 0.00001f * vis.strokeIdx;
+
+            tris->data[3 * (tris->size+1) + 0] = points[i-1].x;
+            tris->data[3 * (tris->size+1) + 1] = points[i-1].y;
+            tris->data[3 * (tris->size+1) + 2] = 0.00001f * vis.strokeIdx;
+
+            tris->data[3 * (tris->size+2) + 0] = points[i-0].x;
+            tris->data[3 * (tris->size+2) + 1] = points[i-0].y;
+            tris->data[3 * (tris->size+2) + 2] = 0.00001f * vis.strokeIdx;
 
             tris->size += 3;
         }
@@ -575,7 +585,12 @@ void fill_triangles(triangles *tris, std::vector<Vandalism::Point> points, size_
 extern "C" void update_and_render(input_data *input, output_data *output)
 {
     offscreen_buffer *buffer = output->buffer;
-    clear_buffer(buffer, COLOR_GRAY);
+
+    if (firstTime)
+    {
+        clear_buffer(buffer, COLOR_GRAY);
+        firstTime = false;
+    }
     
     //draw_grayscale_image(buffer, 0, 200,
     //                     fontpixels, fontpixelswidth, fontpixelsheight);
@@ -683,10 +698,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
         output->bake_tris->size = 0;
         for (uint32 visIdx = 0; visIdx < ism->visibles.size(); ++visIdx)
         {
-            uint32 startIdx = ism->visibles[visIdx].startIdx;
-            uint32 endIdx = ism->visibles[visIdx].endIdx;
-
-            fill_triangles(output->bake_tris, ism->points, startIdx, endIdx);
+            fill_triangles(output->bake_tris, ism->points, ism->visibles[visIdx]);
         }
         output->bake_flag = true;
         // flag processed
@@ -697,9 +709,15 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     size_t currStart, currEnd;
     ism->get_current_stroke(currStart, currEnd);
 
+    Vandalism::Visible curr;
+    curr.startIdx = currStart;
+    curr.endIdx = currEnd;
+    // TODO: this is bad
+    curr.strokeIdx = ism->strokes.size();
+
     output->curr_tris->size = 0;
 
-    fill_triangles(output->curr_tris, ism->points, currStart, currEnd);
+    fill_triangles(output->curr_tris, ism->points, curr);
         
     ImGui::NewFrame();
 
