@@ -338,6 +338,66 @@ void fill_triangles(triangles *tris,
     }
 }
 
+void fill_quads(triangles *tris,
+                const std::vector<Vandalism::Point> &points,
+                const Vandalism::Visible &vis)
+{
+    float *xyz = tris->data + tris->size * 3;
+    float zindex = 0.00001f * vis.strokeIdx;
+    
+    for (size_t i = vis.startIdx + 1; i < vis.endIdx; ++i)
+    {
+        if (tris->size >= tris->capacity)
+            break;
+
+        float2 prev = {points[i-1].x, points[i-1].y};
+        float2 curr = {points[i].x, points[i].y};
+        float2 dir = curr - prev;
+        if (len(dir) > 0.001f)
+        {
+            float2 side = perp(dir * (1.0 / len(dir)));
+            side.x *= 0.01f;
+            side.y *= 0.02f;
+
+            // x -ccw-> y
+            float2 p0l = prev + side;
+            float2 p0r = prev - side;
+            float2 p1l = curr + side;
+            float2 p1r = curr - side;
+
+            xyz[3 * 0 + 0] = p0l.x;
+            xyz[3 * 0 + 1] = p0l.y;
+            xyz[3 * 0 + 2] = zindex;
+
+            xyz[3 * 1 + 0] = p1r.x;
+            xyz[3 * 1 + 1] = p1r.y;
+            xyz[3 * 1 + 2] = zindex;
+
+            xyz[3 * 2 + 0] = p1l.x;
+            xyz[3 * 2 + 1] = p1l.y;
+            xyz[3 * 2 + 2] = zindex;
+
+            xyz += 3 * 3;
+            tris->size += 3;
+
+            xyz[3 * 0 + 0] = p0l.x;
+            xyz[3 * 0 + 1] = p0l.y;
+            xyz[3 * 0 + 2] = zindex;
+
+            xyz[3 * 1 + 0] = p0r.x;
+            xyz[3 * 1 + 1] = p0r.y;
+            xyz[3 * 1 + 2] = zindex;
+
+            xyz[3 * 2 + 0] = p1r.x;
+            xyz[3 * 2 + 1] = p1r.y;
+            xyz[3 * 2 + 2] = zindex;
+
+            xyz += 3 * 3;
+            tris->size += 3;
+        }
+    }
+}
+
 void draw_timing(offscreen_buffer *buffer, uint32 frame,
                  double *intervals, uint32 intervalCnt)
 {
@@ -416,7 +476,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
         output->bake_tris->size = 0;
         for (uint32 visIdx = 0; visIdx < ism->visibles.size(); ++visIdx)
         {
-            fill_triangles(output->bake_tris, ism->points, ism->visibles[visIdx]);
+            fill_quads(output->bake_tris, ism->points, ism->visibles[visIdx]);
+            //fill_triangles(output->bake_tris, ism->points, ism->visibles[visIdx]);
         }
         output->bake_flag = true;
         // flag processed
@@ -435,7 +496,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     output->curr_tris->size = 0;
 
-    fill_triangles(output->curr_tris, ism->points, curr);
+    fill_quads(output->curr_tris, ism->points, curr);
+    //fill_triangles(output->curr_tris, ism->points, curr);
 
 
     // Draw SW -----------------------------------------------------------------

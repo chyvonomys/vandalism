@@ -92,6 +92,14 @@ inline float cross(const float2 &a, const float2 &b)
     return result;
 }
 
+inline float2 perp(const float2 &v)
+{
+    float2 result;
+    result.x = -v.y;
+    result.y =  v.x;
+    return result;
+}
+
 inline float cos(const float2 &a, const float2 &b)
 {
     float result;
