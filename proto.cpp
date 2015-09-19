@@ -51,6 +51,7 @@ LOAD(GLBLENDFUNC, glBlendFunc)
 LOAD(GLVIEWPORT, glViewport)
 LOAD(GLCLEAR, glClear)
 LOAD(GLCLEARCOLOR, glClearColor)
+LOAD(GLCLEARDEPTH, glClearDepth)
 
 LOAD(GLCREATEPROGRAM, glCreateProgram)
 LOAD(GLLINKPROGRAM, glLinkProgram)
@@ -91,12 +92,16 @@ LOAD(GLTEXSUBIMAGE2D, glTexSubImage2D)
 LOAD(GLTEXPARAMETERI, glTexParameteri)
 
 
-LOAD(GLGENFRAMEBUFFERS,        glGenFramebuffers)
-LOAD(GLDELETEFRAMEBUFFERS,     glDeleteFramebuffers)
-LOAD(GLBINDFRAMEBUFFER,        glBindFramebuffer)
+LOAD(GLGENFRAMEBUFFERS, glGenFramebuffers)
+LOAD(GLDELETEFRAMEBUFFERS, glDeleteFramebuffers)
+LOAD(GLGENRENDERBUFFERS, glGenRenderbuffers)
+LOAD(GLDELETERENDERBUFFERS, glDeleteRenderbuffers)
+LOAD(GLBINDFRAMEBUFFER, glBindFramebuffer)
+LOAD(GLBINDRENDERBUFFER, glBindRenderbuffer)
 LOAD(GLCHECKFRAMEBUFFERSTATUS, glCheckFramebufferStatus)
-LOAD(GLFRAMEBUFFERTEXTURE,     glFramebufferTexture)
-LOAD(GLDRAWBUFFERS, glDrawBuffers)
+LOAD(GLFRAMEBUFFERTEXTURE, glFramebufferTexture)
+LOAD(GLRENDERBUFFERSTORAGE, glRenderbufferStorage)
+LOAD(GLFRAMEBUFFERRENDERBUFFER, glFramebufferRenderbuffer)
 
 LOAD(GLDEPTHFUNC, glDepthFunc)
 
@@ -286,6 +291,7 @@ struct RenderTarget
     void after();
 
     GLuint m_fbo;
+    GLuint m_depth_rbo;
     GLuint m_tex;
 
     uint32 m_width;
@@ -807,26 +813,36 @@ void RenderTarget::setup(uint32 width, uint32 height)
     }
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    // TODO: add zbuffer
+    glGenRenderbuffers(1, &m_depth_rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, m_depth_rbo);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, m_width, m_height);
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
     
     glGenFramebuffers(1, &m_fbo);
 
     glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
     {
         glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, m_tex, 0);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                                  GL_RENDERBUFFER, m_depth_rbo);
 
-        GLenum drawBuffers[] = {GL_COLOR_ATTACHMENT0};
-        glDrawBuffers(1, drawBuffers);
+        GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        bool ok = (status == GL_FRAMEBUFFER_COMPLETE);
+        if (!ok)
+        {
+            ::printf("!! framebuffer incomplete\n");
+        }
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void RenderTarget::before()
 {
-    glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_fbo);
     glViewport(0, 0, m_width, m_height);
 
     glClearColor(1.0, 1.0, 1.0, 0.0);
+    glClearDepth(-1.0);
 
     GLbitfield clear_bits = (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glClear(clear_bits);
@@ -834,13 +850,14 @@ void RenderTarget::before()
 
 void RenderTarget::after()
 {
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 }
 
 void RenderTarget::cleanup()
 {
-    glDeleteTextures(1, &m_tex);
     glDeleteFramebuffers(1, &m_fbo);
+    glDeleteRenderbuffers(1, &m_depth_rbo);
+    glDeleteTextures(1, &m_tex);
 }
 
 
@@ -998,7 +1015,7 @@ void MeshPresenter::setup()
         "  layout (location = 0) out vec4 o_color;           \n"
         "  void main()                                       \n"
         "  {                                                 \n"
-        "      o_color = vec4(0.8, 0.8, 0.8, 0.5);           \n"
+        "      o_color = vec4(1.0, 1.0, 1.0, 0.5);           \n"
         "  }                                                 \n";
 
     m_program = ::create_program(vertex_src, nullptr, fragment_src);
@@ -1012,7 +1029,7 @@ void MeshPresenter::cleanup()
 void MeshPresenter::draw(GLuint vao, uint32 vtxCnt)
 {
     glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LESS);
+    glDepthFunc(GL_GREATER);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glUseProgram(m_program);
@@ -1023,4 +1040,3 @@ void MeshPresenter::draw(GLuint vao, uint32 vtxCnt)
     glDisable(GL_BLEND);
     glDisable(GL_DEPTH_TEST);
 }
-
