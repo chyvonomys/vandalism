@@ -358,6 +358,51 @@ bool liang_barsky(float L, float R, float B, float T,
     return true;
 }
 
+bool liang_barsky_test()
+{
+    float L = -5.0f;
+    float R =  3.0f;
+    float B = -2.0f;
+    float T =  2.0f;
+
+    float ax0 = -3, ay0 = -1, ax1 = -1, ay1 =  1;
+    float bx0 = -2, by0 =  1, bx1 = -4, by1 =  3;
+    float cx0 =  2, cy0 =  1, cx1 =  2, cy1 =  3;
+    float dx0 =  6, dy0 = -1, dx1 =  6, dy1 =  1;
+    float ex0 =  2, ey0 = -4, ex1 =  5, ey1 = -1;
+    float fx0 =  1, fy0 =  3, fx1 =  2, fy1 = -3;
+    float gx0 = -6, gy0 = -3, gx1 = -8, gy1 = -5;
+    float hx0 = -6, hy0 =  1, hx1 = -4, hy1 =  3; // touch corner
+    float ix0 = -1, iy0 = -4, ix1 = -1, iy1 = -2; // touch side
+    float jx0 = -6, jy0 = -2, jx1 = -3, jy1 = -2; // on side
+
+    bool ta = (true  == liang_barsky(L, R, B, T, ax0, ay0, ax1, ay1));
+    bool tb = (true  == liang_barsky(L, R, B, T, bx0, by0, bx1, by1));
+    bool tc = (true  == liang_barsky(L, R, B, T, cx0, cy0, cx1, cy1));
+    bool td = (false == liang_barsky(L, R, B, T, dx0, dy0, dx1, dy1));
+    bool te = (false == liang_barsky(L, R, B, T, ex0, ey0, ex1, ey1));
+    bool tf = (true  == liang_barsky(L, R, B, T, fx0, fy0, fx1, fy1));
+    bool tg = (false == liang_barsky(L, R, B, T, gx0, gy0, gx1, gy1));
+    bool th = (true  == liang_barsky(L, R, B, T, hx0, hy0, hx1, hy1));
+    bool ti = (true  == liang_barsky(L, R, B, T, ix0, iy0, ix1, iy1));
+    bool tj = (true  == liang_barsky(L, R, B, T, jx0, jy0, jx1, jy1));
+
+    printf("liang barsky test a: %s\n", ta ? "passed" : "failed");
+    printf("liang barsky test b: %s\n", tb ? "passed" : "failed");
+    printf("liang barsky test c: %s\n", tc ? "passed" : "failed");
+    printf("liang barsky test d: %s\n", td ? "passed" : "failed");
+    printf("liang barsky test e: %s\n", te ? "passed" : "failed");
+    printf("liang barsky test f: %s\n", tf ? "passed" : "failed");
+    printf("liang barsky test g: %s\n", tg ? "passed" : "failed");
+    printf("liang barsky test h: %s\n", th ? "passed" : "failed");
+    printf("liang barsky test i: %s\n", ti ? "passed" : "failed");
+    printf("liang barsky test j: %s\n", tj ? "passed" : "failed");
+
+    return true;
+}
+
+bool lb_test_result = liang_barsky_test();
+
 
 bool intersects(const test_box &viewport, const test_stroke &stroke)
 {
