@@ -38,7 +38,6 @@ struct Vandalism
         float dy;
     };
 
-
     enum Mode
     {
         IDLE     = 0,
@@ -204,3 +203,203 @@ struct Vandalism
         }
     }
 };
+
+/*************************************************************
+
+point coordinates are in 'inches'
+viewport and bbox extents are in 'inches'
+zoom > 1 is 'zoomin' zoom < 1 is 'zoomout'
+
+@0 default
+   0. stroke $0 [  #0  (-1, 0) ... #1 (1, 1)  ]
+   1. stroke $1 [  #2 (-1, -1) ... #3 (1, 0)  ]
+   bbox = (-1 ... 1 x  -1 ... 1)
+
+@1 pan (+5, 0)
+   0. stroke $2 [  #4  (-1, 0) ... #5 (1, 1)  ]
+   1. stroke $3 [  #6 (-1, -1) ... #7 (1, 0)  ]
+   bbox = (-1 ... 1 x  -1 ... 1)
+
+@2 pan (+5, 0)
+   0. stroke $4 [  #8  (-1, 0) ... #9 (1, 1)  ]
+   1. stroke $5 [  #a (-1, -1) ... #b (1, 0)  ]
+   bbox = (-1 ... 1 x  -1 ... 1)
+
+@3 pan (-5, 0)
+
+@4 zoom (1/5)
+   0. stroke $6 [  #c    (-1, 2) ... #d (1, -2)      ]
+   1. stroke $7 [  #e (3/2, 1/2) ... #f (3/2, -1/2)  ]
+   bbox = (-1 ... 3/2 x -2 ... 2)
+
+@5 pan (-1, 0)
+
+@6 zoom (5/3)
+
+query_visibles( @6, viewport(-5/2..5/2, -5/2..5/2) )
+->
+add_strokes_reversed(result, @6)  // result = []
+attached = crop_strokes( @6, viewport(-5/2..5/2, -5/2..5/2) ) // []
+reverse(attached) :: query_visibles( @5, viewport(-3/2..3/2, -3/2..3/2) )
+                     ->
+                     add_strokes_reversed(result, @5)  // result = []
+                     attached = crop_strokes( @5, viewport(-3/2..3/2, -3/2..3/2) ) // []
+                     reverse(attached) :: query_visibles( @5, viewport(3, 3) )
+
+
+
+ *************************************************************/
+
+struct test_point
+{
+    float x;
+    float y;
+};
+struct test_stroke
+{
+    size_t pi0;
+    size_t pi1;
+};
+
+enum transform_type { TZOOM, TPAN };
+
+struct test_transform
+{
+    transform_type type;
+    float a;
+    float b;
+};
+
+struct test_view
+{
+    test_transform tr;
+    size_t si0;
+    size_t si1;
+};
+
+test_point t_points[] =
+{
+    {-1.0f,  0.0f},    {1.0f,  1.0f},
+    {-1.0f, -1.0f},    {1.0f,  0.0f},
+    {-1.0f,  0.0f},    {1.0f,  1.0f},
+    {-1.0f, -1.0f},    {1.0f,  0.0f},
+    {-1.0f,  0.0f},    {1.0f,  1.0f},
+    {-1.0f, -1.0f},    {1.0f,  0.0f},
+    {-1.0f,  2.0f},    {1.0f, -2.0f},
+    { 1.5f,  0.5f},    {1.5f, -0.5f}
+};
+
+test_stroke t_strokes[] =
+{
+    { 0,  2},
+    { 2,  4},
+    { 4,  6},
+    { 6,  8},
+    { 8, 10},
+    {10, 12},
+    {12, 14},
+    {14, 16}
+};
+
+test_view t_views[] =
+{
+    {{TPAN,  0.0f, 0.0f}, 0, 2},
+    {{TPAN,  5.0f, 0.0f}, 2, 4},
+    {{TPAN,  5.0f, 0.0f}, 4, 6},
+    {{TPAN, -5.0f, 0.0f}, 6, 6},
+    {{TZOOM, 1.0f, 5.0f}, 6, 8},
+    {{TPAN, -1.0f, 0.0f}, 8, 8},
+    {{TZOOM, 5.0f, 3.0f}, 8, 8}
+};
+
+struct test_box
+{
+    float x0, y0;
+    float x1, y1;
+};
+
+struct test_visible
+{
+    size_t si;
+    size_t ti;
+};
+
+bool liang_barsky(float L, float R, float B, float T,
+                  float x0, float y0, float x1, float y1)
+{
+    float p[] = {x0 - x1, x1 - x0, y0 - y1, y1 - y0};
+    float q[] = {x0 - L,   R - x0, y0 - B,   T - y0};
+
+    float t0 = 0.0f;
+    float t1 = 1.0f;
+
+    for (size_t i = 0; i < 4; ++i)
+    {
+        if (p[i] == 0.0f)
+        {
+            if (q[i] < 0.0f) return false;
+        }
+        else
+        {
+            float t = q[i] / p[i];
+
+            if (p[i] < 0.0f)
+            {
+                if (t > t0) t0 = t;
+            }
+            else
+            {
+                if (t < t1) t1 = t;
+            }
+
+            if (t0 > t1) return false;
+        }
+    }
+    return true;
+}
+
+
+bool intersects(const test_box &viewport, const test_stroke &stroke)
+{
+    test_point p0 = t_points[stroke.pi0];
+    test_point p1 = t_points[stroke.pi1];
+    return liang_barsky(viewport.x0, viewport.x1, viewport.y0, viewport.y1,
+                        p0.x, p0.y, p1.x, p1.y);
+}
+
+void crop(const test_view &view, size_t ti, const test_box &viewport,
+          std::vector<test_visible> &visibles)
+{
+    for (size_t si = view.si0; si < view.si1; ++si)
+    {
+        if (intersects(viewport, t_strokes[si]))
+        {
+            test_visible vis;
+            vis.si = si;
+            vis.ti = ti;
+            visibles.push_back(vis);
+        }
+    }
+}
+
+void query(const test_view *views, size_t views_cnt, size_t view_idx,
+           const test_box &viewport, std::vector<test_visible> &visibles)
+{
+}
+
+bool run_test()
+{
+    test_box viewport;
+    viewport.x0 = -2.5f;
+    viewport.x1 =  2.5f;
+    viewport.y0 = -2.5f;
+    viewport.y1 =  2.5f;
+    const size_t view_idx = 6;
+
+    std::vector<test_visible> visibles;
+    query(t_views, 7, view_idx, viewport, visibles);
+
+    return true;
+}
+
+bool test_result = run_test();
