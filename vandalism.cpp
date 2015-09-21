@@ -261,18 +261,18 @@ struct test_stroke
     size_t pi1;
 };
 
-enum transform_type { TZOOM, TPAN };
+enum transition_type { TZOOM, TPAN };
 
-struct test_transform
+struct test_transition
 {
-    transform_type type;
+    transition_type type;
     float a;
     float b;
 };
 
 struct test_view
 {
-    test_transform tr;
+    test_transition tr;
     size_t si0;
     size_t si1;
 };
@@ -427,22 +427,221 @@ void crop(const test_view &view, size_t ti, const test_box &viewport,
     }
 }
 
+struct test_transform
+{
+    float s;
+    float tx;
+    float ty;
+};
+
+test_transform id_transform()
+{
+    return {1.0f, 0.0f, 0.0f};
+}
+
+test_transform transform_from_transition(const test_transition &transition)
+{
+    test_transform result = id_transform();
+
+    if (transition.type == TZOOM)
+    {
+        result.s = transition.a / transition.b;
+    }
+    else if (transition.type == TPAN)
+    {
+        result.tx = transition.a;
+        result.ty = transition.b;
+    }
+
+    return result;
+}
+
+std::vector<test_transform> t_transforms;
+
+test_transition inverse_transition(const test_transition &transition)
+{
+    test_transition result = transition;
+
+    if (transition.type == TZOOM)
+    {
+        result.a = transition.b;
+        result.b = transition.a;
+    }
+    else if (transition.type == TPAN)
+    {
+        result.a = -transition.a;
+        result.b = -transition.b;
+    }
+
+    return result;
+}
+
+test_box apply_transition_to_viewport(const test_transition &transition,
+                                      const test_box &viewport)
+{
+    test_box result = viewport;
+
+    if (transition.type == TZOOM)
+    {
+        float s = transition.a / transition.b;
+        float w = s * (result.x1 - result.x0);
+        float h = s * (result.y1 - result.y0);
+        float cx = 0.5f * (result.x1 + result.x0);
+        float cy = 0.5f * (result.y1 + result.y0);
+        result.x0 = cx - 0.5f * w;
+        result.x1 = cx + 0.5f * w;
+        result.y0 = cy - 0.5f * h;
+        result.y1 = cy + 0.5f * h;
+    }
+    else if (transition.type == TPAN)
+    {
+        result.x0 += transition.a;
+        result.x1 += transition.a;
+        result.y0 += transition.b;
+        result.y1 += transition.b;
+    }
+
+    return result;
+}
+
+test_point apply_transform(const test_transform &t,
+                           const test_point &p)
+{
+    test_point result;
+
+    result.x = p.x * t.s + t.tx;
+    result.y = p.y * t.s + t.ty;
+
+    return result;
+}
+
+test_transform combine_transforms(const test_transform &t0,
+                                  const test_transform &t1)
+{
+    test_transform result;
+
+    result.s = t0.s * t1.s;
+    result.tx = t0.s * t1.tx + t0.tx;
+    result.ty = t0.s * t1.ty + t0.ty;
+
+    return result;
+}
+
+bool points_eq(const test_point &a, const test_point &b)
+{
+    return iszero({a.x - b.x, a.y - b.y});
+}
+
+bool transforms_test()
+{
+    test_point p = {-6, 2};
+
+    test_transform t1 = {0.5f, 2.0f, 2.0f};
+    test_transform t2 = {4.0f, -1.0f, -5.0f};
+
+    test_transform id = id_transform();
+
+    test_transform t_1_2 = combine_transforms(t1, t2);
+
+    test_transform t_1_id = combine_transforms(t1, id);
+    test_transform t_id_1 = combine_transforms(id, t1);
+
+    bool a1 = points_eq({-1, 3}, apply_transform(t1, p));
+
+    bool a2 = points_eq(p, apply_transform(id, p));
+
+    bool a3 = points_eq(apply_transform(t_1_id, p),
+                        apply_transform(t_id_1, p));
+
+    bool a4 = points_eq(apply_transform(t_1_2, p),
+                        apply_transform(t1, apply_transform(t2, p)));
+
+    printf("transform test 1: %s\n", a1 ? "passed" : "failed");
+    printf("transform test 2: %s\n", a2 ? "passed" : "failed");
+    printf("transform test 3: %s\n", a3 ? "passed" : "failed");
+    printf("transform test 4: %s\n", a4 ? "passed" : "failed");
+
+    return true;
+}
+
+bool t_test_result = transforms_test();
+
 void query(const test_view *views, size_t views_cnt, size_t view_idx,
            const test_box &viewport, std::vector<test_visible> &visibles)
 {
+    t_transforms.push_back(id_transform());
+
+    size_t ti = 0;
+    test_box current_viewport = viewport;
+
+    // back
+    for (size_t vi = view_idx; vi != 0; --vi)
+    {
+        crop(views[vi], ti, current_viewport, visibles);
+        test_transition inv_transition = inverse_transition(views[vi].tr);
+        current_viewport = apply_transition_to_viewport(inv_transition,
+                                                        current_viewport);
+        test_transform transform = transform_from_transition(inv_transition);
+        transform = combine_transforms(t_transforms[ti], transform);
+        t_transforms.push_back(transform);
+        ++ti;
+    }
+
+    /*
+    // forward
+    current_viewport = viewport;
+    for (size_t vi = view_idx + 1; vi < views_cnt; ++vi)
+    {
+        current_viewport = apply_transition_to_viewport(views[vi].tr,
+                                                        current_viewport);
+        test_transform transform = transform_from_transition(views[vi].tr);
+        transform = combine_transforms(t_transforms[ti], transform);
+        t_transforms.push_back(transform);
+        ++ti;
+        crop(views[vi], ti, current_viewport, visibles);
+    }
+    */
 }
 
 bool run_test()
 {
+    const size_t NVIEWS = 7;
+    for (size_t vi = 0; vi < NVIEWS; ++vi)
+    {
+        test_view view = t_views[vi];
+
+        if (view.si0 == view.si1)
+            printf("@%zu: --\n", vi);
+
+        for (size_t si = view.si0; si < view.si1; ++si)
+        {
+            printf("@%zu: $%zu [#%zu-#%zu)\n",
+                   vi, si,
+                   t_strokes[si].pi0,
+                   t_strokes[si].pi1);
+        }
+    }
+
     test_box viewport;
     viewport.x0 = -2.5f;
     viewport.x1 =  2.5f;
     viewport.y0 = -2.5f;
     viewport.y1 =  2.5f;
-    const size_t view_idx = 6;
+    const size_t PIN = 6;
 
     std::vector<test_visible> visibles;
-    query(t_views, 7, view_idx, viewport, visibles);
+    query(t_views, NVIEWS, PIN, viewport, visibles);
+
+    printf("query:\n");
+    for (size_t i = 0; i < visibles.size(); ++i)
+    {
+        test_visible vis = visibles[i];
+        printf("%zu: $%zu [#%zu-#%zu) @%zu\n",
+               i, vis.si,
+               t_strokes[vis.si].pi0,
+               t_strokes[vis.si].pi1,
+               vis.ti);
+    }
 
     return true;
 }
