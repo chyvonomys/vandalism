@@ -109,13 +109,20 @@ LOAD(GLFINISH, glFinish)
 LOAD(GLGETERROR, glGetError)
 LOAD(GLGETSTRING, glGetString)
 
+bool g_printShaders = false;
+bool g_printGLDiagnostics = false;
+size_t g_quitFrame = -1;
+
 bool load_gl_functions()
 {
     bool result = true;
     for (size_t i = 0; i < g_size; ++i)
     {
         bool ok = (*g_initrs[i])();
-        ::printf("%s -> %s\n", g_names[i], (ok ? "OK" : "FAIL"));
+        if (g_printGLDiagnostics)
+        {
+            ::printf("%s -> %s\n", g_names[i], (ok ? "OK" : "FAIL"));
+        }
         result = result && ok;
     }
     return result;
@@ -180,12 +187,15 @@ void dump_source(const char *src)
 
 GLuint create_program(const char *vert_src, const char *geom_src, const char *frag_src)
 {
-    ::printf("--------------------vert--------------------\n");
-    dump_source(vert_src);
-    ::printf("--------------------geom--------------------\n");
-    dump_source(geom_src);
-    ::printf("--------------------frag--------------------\n");
-    dump_source(frag_src);
+    if (g_printShaders)
+    {
+        ::printf("--------------------vert--------------------\n");
+        dump_source(vert_src);
+        ::printf("--------------------geom--------------------\n");
+        dump_source(geom_src);
+        ::printf("--------------------frag--------------------\n");
+        dump_source(frag_src);
+    }
 
     GLuint program = glCreateProgram();
 
@@ -321,8 +331,21 @@ struct MeshPresenter
     GLuint m_program;
 };
 
-int main()
+int main(int argc, char *argv[])
 {
+    for (size_t i = 1; i < argc; ++i)
+    {
+        if (strcmp(argv[i], "--gldiag") == 0)
+        {
+            g_printGLDiagnostics = true;
+            g_printShaders = true;
+        }
+        else if (strcmp(argv[i], "--earlyquit") == 0)
+        {
+            g_quitFrame = 2;
+        }
+    }
+
     glfwInit();
 
     glfwWindowHint(GLFW_RESIZABLE, 0);
@@ -376,12 +399,15 @@ int main()
 
     if (gl_ok)
     {
-        ::printf("----------------------------\n");
-        ::printf("vendor: %s\n", glGetString(GL_VENDOR));
-        ::printf("renderer: %s\n", glGetString(GL_RENDERER));
-        ::printf("version: %s\n", glGetString(GL_VERSION));
-        ::printf("GLSL version: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
-        ::printf("----------------------------\n");
+        if (g_printGLDiagnostics)
+        {
+            ::printf("----------------------------\n");
+            ::printf("vendor: %s\n", glGetString(GL_VENDOR));
+            ::printf("renderer: %s\n", glGetString(GL_RENDERER));
+            ::printf("version: %s\n", glGetString(GL_VERSION));
+            ::printf("GLSL version: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
+            ::printf("----------------------------\n");
+        }
 
         FSTexturePresenter fs;
         fs.setup();
@@ -461,7 +487,7 @@ int main()
 
         bool reload_client = false;
         bool f9_was_up = true;
-        
+
         for (;;)
         {
             if (reload_client)
@@ -579,6 +605,11 @@ int main()
             glfwSwapBuffers(pWindow);
             
             TIME; // end ------------------------------------------------------------
+
+            if (input.nFrames == g_quitFrame)
+            {
+                break;
+            }
         }
 
         (*cleanup)();
