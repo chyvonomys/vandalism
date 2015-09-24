@@ -504,6 +504,7 @@ int main(int argc, char *argv[])
 
                 (*setup)();
                 reload_client = false;
+                input.nFrames = 0;
             }
             
             for (uint8 i = 1; i < nTimePoints; ++i)

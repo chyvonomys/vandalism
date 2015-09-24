@@ -14,7 +14,7 @@ proto: proto.cpp client.h
 
 OBJS=client.o imgui.o imgui_draw.o imgui_demo.o
 
-client.o: client.h client.cpp vandalism.cpp
+client.o: client.h client.cpp vandalism.cpp swrender.h swcolor.h
 
 client.dylib: $(OBJS)
 	$(COMPILER) -g -Xlinker -dylib -o $@ $(OBJS)

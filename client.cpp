@@ -278,7 +278,6 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
 #include "vandalism.cpp"
 
 Vandalism *ism = nullptr;
-bool firstTime;
 
 extern "C" void setup()
 {
@@ -301,8 +300,6 @@ extern "C" void setup()
 
     ism = new Vandalism();
     ism->setup();
-
-    firstTime = true;
 }
 
 extern "C" void cleanup()
@@ -447,6 +444,46 @@ void draw_timing(offscreen_buffer *buffer, uint32 frame,
     }
 }
 
+uint32 InchToDots(float inches, uint32 ext, float dpi)
+{
+    return ext / 2 + si_clampf(inches * dpi, -0.5f * ext, 0.5f * ext) - 1;
+}
+
+void DrawTestBox(offscreen_buffer *buffer, uint32 w, uint32 h,
+                 test_box &box, float dpi)
+{
+    uint32 L = InchToDots(box.x0, w, dpi);
+    uint32 R = InchToDots(box.x1, w, dpi);
+    uint32 B = InchToDots(box.y0, h, dpi);
+    uint32 T = InchToDots(box.y1, h, dpi);
+    draw_frame_rect(buffer, L, R, B, T, pack_color(COLOR_WHITE));
+}
+
+void DrawTest(offscreen_buffer *buffer, const test_data &data, bool ft)
+{
+    draw_solid_rect(buffer, 0, 400, 0, 400, pack_color(COLOR_GRAY));
+
+    for (size_t i = 1; i < 8; ++i)
+    {
+        draw_solid_hor_line(buffer, 0, 400, i * 50, pack_color(COLOR_BLACK));
+        draw_solid_ver_line(buffer, i * 50, 0, 400, pack_color(COLOR_BLACK));
+    }
+
+    test_box vp = {-2, 2, -2, 2};
+
+    for (size_t vi = 0; vi < data.nviews; ++vi)
+    {
+        test_transition fwd_transition = data.views[vi].tr;
+        if (ft)
+        {
+            printf("%zu: ", vi);
+            show_transition(fwd_transition);
+            printf("\n");
+        }
+        vp = apply_transition_to_viewport(fwd_transition, vp);
+        DrawTestBox(buffer, 400, 400, vp, 10);
+    }
+}
 
 extern "C" void update_and_render(input_data *input, output_data *output)
 {
@@ -502,10 +539,9 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     // Draw SW -----------------------------------------------------------------
 
-    if (firstTime)
+    if (input->nFrames == 1)
     {
         clear_buffer(buffer, COLOR_GRAY);
-        firstTime = false;
     }
     
     //draw_grayscale_image(buffer, 0, 200,
@@ -517,6 +553,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     
 
     draw_pixel(buffer, input->mousex, input->mousey, COLOR_YELLOW);
+
+    DrawTest(buffer, test2, input->nFrames == 1);
 
     current_buffer = buffer;
 
@@ -562,3 +600,5 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     ImGui::Render();
 }
+
+

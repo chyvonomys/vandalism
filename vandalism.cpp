@@ -337,14 +337,35 @@ test_view t_views2[] =
     {{TPAN,  5.0f, 0.0f}, 2, 4},
     {{TPAN,  5.0f, 0.0f}, 4, 6},
     {{TPAN, -5.0f, 0.0f}, 6, 6},
-    {{TZOOM, 1.0f, 5.0f}, 6, 8},
+    {{TZOOM, 5.0f, 1.0f}, 6, 8},
     {{TPAN, -1.0f, 0.0f}, 8, 8},
-    {{TZOOM, 5.0f, 3.0f}, 8, 8}
+    {{TZOOM, 3.0f, 5.0f}, 8, 8}
 };
 const size_t NVIEWS2 = 7;
 const size_t PIN2 = 6;
 
 test_data test2 = {t_points2, t_strokes2, t_views2, NVIEWS2};
+
+test_point t_points3[] =
+{
+    {0.0f, -0.5f}, {0.0f, 0.5f},
+    {1.5f, -0.5f}, {1.5f, 0.5f}
+};
+
+test_stroke t_strokes3[] =
+{
+    {0, 2}
+};
+
+test_view t_views3[] =
+{
+    {{TPAN, 0.0f, 0.0f}, 0, 1},
+    {{TZOOM, 2.0f, 1.0f}, 1, 1}
+};
+const size_t NVIEWS3 = 2;
+const size_t PIN3 = 1;
+
+test_data test3 = {t_points3, t_strokes3, t_views3, NVIEWS3};
 
 struct test_box
 {
@@ -520,7 +541,7 @@ test_box apply_transition_to_viewport(const test_transition &transition,
 
     if (transition.type == TZOOM)
     {
-        float s = transition.a / transition.b;
+        float s = transition.b / transition.a;
         float w = s * (result.x1 - result.x0);
         float h = s * (result.y1 - result.y0);
         float cx = 0.5f * (result.x1 + result.x0);
@@ -603,6 +624,20 @@ bool transforms_test()
 
 bool t_test_result = transforms_test();
 
+void show_viewport(const test_box &v)
+{
+    ::printf("\x1b[35m(%g .. %g) x (%g .. %g)\x1b[0m",
+             v.x0, v.x1, v.y0, v.y1);
+}
+
+void show_transition(const test_transition &tr)
+{
+    if (tr.type == TZOOM)
+        ::printf("Z %g", tr.a / tr.b);
+    else if (tr.type == TPAN)
+        ::printf("P (%g %g)", tr.a, tr.b);
+}
+
 void query(const test_data &data, size_t view_idx,
            const test_box &viewport,
            std::vector<test_visible> &visibles,
@@ -616,15 +651,28 @@ void query(const test_data &data, size_t view_idx,
     // back
     for (size_t vi = view_idx;; --vi)
     {
+        ::printf("crop @%zu with viewport ", vi);
+        show_viewport(current_viewport);
+        size_t before_crop = visibles.size();
         crop(data, vi, ti, current_viewport, visibles);
+        size_t after_crop = visibles.size();
+        ::printf("%zu/%zu\n", after_crop - before_crop,
+                 data.views[vi].si1 - data.views[vi].si0);
         if (vi == 0)
         {
             break;
         }
-        test_transition inv_transition = inverse_transition(data.views[vi].tr);
-        current_viewport = apply_transition_to_viewport(inv_transition,
+        //test_transition inv_transition = inverse_transition(data.views[vi].tr);
+        test_transition fwd_transition = data.views[vi].tr;
+        current_viewport = apply_transition_to_viewport(fwd_transition,
                                                         current_viewport);
-        test_transform transform = transform_from_transition(inv_transition);
+        show_transition(data.views[vi].tr);
+        ::printf(", tr=");
+        show_transition(fwd_transition);
+        ::printf(" -> ");
+        show_viewport(current_viewport);
+        ::printf("\n");
+        test_transform transform = transform_from_transition(fwd_transition);
         transform = combine_transforms(transforms[ti], transform);
         transforms.push_back(transform);
         ++ti;
@@ -694,9 +742,9 @@ bool run_test(const test_data &data,
 
 bool run_test()
 {
-    return
-    run_test(test1, {-2.5f, 2.5f, -2.5f, 2.5f}, PIN1) &&
-    run_test(test2, {-2.5f, 2.5f, -2.5f, 2.5f}, PIN2);
+    return run_test(test3, {-2, 2, -2, 2}, PIN3);
+    //run_test(test1, {-2.5f, 2.5f, -2.5f, 2.5f}, PIN1) &&
+    //run_test(test2, {-2.5f, 2.5f, -2.5f, 2.5f}, PIN2);
 }
 
-bool test_result = run_test();
+//bool test_result = run_test();

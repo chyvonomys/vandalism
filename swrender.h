@@ -127,6 +127,22 @@ inline void draw_solid_hor_line(offscreen_buffer *buffer,
     }
 }
 
+void draw_solid_ver_line(offscreen_buffer *buffer,
+                         uint32 x, uint32 y0, uint32 y1,
+                         uint32 col)
+{
+    uint32 *b = reinterpret_cast<uint32*>(buffer->data +
+                                          y0 * buffer->width * 4 +
+                                          x * 4);
+    uint32 *e = b + (y1 - y0) * buffer->width;
+    uint32 *p = b;
+    while (p != e)
+    {
+        *p = col;
+        p += buffer->width;
+    }
+}
+
 void draw_solid_rect(offscreen_buffer *buffer,
                      uint32 x0, uint32 x1,
                      uint32 y0, uint32 y1,
@@ -136,6 +152,17 @@ void draw_solid_rect(offscreen_buffer *buffer,
     {
         draw_solid_hor_line(buffer, x0, x1, y, col);
     }
+}
+
+void draw_frame_rect(offscreen_buffer *buffer,
+                     uint32 x0, uint32 x1,
+                     uint32 y0, uint32 y1,
+                     uint32 col)
+{
+    draw_solid_ver_line(buffer, x0,  y0, y1, col);
+    draw_solid_ver_line(buffer, x1,  y0, y1, col);
+    draw_solid_hor_line(buffer, x0, x1,  y0, col);
+    draw_solid_hor_line(buffer, x0, x1,  y1, col);
 }
 
 void draw_grayscale_image(offscreen_buffer *buffer, uint32 x0, uint32 y0,
