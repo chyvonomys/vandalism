@@ -337,9 +337,9 @@ test_view t_views2[] =
     {{TPAN,  5.0f, 0.0f}, 2, 4},
     {{TPAN,  5.0f, 0.0f}, 4, 6},
     {{TPAN, -5.0f, 0.0f}, 6, 6},
-    {{TZOOM, 5.0f, 1.0f}, 6, 8},
+    {{TZOOM, 1.0f, 5.0f}, 6, 8},
     {{TPAN, -1.0f, 0.0f}, 8, 8},
-    {{TZOOM, 3.0f, 5.0f}, 8, 8}
+    {{TZOOM, 5.0f, 3.0f}, 8, 8}
 };
 const size_t NVIEWS2 = 7;
 const size_t PIN2 = 6;
@@ -505,7 +505,7 @@ test_transform transform_from_transition(const test_transition &transition)
 
     if (transition.type == TZOOM)
     {
-        result.s = transition.a / transition.b;
+        result.s = transition.b / transition.a;
     }
     else if (transition.type == TPAN)
     {
@@ -571,6 +571,14 @@ test_point apply_transform(const test_transform &t,
     result.y = p.y * t.s + t.ty;
 
     return result;
+}
+
+test_box apply_transform_to_box(const test_transform &t,
+                                const test_box &b)
+{
+    test_point BL = apply_transform(t, {b.x0, b.y0});
+    test_point TR = apply_transform(t, {b.x1, b.y1});
+    return {BL.x, TR.x, BL.y, TR.y};
 }
 
 test_transform combine_transforms(const test_transform &t0,
@@ -742,9 +750,10 @@ bool run_test(const test_data &data,
 
 bool run_test()
 {
-    return run_test(test3, {-2, 2, -2, 2}, PIN3);
+    return
+    //run_test(test3, {-2, 2, -2, 2}, PIN3);
     //run_test(test1, {-2.5f, 2.5f, -2.5f, 2.5f}, PIN1) &&
-    //run_test(test2, {-2.5f, 2.5f, -2.5f, 2.5f}, PIN2);
+    run_test(test2, {-2.5f, 2.5f, -2.5f, 2.5f}, PIN2);
 }
 
-//bool test_result = run_test();
+bool test_result = run_test();

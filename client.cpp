@@ -459,6 +459,24 @@ void DrawTestBox(offscreen_buffer *buffer, uint32 w, uint32 h,
     draw_frame_rect(buffer, L, R, B, T, pack_color(COLOR_WHITE));
 }
 
+test_box box_add_point(const test_box &box, const test_point &p)
+{
+    test_box result = box;
+    result.x0 = si_minf(result.x0, p.x);
+    result.x1 = si_maxf(result.x1, p.x);
+    result.y0 = si_minf(result.y0, p.y);
+    result.y1 = si_maxf(result.y1, p.y);
+    return result;
+}
+
+test_box box_add_box(const test_box &box, const test_box &box2)
+{
+    test_box result = box;
+    result = box_add_point(result, {box2.x0, box2.y0});
+    result = box_add_point(result, {box2.x1, box2.y1});
+    return result;
+}
+
 void DrawTest(offscreen_buffer *buffer, const test_data &data, bool ft)
 {
     draw_solid_rect(buffer, 0, 400, 0, 400, pack_color(COLOR_GRAY));
@@ -469,19 +487,38 @@ void DrawTest(offscreen_buffer *buffer, const test_data &data, bool ft)
         draw_solid_ver_line(buffer, i * 50, 0, 400, pack_color(COLOR_BLACK));
     }
 
-    test_box vp = {-2, 2, -2, 2};
+    test_box max_viewport = {INFINITY, -INFINITY, INFINITY, -INFINITY};
+    test_box start_viewport = {-2.5f, 2.5f, -2.5f, 2.5f};
+    test_transform accum_transform = id_transform();
+
+    std::vector<test_box> stack;
 
     for (size_t vi = 0; vi < data.nviews; ++vi)
     {
-        test_transition fwd_transition = data.views[vi].tr;
+        test_transform transform = transform_from_transition(data.views[vi].tr);
+        accum_transform = combine_transforms(accum_transform, transform);
+
+        test_box viewport = apply_transform_to_box(accum_transform, start_viewport);
+        max_viewport = box_add_box(max_viewport, viewport);
+        stack.push_back(viewport);
+
         if (ft)
         {
-            printf("%zu: ", vi);
-            show_transition(fwd_transition);
-            printf("\n");
+            ::printf("%zu: ", vi);
+            show_transition(data.views[vi].tr);
+            ::printf(" --> ");
+            show_viewport(viewport);
+            ::printf(" MAX: ");
+            show_viewport(max_viewport);
+            ::printf("\n");
         }
-        vp = apply_transition_to_viewport(fwd_transition, vp);
-        DrawTestBox(buffer, 400, 400, vp, 10);
+    }
+
+    float dpi = 200.0f / si_maxf(si_maxf(max_viewport.x1, max_viewport.x0),
+                                 si_maxf(max_viewport.y1, max_viewport.y0));
+    for (size_t i = 0; i < stack.size(); ++i)
+    {
+        DrawTestBox(buffer, 400, 400, stack[i], dpi);
     }
 }
 
