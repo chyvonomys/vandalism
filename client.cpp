@@ -449,6 +449,16 @@ uint32 InchToDots(float inches, uint32 ext, float dpi)
     return ext / 2 + si_clampf(inches * dpi, -0.5f * ext, 0.5f * ext) - 1;
 }
 
+void DrawTestSegment(offscreen_buffer *buffer, uint32 w, uint32 h,
+                     test_segment &seg, float dpi)
+{
+    uint32 x0 = InchToDots(seg.a.x, w, dpi);
+    uint32 y0 = InchToDots(seg.a.y, h, dpi);
+    uint32 x1 = InchToDots(seg.b.x, w, dpi);
+    uint32 y1 = InchToDots(seg.b.y, h, dpi);
+    draw_line(buffer, x0, y0, x1, y1, pack_color(COLOR_YELLOW));
+}
+
 void DrawTestBox(offscreen_buffer *buffer, uint32 w, uint32 h,
                  test_box &box, float dpi)
 {
@@ -459,7 +469,7 @@ void DrawTestBox(offscreen_buffer *buffer, uint32 w, uint32 h,
     draw_frame_rect(buffer, L, R, B, T, pack_color(COLOR_WHITE));
 }
 
-test_box box_add_point(const test_box &box, const test_point &p)
+test_box box_add_pt(const test_box &box, const test_point &p)
 {
     test_box result = box;
     result.x0 = si_minf(result.x0, p.x);
@@ -469,11 +479,20 @@ test_box box_add_point(const test_box &box, const test_point &p)
     return result;
 }
 
+// TODO, this is actually an AA-box
 test_box box_add_box(const test_box &box, const test_box &box2)
 {
     test_box result = box;
-    result = box_add_point(result, {box2.x0, box2.y0});
-    result = box_add_point(result, {box2.x1, box2.y1});
+    result = box_add_pt(result, {box2.x0, box2.y0});
+    result = box_add_pt(result, {box2.x1, box2.y1});
+    return result;
+}
+
+test_box box_add_seg(const test_box &box, const test_segment &seg)
+{
+    test_box result = box;
+    result = box_add_pt(result, seg.a);
+    result = box_add_pt(result, seg.b);
     return result;
 }
 
@@ -488,26 +507,45 @@ void DrawTest(offscreen_buffer *buffer, const test_data &data, bool ft)
     }
 
     test_box max_viewport = {INFINITY, -INFINITY, INFINITY, -INFINITY};
-    test_box start_viewport = {-2.5f, 2.5f, -2.5f, 2.5f};
     test_transform accum_transform = id_transform();
 
-    std::vector<test_box> stack;
+    // ls_*** - current view's space
+    // ds_*** - default view's space
+
+    std::vector<test_box> ds_box_stack;
+    std::vector<test_segment> ds_seg_stack;
 
     for (size_t vi = 0; vi < data.nviews; ++vi)
     {
-        test_transform transform = transform_from_transition(data.views[vi].tr);
+        const auto &view = data.views[vi];
+
+        test_transform transform = transform_from_transition(view.tr);
         accum_transform = combine_transforms(accum_transform, transform);
 
-        test_box viewport = apply_transform_to_box(accum_transform, start_viewport);
-        max_viewport = box_add_box(max_viewport, viewport);
-        stack.push_back(viewport);
+        for (size_t si = view.si0; si < view.si1; ++si)
+        {
+            size_t bi = data.strokes[si].pi0;
+            size_t ei = bi + 1;
+
+            test_segment ls_segment = {data.points[bi], data.points[ei]};
+            test_segment ds_segment = apply_transform_seg(accum_transform,
+                                                          ls_segment);
+            ds_seg_stack.push_back(ds_segment);
+        }
+
+        test_box ls_viewport = {-2.5f, 2.5f, -2.5f, 2.5f};
+        test_box ds_viewport = apply_transform_box(accum_transform,
+                                                   ls_viewport);
+
+        max_viewport = box_add_box(max_viewport, ds_viewport);
+        ds_box_stack.push_back(ds_viewport);
 
         if (ft)
         {
             ::printf("%zu: ", vi);
-            show_transition(data.views[vi].tr);
+            show_transition(view.tr);
             ::printf(" --> ");
-            show_viewport(viewport);
+            show_viewport(ds_viewport);
             ::printf(" MAX: ");
             show_viewport(max_viewport);
             ::printf("\n");
@@ -516,9 +554,23 @@ void DrawTest(offscreen_buffer *buffer, const test_data &data, bool ft)
 
     float dpi = 200.0f / si_maxf(si_maxf(max_viewport.x1, max_viewport.x0),
                                  si_maxf(max_viewport.y1, max_viewport.y0));
-    for (size_t i = 0; i < stack.size(); ++i)
+
+    for (size_t i = 0; i < ds_seg_stack.size(); ++i)
     {
-        DrawTestBox(buffer, 400, 400, stack[i], dpi);
+        if (ft)
+        {
+            ::printf("seg #%zu: (%g, %g) -- (%g, %g)\n", i,
+                     ds_seg_stack[i].a.x,
+                     ds_seg_stack[i].a.y,
+                     ds_seg_stack[i].b.x,
+                     ds_seg_stack[i].b.y);
+        }
+        DrawTestSegment(buffer, 400, 400, ds_seg_stack[i], dpi);
+    }
+
+    for (size_t i = 0; i < ds_box_stack.size(); ++i)
+    {
+        DrawTestBox(buffer, 400, 400, ds_box_stack[i], dpi);
     }
 }
 
@@ -580,14 +632,12 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     {
         clear_buffer(buffer, COLOR_GRAY);
     }
-    
+
     //draw_grayscale_image(buffer, 0, 200,
     //                     fontpixels, fontpixelswidth, fontpixelsheight);
-    
+
     draw_timing(buffer, input->nFrames,
                 input->pTimeIntervals, input->nTimeIntervals);
-
-    
 
     draw_pixel(buffer, input->mousex, input->mousey, COLOR_YELLOW);
 
@@ -595,9 +645,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     current_buffer = buffer;
 
-
     // Draw ImGui --------------------------------------------------------------
-    
+
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = ImVec2(buffer->width, buffer->height);
     io.DeltaTime = 0.01666666f;
@@ -612,7 +661,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ImGui::Text("mouse-raw: (%g, %g)",
                 static_cast<double>(input->mousex),
                 static_cast<double>(input->mousey));
-        
+
     ImGui::Text("Alt Ctrl Shift LMB: (%d %d %d %d)",
                 static_cast<int>(ism_input.altdown),
                 static_cast<int>(ism_input.ctrldown),
@@ -637,5 +686,3 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     ImGui::Render();
 }
-
-

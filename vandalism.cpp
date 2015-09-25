@@ -255,6 +255,13 @@ struct test_point
     float x;
     float y;
 };
+
+struct test_segment
+{
+    test_point a;
+    test_point b;
+};
+
 struct test_stroke
 {
     size_t pi0;
@@ -562,7 +569,7 @@ test_box apply_transition_to_viewport(const test_transition &transition,
     return result;
 }
 
-test_point apply_transform(const test_transform &t,
+test_point apply_transform_pt(const test_transform &t,
                            const test_point &p)
 {
     test_point result;
@@ -573,12 +580,18 @@ test_point apply_transform(const test_transform &t,
     return result;
 }
 
-test_box apply_transform_to_box(const test_transform &t,
-                                const test_box &b)
+test_box apply_transform_box(const test_transform &t,
+                         const test_box &b)
 {
-    test_point BL = apply_transform(t, {b.x0, b.y0});
-    test_point TR = apply_transform(t, {b.x1, b.y1});
+    test_point BL = apply_transform_pt(t, {b.x0, b.y0});
+    test_point TR = apply_transform_pt(t, {b.x1, b.y1});
     return {BL.x, TR.x, BL.y, TR.y};
+}
+
+test_segment apply_transform_seg(const test_transform &t,
+                             const test_segment &s)
+{
+    return {apply_transform_pt(t, s.a), apply_transform_pt(t, s.b)};
 }
 
 test_transform combine_transforms(const test_transform &t0,
@@ -612,15 +625,15 @@ bool transforms_test()
     test_transform t_1_id = combine_transforms(t1, id);
     test_transform t_id_1 = combine_transforms(id, t1);
 
-    bool a1 = points_eq({-1, 3}, apply_transform(t1, p));
+    bool a1 = points_eq({-1, 3}, apply_transform_pt(t1, p));
 
-    bool a2 = points_eq(p, apply_transform(id, p));
+    bool a2 = points_eq(p, apply_transform_pt(id, p));
 
-    bool a3 = points_eq(apply_transform(t_1_id, p),
-                        apply_transform(t_id_1, p));
+    bool a3 = points_eq(apply_transform_pt(t_1_id, p),
+                        apply_transform_pt(t_id_1, p));
 
-    bool a4 = points_eq(apply_transform(t_1_2, p),
-                        apply_transform(t1, apply_transform(t2, p)));
+    bool a4 = points_eq(apply_transform_pt(t_1_2, p),
+                        apply_transform_pt(t1, apply_transform_pt(t2, p)));
 
     printf("transform test 1: %s\n", a1 ? "passed" : "failed");
     printf("transform test 2: %s\n", a2 ? "passed" : "failed");
@@ -739,7 +752,7 @@ bool run_test(const test_data &data,
         test_transform tr = transforms[vis.ti];
         for (size_t pi = st.pi0; pi < st.pi1; ++pi)
         {
-            test_point pt = apply_transform(tr, data.points[pi]);
+            test_point pt = apply_transform_pt(tr, data.points[pi]);
             ::printf(" (%g, %g) ", pt.x, pt.y);
         }
         ::printf("} /s:%g tx:%g ty:%g/\n", tr.s, tr.tx, tr.ty);
