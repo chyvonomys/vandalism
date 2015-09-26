@@ -444,29 +444,30 @@ void draw_timing(offscreen_buffer *buffer, uint32 frame,
     }
 }
 
-uint32 InchToDots(float inches, uint32 ext, float dpi)
+void DrawTestSegment(offscreen_buffer *buffer,
+                     const test_box &dst_box,
+                     const test_box &src_box,
+                     test_segment &seg,
+                     uint32 color)
 {
-    return ext / 2 + si_clampf(inches * dpi, -0.5f * ext, 0.5f * ext) - 1;
+    uint32 x0 = lerp(dst_box.x0, dst_box.x1, invlerp(src_box.x0, src_box.x1, seg.a.x));
+    uint32 x1 = lerp(dst_box.x0, dst_box.x1, invlerp(src_box.x0, src_box.x1, seg.b.x));
+    uint32 y0 = lerp(dst_box.y0, dst_box.y1, invlerp(src_box.y0, src_box.y1, seg.a.y));
+    uint32 y1 = lerp(dst_box.y0, dst_box.y1, invlerp(src_box.y0, src_box.y1, seg.b.y));
+    draw_line(buffer, x0, y0, x1, y1, color);
 }
 
-void DrawTestSegment(offscreen_buffer *buffer, uint32 w, uint32 h,
-                     test_segment &seg, float dpi)
+void DrawTestBox(offscreen_buffer *buffer,
+                 const test_box &dst_box,
+                 const test_box &src_box,
+                 test_box &box,
+                 uint32 color)
 {
-    uint32 x0 = InchToDots(seg.a.x, w, dpi);
-    uint32 y0 = InchToDots(seg.a.y, h, dpi);
-    uint32 x1 = InchToDots(seg.b.x, w, dpi);
-    uint32 y1 = InchToDots(seg.b.y, h, dpi);
-    draw_line(buffer, x0, y0, x1, y1, pack_color(COLOR_YELLOW));
-}
-
-void DrawTestBox(offscreen_buffer *buffer, uint32 w, uint32 h,
-                 test_box &box, float dpi)
-{
-    uint32 L = InchToDots(box.x0, w, dpi);
-    uint32 R = InchToDots(box.x1, w, dpi);
-    uint32 B = InchToDots(box.y0, h, dpi);
-    uint32 T = InchToDots(box.y1, h, dpi);
-    draw_frame_rect(buffer, L, R, B, T, pack_color(COLOR_WHITE));
+    uint32 L = lerp(dst_box.x0, dst_box.x1, invlerp(src_box.x0, src_box.x1, box.x0));
+    uint32 R = lerp(dst_box.x0, dst_box.x1, invlerp(src_box.x0, src_box.x1, box.x1));
+    uint32 B = lerp(dst_box.y0, dst_box.y1, invlerp(src_box.y0, src_box.y1, box.y0));
+    uint32 T = lerp(dst_box.y0, dst_box.y1, invlerp(src_box.y0, src_box.y1, box.y1));
+    draw_frame_rect(buffer, L, R, B, T, color);
 }
 
 test_box box_add_pt(const test_box &box, const test_point &p)
@@ -496,17 +497,11 @@ test_box box_add_seg(const test_box &box, const test_segment &seg)
     return result;
 }
 
-void DrawTest(offscreen_buffer *buffer, const test_data &data, bool ft)
+void DrawTest(offscreen_buffer *buffer,
+              uint32 x0, uint32 x1, uint32 y0, uint32 y1,
+              const test_data &data)
 {
-    draw_solid_rect(buffer, 0, 400, 0, 400, pack_color(COLOR_GRAY));
-
-    for (size_t i = 1; i < 8; ++i)
-    {
-        draw_solid_hor_line(buffer, 0, 400, i * 50, pack_color(COLOR_BLACK));
-        draw_solid_ver_line(buffer, i * 50, 0, 400, pack_color(COLOR_BLACK));
-    }
-
-    test_box max_viewport = {INFINITY, -INFINITY, INFINITY, -INFINITY};
+    test_box ds_bbox = {INFINITY, -INFINITY, INFINITY, -INFINITY};
     test_transform accum_transform = id_transform();
 
     // ls_*** - current view's space
@@ -537,41 +532,58 @@ void DrawTest(offscreen_buffer *buffer, const test_data &data, bool ft)
         test_box ds_viewport = apply_transform_box(accum_transform,
                                                    ls_viewport);
 
-        max_viewport = box_add_box(max_viewport, ds_viewport);
+        ds_bbox = box_add_box(ds_bbox, ds_viewport);
         ds_box_stack.push_back(ds_viewport);
-
-        if (ft)
-        {
-            ::printf("%zu: ", vi);
-            show_transition(view.tr);
-            ::printf(" --> ");
-            show_viewport(ds_viewport);
-            ::printf(" MAX: ");
-            show_viewport(max_viewport);
-            ::printf("\n");
-        }
     }
 
-    float dpi = 200.0f / si_maxf(si_maxf(max_viewport.x1, max_viewport.x0),
-                                 si_maxf(max_viewport.y1, max_viewport.y0));
+    draw_solid_rect(buffer, x0, x1, y0, y1, pack_color(COLOR_GRAY));
+
+    test_box whole_box =
+    {
+        static_cast<float>(x0),
+        static_cast<float>(x1),
+        static_cast<float>(y0),
+        static_cast<float>(y1)
+    };
+
+    float wb_h = y1 - y0;
+    float wb_w = x1 - x0;
+
+    float whole_box_aspect_ratio = wb_h / wb_w;
+    float content_box_aspect_ratio = (ds_bbox.y1 - ds_bbox.y0) / (ds_bbox.x1 - ds_bbox.x0);
+
+    float cx = 0.5f * (x0 + x1);
+    float cy = 0.5f * (y0 + y1);
+
+    float cb_h = wb_h;
+    float cb_w = wb_w;
+
+    if (content_box_aspect_ratio > whole_box_aspect_ratio)
+    {
+        cb_w = wb_h / content_box_aspect_ratio;
+    }
+    else
+    {
+        cb_h = wb_w * content_box_aspect_ratio;
+    }
+
+    test_box content_box =
+    {
+        cx - 0.5f * cb_w, cx + 0.5f * cb_w,
+        cy - 0.5f * cb_h, cy + 0.5f * cb_h
+    };
 
     for (size_t i = 0; i < ds_seg_stack.size(); ++i)
     {
-        if (ft)
-        {
-            ::printf("seg #%zu: (%g, %g) -- (%g, %g)\n", i,
-                     ds_seg_stack[i].a.x,
-                     ds_seg_stack[i].a.y,
-                     ds_seg_stack[i].b.x,
-                     ds_seg_stack[i].b.y);
-        }
-        DrawTestSegment(buffer, 400, 400, ds_seg_stack[i], dpi);
+        DrawTestSegment(buffer, content_box, ds_bbox, ds_seg_stack[i], 0xFF00AAAA);
     }
 
     for (size_t i = 0; i < ds_box_stack.size(); ++i)
     {
-        DrawTestBox(buffer, 400, 400, ds_box_stack[i], dpi);
+        DrawTestBox(buffer, content_box, ds_bbox, ds_box_stack[i], 0xFFEEEEEE);
     }
+
+    DrawTestBox(buffer, content_box, ds_bbox, ds_bbox, 0xFF0000EE);
 }
 
 extern "C" void update_and_render(input_data *input, output_data *output)
@@ -641,7 +653,10 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     draw_pixel(buffer, input->mousex, input->mousey, COLOR_YELLOW);
 
-    DrawTest(buffer, test2, input->nFrames == 1);
+    //const test_data &debug_data = ism->get_debug_data();
+    const test_data &debug_data = test2;
+
+    DrawTest(buffer, 0, 400, 0, 400, debug_data);
 
     current_buffer = buffer;
 
