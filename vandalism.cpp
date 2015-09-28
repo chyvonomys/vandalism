@@ -541,6 +541,7 @@ test_transition inverse_transition(const test_transition &transition)
     return result;
 }
 
+/*
 test_box apply_transition_to_viewport(const test_transition &transition,
                                       const test_box &viewport)
 {
@@ -568,6 +569,7 @@ test_box apply_transition_to_viewport(const test_transition &transition,
 
     return result;
 }
+*/
 
 test_point apply_transform_pt(const test_transform &t,
                            const test_point &p)
@@ -644,129 +646,3 @@ bool transforms_test()
 }
 
 bool t_test_result = transforms_test();
-
-void show_viewport(const test_box &v)
-{
-    ::printf("\x1b[35m(%g .. %g) x (%g .. %g)\x1b[0m",
-             v.x0, v.x1, v.y0, v.y1);
-}
-
-void show_transition(const test_transition &tr)
-{
-    if (tr.type == TZOOM)
-        ::printf("Z %g", tr.a / tr.b);
-    else if (tr.type == TPAN)
-        ::printf("P (%g %g)", tr.a, tr.b);
-}
-
-void query(const test_data &data, size_t view_idx,
-           const test_box &viewport,
-           std::vector<test_visible> &visibles,
-           std::vector<test_transform> &transforms)
-{
-    transforms.push_back(id_transform());
-
-    size_t ti = 0;
-    test_box current_viewport = viewport;
-
-    // back
-    for (size_t vi = view_idx;; --vi)
-    {
-        ::printf("crop @%zu with viewport ", vi);
-        show_viewport(current_viewport);
-        size_t before_crop = visibles.size();
-        crop(data, vi, ti, current_viewport, visibles);
-        size_t after_crop = visibles.size();
-        ::printf("%zu/%zu\n", after_crop - before_crop,
-                 data.views[vi].si1 - data.views[vi].si0);
-        if (vi == 0)
-        {
-            break;
-        }
-        //test_transition inv_transition = inverse_transition(data.views[vi].tr);
-        test_transition fwd_transition = data.views[vi].tr;
-        current_viewport = apply_transition_to_viewport(fwd_transition,
-                                                        current_viewport);
-        show_transition(data.views[vi].tr);
-        ::printf(", tr=");
-        show_transition(fwd_transition);
-        ::printf(" -> ");
-        show_viewport(current_viewport);
-        ::printf("\n");
-        test_transform transform = transform_from_transition(fwd_transition);
-        transform = combine_transforms(transforms[ti], transform);
-        transforms.push_back(transform);
-        ++ti;
-    }
-
-    /*
-    // forward
-    current_viewport = viewport;
-    for (size_t vi = view_idx + 1; vi < views_cnt; ++vi)
-    {
-        current_viewport = apply_transition_to_viewport(views[vi].tr,
-                                                        current_viewport);
-        test_transform transform = transform_from_transition(views[vi].tr);
-        transform = combine_transforms(t_transforms[ti], transform);
-        t_transforms.push_back(transform);
-        ++ti;
-        crop(views[vi], ti, current_viewport, visibles);
-    }
-    */
-}
-
-bool run_test(const test_data &data,
-              const test_box &viewport, size_t pin)
-{
-    ::printf("data:\n");
-    for (size_t vi = 0; vi < data.nviews; ++vi)
-    {
-        test_view view = data.views[vi];
-
-        if (view.si0 == view.si1)
-            ::printf("@%zu: --\n", vi);
-
-        for (size_t si = view.si0; si < view.si1; ++si)
-        {
-            test_stroke st = data.strokes[si];
-            ::printf("@%zu: $%zu [#%zu-#%zu) {", vi, si, st.pi0, st.pi1);
-            for (size_t pi = st.pi0; pi < st.pi1; ++pi)
-            {
-                ::printf(" (%g, %g) ", data.points[pi].x, data.points[pi].y);
-            }
-            ::printf("}\n");
-        }
-    }
-
-    std::vector<test_visible> visibles;
-    std::vector<test_transform> transforms;
-    query(data, pin, viewport, visibles, transforms);
-
-    ::printf("query:\n");
-    for (size_t i = 0; i < visibles.size(); ++i)
-    {
-        test_visible vis = visibles[i];
-        test_stroke st = data.strokes[vis.si];
-        ::printf("%zu: $%zu [#%zu-#%zu) @%zu {",
-                 i, vis.si, st.pi0, st.pi1, vis.ti);
-        test_transform tr = transforms[vis.ti];
-        for (size_t pi = st.pi0; pi < st.pi1; ++pi)
-        {
-            test_point pt = apply_transform_pt(tr, data.points[pi]);
-            ::printf(" (%g, %g) ", pt.x, pt.y);
-        }
-        ::printf("} /s:%g tx:%g ty:%g/\n", tr.s, tr.tx, tr.ty);
-    }
-
-    return true;
-}
-
-bool run_test()
-{
-    return
-    //run_test(test3, {-2, 2, -2, 2}, PIN3);
-    //run_test(test1, {-2.5f, 2.5f, -2.5f, 2.5f}, PIN1) &&
-    run_test(test2, {-2.5f, 2.5f, -2.5f, 2.5f}, PIN2);
-}
-
-bool test_result = run_test();
