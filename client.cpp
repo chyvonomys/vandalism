@@ -9,7 +9,7 @@ offscreen_buffer *current_buffer = 0;
 
 void DrawDot(const ImDrawVert &v)
 {
-    draw_pixel(current_buffer, v.pos.x, v.pos.y, color(v.col));
+    draw_pixel(current_buffer, v.pos.x, v.pos.y, v.col);
 }
 
 void DrawLine(const ImDrawVert &v0, const ImDrawVert &v1)
@@ -24,7 +24,7 @@ void DrawLine(const ImDrawVert &v0, const ImDrawVert &v1)
         draw_line(current_buffer,
                   v0.pos.x, current_buffer->height - 1 - v0.pos.y,
                   v1.pos.x, current_buffer->height - 1 - v1.pos.y,
-                  color(v0.col));
+                  v0.col);
     }
 }
 
@@ -51,6 +51,7 @@ void DrawTri(const ImDrawVert &v0,
                            0.0f, current_buffer->height-1);
 
     color col(v0.col);
+    uint32 pcol = pack_color(col);
 
     float a01 = v0.pos.y - v1.pos.y;
     float a12 = v1.pos.y - v2.pos.y;
@@ -76,7 +77,7 @@ void DrawTri(const ImDrawVert &v0,
             {
                 draw_pixel(current_buffer,
                            x, current_buffer->height - 1 - y,
-                           col);
+                           pcol);
             }
         }
     }
@@ -137,7 +138,8 @@ void DrawRect(const ImDrawVert &c0, const ImDrawVert &c1)
                                                  u, v);
             col = modulate(col, lum);
 
-            draw_pixel(current_buffer, c, current_buffer->height - 1 - r, col);
+            draw_pixel(current_buffer, c, current_buffer->height - 1 - r,
+                       pack_color(col));
         }
 }
 
@@ -147,14 +149,15 @@ void DrawRectDbg(const ImDrawVert &c0, const ImDrawVert &c1, const color &col)
     uint32 x1 = c1.pos.x;
     uint32 y0 = c0.pos.y;
     uint32 y1 = c1.pos.y;
+    uint32 c = pack_color(col);
     
-    draw_line(current_buffer, x0, y0, x1, y0, col);
-    draw_line(current_buffer, x0, y0, x0, y1, col);
+    draw_line(current_buffer, x0, y0, x1, y0, c);
+    draw_line(current_buffer, x0, y0, x0, y1, c);
 
-    draw_line(current_buffer, x1, y0, x1, y1, col);
-    draw_line(current_buffer, x0, y1, x1, y1, col);
+    draw_line(current_buffer, x1, y0, x1, y1, c);
+    draw_line(current_buffer, x0, y1, x1, y1, c);
 
-    draw_line(current_buffer, x0, y0, x1, y1, col);
+    draw_line(current_buffer, x0, y0, x1, y1, c);
 }
 
 void RenderImGuiDrawLists(ImDrawData *drawData)
@@ -409,16 +412,16 @@ void draw_timing(offscreen_buffer *buffer, uint32 frame,
     draw_line(buffer,
               (framex + 2) % buffer->width, 0,
               (framex + 2) % buffer->width, maxy,
-              COLOR_BLACK);
+              pack_color(COLOR_BLACK));
     draw_line(buffer,
               (framex + 3) % buffer->width, 0,
               (framex + 3) % buffer->width, maxy,
-              COLOR_BLACK);
+              pack_color(COLOR_BLACK));
 
     if (total > maxti)
     {
-        draw_line(buffer, framex, 0, framex, maxy, COLOR_RED);
-        draw_line(buffer, framex+1, 0, framex+1, maxy, COLOR_RED);
+        draw_line(buffer, framex, 0, framex, maxy, pack_color(COLOR_RED));
+        draw_line(buffer, framex+1, 0, framex+1, maxy, pack_color(COLOR_RED));
     }
     else
     {
@@ -429,18 +432,20 @@ void draw_timing(offscreen_buffer *buffer, uint32 frame,
             uint32 yto = (sum / maxti) * maxy;
             uint32 tii = ti + 1;
             color col = uint32_to_color(tii);
-            draw_line(buffer, framex, yfrom, framex, yto, col);
-            draw_line(buffer, framex+1, yfrom, framex+1, yto, col);
+            uint32 pcol = pack_color(col);
+            draw_line(buffer, framex, yfrom, framex, yto, pcol);
+            draw_line(buffer, framex+1, yfrom, framex+1, yto, pcol);
 
-            draw_line(buffer, 30 * ti, maxy, 30 * (ti + 1), maxy, col);
-            draw_line(buffer, 30 * ti, maxy-1, 30 * (ti + 1), maxy-1, col);
-            draw_line(buffer, 30 * ti, maxy-2, 30 * (ti + 1), maxy-2, col);
+            draw_line(buffer, 30 * ti, maxy, 30 * (ti + 1), maxy, pcol);
+            draw_line(buffer, 30 * ti, maxy-1, 30 * (ti + 1), maxy-1, pcol);
+            draw_line(buffer, 30 * ti, maxy-2, 30 * (ti + 1), maxy-2, pcol);
         }
     }
     for (uint32 h = 1; h < 4; ++h)
     {
         uint32 targetmsy = h * 16.666666 / maxti * maxy;
-        draw_line(buffer, 0, targetmsy, buffer->width - 1, targetmsy, COLOR_CYAN);
+        draw_line(buffer, 0, targetmsy, buffer->width - 1, targetmsy,
+                  pack_color(COLOR_CYAN));
     }
 }
 
@@ -651,7 +656,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     draw_timing(buffer, input->nFrames,
                 input->pTimeIntervals, input->nTimeIntervals);
 
-    draw_pixel(buffer, input->mousex, input->mousey, COLOR_YELLOW);
+    draw_pixel(buffer, input->mousex, input->mousey, pack_color(COLOR_YELLOW));
 
     //const test_data &debug_data = ism->get_debug_data();
     const test_data &debug_data = test2;

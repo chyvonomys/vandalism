@@ -1,27 +1,29 @@
 inline void draw_pixel(offscreen_buffer *buffer,
-                       uint32 x, uint32 y, const color& c)
+                       int32 x, int32 y, uint32 c)
 {
-    uint8 *p = buffer->data + 4 * (buffer->width * y + x);
-    p[RO] = c.r;
-    p[GO] = c.g;
-    p[BO] = c.b;
-    p[AO] = c.a;
+    if (x >= 0 && y >= 0 && x < buffer->width && y < buffer->height)
+    {
+        uint32 *p = reinterpret_cast<uint32*>(buffer->data);
+        p += buffer->width * y;
+        p += x;
+        *p = c;
+    }
 }
 
 void draw_line(offscreen_buffer *pBuffer,
-               uint32 x0, uint32 y0,
-               uint32 x1, uint32 y1,
-               const color &c)
+               int32 x0, int32 y0,
+               int32 x1, int32 y1,
+               uint32 c)
 {
-    uint32 h = (y1 > y0 ? y1 - y0 : y0 - y1);
-    uint32 w = (x1 > x0 ? x1 - x0 : x0 - x1);
+    int32 h = (y1 > y0 ? y1 - y0 : y0 - y1);
+    int32 w = (x1 > x0 ? x1 - x0 : x0 - x1);
 
     draw_pixel(pBuffer, x0, y0, c);
     draw_pixel(pBuffer, x1, y1, c);
 
     if (w > h)
     {
-        uint32 tmp;
+        int32 tmp;
         if (x0 > x1)
         {
             tmp = x0;
@@ -36,15 +38,15 @@ void draw_line(offscreen_buffer *pBuffer,
         float k = static_cast<float>(h) / static_cast<float>(w);
         if (y0 > y1) k = -k;
 
-        for (uint32 x = 1; x < w; ++x)
+        for (int32 x = 1; x < w; ++x)
         {
-            uint32 y = y0 + static_cast<uint32>(k * x);
+            int32 y = y0 + static_cast<int32>(k * x);
             draw_pixel(pBuffer, x + x0, y, c);
         }
     }
     else
     {
-        uint32 tmp;
+        int32 tmp;
         if (y0 > y1)
         {
             tmp = x0;
@@ -59,9 +61,9 @@ void draw_line(offscreen_buffer *pBuffer,
         float k = static_cast<float>(w) / static_cast<float>(h);
         if (x0 > x1) k = -k;
 
-        for (uint32 y = 1; y < h; ++y)
+        for (int32 y = 1; y < h; ++y)
         {
-            uint32 x = x0 + static_cast<uint32>(k * y);
+            int32 x = x0 + static_cast<int32>(k * y);
             draw_pixel(pBuffer, x, y + y0, c);
         }
     }
@@ -172,8 +174,8 @@ void draw_grayscale_image(offscreen_buffer *buffer, uint32 x0, uint32 y0,
         for (uint32 c = 0; c < width; ++c)
         {
             uint8 a = pixels[width * r + c];
-            if (x0 + c < buffer->width && y0 + r < buffer->height)
-                draw_pixel(buffer, x0 + c, y0 + r, color(a, a, a, 255));
+            uint32 col = pack_color(color(a, a, a, 255));
+            draw_pixel(buffer, x0 + c, y0 + r, col);
         }
 }
 
