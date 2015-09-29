@@ -282,6 +282,9 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
 
 Vandalism *ism = nullptr;
 
+bool gui_showAllViews;
+int32 gui_viewIdx;
+
 extern "C" void setup()
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -303,6 +306,9 @@ extern "C" void setup()
 
     ism = new Vandalism();
     ism->setup();
+
+    gui_showAllViews = true;
+    gui_viewIdx = 0;
 }
 
 extern "C" void cleanup()
@@ -525,12 +531,15 @@ uint32 DrawTestAll(offscreen_buffer *buffer,
         for (size_t si = view.si0; si < view.si1; ++si)
         {
             size_t bi = data.strokes[si].pi0;
-            size_t ei = bi + 1;
+            size_t ei = data.strokes[si].pi1;
 
-            test_segment ls_segment = {data.points[bi], data.points[ei]};
-            test_segment ds_segment = apply_transform_seg(accum_transform,
-                                                          ls_segment);
-            ds_seg_stack.push_back(ds_segment);
+            if (ei > bi)
+            {
+                test_segment ls_segment = {data.points[bi], data.points[ei - 1]};
+                test_segment ds_segment = apply_transform_seg(accum_transform,
+                                                              ls_segment);
+                ds_seg_stack.push_back(ds_segment);
+            }
         }
 
         test_box ls_viewport = {-2.5f, 2.5f, -2.5f, 2.5f};
@@ -616,11 +625,14 @@ uint32 DrawTestPin(offscreen_buffer *buffer,
     {
         const test_visible &vis = visibles[i];
         uint32 pi0 = data.strokes[vis.si].pi0;
-        uint32 pi1 = pi0 + 1;
-        test_segment ls_seg = {data.points[pi0], data.points[pi1]};
-        test_segment ps_seg = apply_transform_seg(ls2ps_transforms[vis.ti],
-                                                  ls_seg);
-        DrawTestSegment(buffer, render_box, ps_viewport, ps_seg, 0xFFAAAA00);
+        uint32 pi1 = data.strokes[vis.si].pi1;
+        if (pi1 > pi0)
+        {
+            test_segment ls_seg = {data.points[pi0], data.points[pi1 - 1]};
+            test_segment ps_seg = apply_transform_seg(ls2ps_transforms[vis.ti],
+                                                      ls_seg);
+            DrawTestSegment(buffer, render_box, ps_viewport, ps_seg, 0xFFAAAA00);
+        }
     }
 
     return visibles.size();
@@ -694,21 +706,16 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     draw_pixel(buffer, input->mousex, input->mousey, pack_color(COLOR_YELLOW));
 
     const test_data &debug_data = ism->get_debug_data();
-    //const test_data &debug_data = test2;
-
-    uint32 hundreds = input->nFrames / 100;
-
-    uint32 view_idx = hundreds % (debug_data.nviews + 1);
 
     uint32 seg_cnt = 0;
 
-    if (view_idx == debug_data.nviews)
+    if (gui_showAllViews)
     {
         seg_cnt = DrawTestAll(buffer, 0, 400, 0, 400, debug_data);
     }
     else
     {
-        seg_cnt = DrawTestPin(buffer, 0, 400, 0, 400, debug_data, view_idx);
+        seg_cnt = DrawTestPin(buffer, 0, 400, 0, 400, debug_data, gui_viewIdx);
     }
 
     current_buffer = buffer;
@@ -751,6 +758,9 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ImGui::Text("mode: %d", ism->currentMode);
 
     ImGui::Text("test_segments: %d", seg_cnt);
+
+    ImGui::Checkbox("all views", &gui_showAllViews);
+    ImGui::SliderInt("view", &gui_viewIdx, 0, debug_data.nviews - 1);
 
     ImGui::End();
 
