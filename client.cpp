@@ -693,8 +693,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     draw_pixel(buffer, input->mousex, input->mousey, pack_color(COLOR_YELLOW));
 
-    //const test_data &debug_data = ism->get_debug_data();
-    const test_data &debug_data = test2;
+    const test_data &debug_data = ism->get_debug_data();
+    //const test_data &debug_data = test2;
 
     uint32 hundreds = input->nFrames / 100;
 
