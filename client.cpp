@@ -502,9 +502,9 @@ test_box box_add_seg(const test_box &box, const test_segment &seg)
     return result;
 }
 
-void DrawTest(offscreen_buffer *buffer,
-              uint32 x0, uint32 x1, uint32 y0, uint32 y1,
-              const test_data &data)
+uint32 DrawTestAll(offscreen_buffer *buffer,
+                 uint32 x0, uint32 x1, uint32 y0, uint32 y1,
+                 const test_data &data)
 {
     test_box ds_bbox = {INFINITY, -INFINITY, INFINITY, -INFINITY};
     test_transform accum_transform = id_transform();
@@ -589,6 +589,41 @@ void DrawTest(offscreen_buffer *buffer,
     }
 
     DrawTestBox(buffer, content_box, ds_bbox, ds_bbox, 0xFF0000EE);
+
+    return ds_seg_stack.size();
+}
+
+uint32 DrawTestPin(offscreen_buffer *buffer,
+                 uint32 x0, uint32 x1, uint32 y0, uint32 y1,
+                 const test_data &data, size_t pin)
+{
+    std::vector<test_visible> visibles;
+    std::vector<test_transform> ls2ps_transforms;
+    const test_box ps_viewport = {-2.5f, 2.5f, -2.5f, 2.5f};
+    const test_box render_box =
+    {
+        static_cast<float>(x0),
+        static_cast<float>(x1),
+        static_cast<float>(y0),
+        static_cast<float>(y1)
+    };
+
+    query(data, pin, ps_viewport, visibles, ls2ps_transforms);
+
+    draw_solid_rect(buffer, x0, x1, y0, y1, pack_color(COLOR_GRAY));
+
+    for (size_t i = 0; i < visibles.size(); ++i)
+    {
+        const test_visible &vis = visibles[i];
+        uint32 pi0 = data.strokes[vis.si].pi0;
+        uint32 pi1 = pi0 + 1;
+        test_segment ls_seg = {data.points[pi0], data.points[pi1]};
+        test_segment ps_seg = apply_transform_seg(ls2ps_transforms[vis.ti],
+                                                  ls_seg);
+        DrawTestSegment(buffer, render_box, ps_viewport, ps_seg, 0xFFAAAA00);
+    }
+
+    return visibles.size();
 }
 
 extern "C" void update_and_render(input_data *input, output_data *output)
@@ -661,7 +696,20 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     //const test_data &debug_data = ism->get_debug_data();
     const test_data &debug_data = test2;
 
-    DrawTest(buffer, 0, 400, 0, 400, debug_data);
+    uint32 hundreds = input->nFrames / 100;
+
+    uint32 view_idx = hundreds % (debug_data.nviews + 1);
+
+    uint32 seg_cnt = 0;
+
+    if (view_idx == debug_data.nviews)
+    {
+        seg_cnt = DrawTestAll(buffer, 0, 400, 0, 400, debug_data);
+    }
+    else
+    {
+        seg_cnt = DrawTestPin(buffer, 0, 400, 0, 400, debug_data, view_idx);
+    }
 
     current_buffer = buffer;
 
@@ -701,6 +749,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
                 output->curr_tris->capacity);
 
     ImGui::Text("mode: %d", ism->currentMode);
+
+    ImGui::Text("test_segments: %d", seg_cnt);
 
     ImGui::End();
 

@@ -646,3 +646,54 @@ bool transforms_test()
 }
 
 bool t_test_result = transforms_test();
+
+// get transform which, when applied to points in src_idx view space
+// will produce their coordinates in dst_idx view space
+test_transform get_relative_transform(const test_data &data,
+                                      size_t src_idx, size_t dst_idx)
+{
+    test_transform accum = id_transform();
+    if (dst_idx > src_idx)
+    {
+        for (size_t vi = dst_idx; vi != src_idx; --vi)
+        {
+            const auto &view = data.views[vi];
+
+            test_transition inv_tr = inverse_transition(view.tr);
+            test_transform transform = transform_from_transition(inv_tr);
+            accum = combine_transforms(accum, transform);
+        }
+    }
+    else
+    {
+        for (size_t vi = dst_idx + 1; vi <= src_idx; ++vi)
+        {
+            const auto &view = data.views[vi];
+
+            test_transform transform = transform_from_transition(view.tr);
+            accum = combine_transforms(accum, transform);
+        }
+    }
+    return accum;
+}
+
+// given a pin (a view index) collect list of strokes
+// along with needed transforms, that are inside viewport
+// which is in pin's view local space
+void query(const test_data &data, size_t pin, const test_box &viewport,
+           std::vector<test_visible> &visibles,
+           std::vector<test_transform> &transforms)
+{
+    // ps_*** -- pin space
+    // ls_*** -- current view's space
+
+    for (size_t vi = 0; vi < data.nviews; ++vi)
+    {
+        test_transform ls2ps = get_relative_transform(data, vi, pin);
+        test_transform ps2ls = get_relative_transform(data, pin, vi);
+
+        test_box ls_box = apply_transform_box(ps2ls, viewport);
+        crop(data, vi, transforms.size(), ls_box, visibles);
+        transforms.push_back(ls2ps);
+    }
+}
