@@ -44,6 +44,9 @@ struct output_data
     triangles *bake_tris;
     triangles *curr_tris;
     bool bake_flag;
+
+    float translateX;
+    float translateY;
 };
 
 typedef void (*UPDATE_AND_RENDER_FUNC)(input_data *input, output_data *output);

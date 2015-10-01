@@ -282,8 +282,17 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
 
 Vandalism *ism = nullptr;
 
+enum IsmMode
+{
+    ISM_DRAW = 0,
+    ISM_PAN = 1,
+    ISM_ZOOM = 2,
+    ISM_ROTATE = 3
+};
+
 bool gui_showAllViews;
 int32 gui_viewIdx;
+int32 gui_mode;
 
 extern "C" void setup()
 {
@@ -309,6 +318,7 @@ extern "C" void setup()
 
     gui_showAllViews = true;
     gui_viewIdx = 0;
+    gui_mode = ISM_DRAW;
 }
 
 extern "C" void cleanup()
@@ -651,9 +661,9 @@ extern "C" void update_and_render(input_data *input, output_data *output)
         static_cast<float>(buffer->height) - 1.0f;
 
     Vandalism::Input ism_input;
-    ism_input.altdown = false;
-    ism_input.shiftdown = false;
-    ism_input.ctrldown = false;
+    ism_input.altdown = (gui_mode == ISM_ROTATE);
+    ism_input.shiftdown = (gui_mode == ISM_PAN);
+    ism_input.ctrldown = (gui_mode == ISM_ZOOM);
     ism_input.mousex = mx;
     ism_input.mousey = my;
     ism_input.mousedown = input->mouseleft;
@@ -674,6 +684,9 @@ extern "C" void update_and_render(input_data *input, output_data *output)
         // TODO: make this better
         ism->visiblesChanged = false;
     }
+
+    output->translateX = ism->shiftX;
+    output->translateY = ism->shiftY;
 
     size_t currStart, currEnd;
     ism->get_current_stroke(currStart, currEnd);
@@ -756,6 +769,11 @@ extern "C" void update_and_render(input_data *input, output_data *output)
                 output->curr_tris->capacity);
 
     ImGui::Text("mode: %d", ism->currentMode);
+
+    ImGui::RadioButton("draw", &gui_mode, ISM_DRAW); ImGui::SameLine();
+    ImGui::RadioButton("pan", &gui_mode, ISM_PAN); ImGui::SameLine();
+    ImGui::RadioButton("zoom", &gui_mode, ISM_ZOOM); ImGui::SameLine();
+    ImGui::RadioButton("rot", &gui_mode, ISM_ROTATE);
 
     ImGui::Text("test_segments: %d", seg_cnt);
 

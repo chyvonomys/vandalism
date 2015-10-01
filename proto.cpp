@@ -105,6 +105,9 @@ LOAD(GLFRAMEBUFFERRENDERBUFFER, glFramebufferRenderbuffer)
 
 LOAD(GLDEPTHFUNC, glDepthFunc)
 
+LOAD(GLGETUNIFORMLOCATION, glGetUniformLocation)
+LOAD(GLUNIFORM2F, glUniform2f)
+
 LOAD(GLFINISH, glFinish)
 LOAD(GLGETERROR, glGetError)
 LOAD(GLGETSTRING, glGetString)
@@ -284,12 +287,16 @@ struct BufferPresenter
 struct FSTexturePresenter
 {
     void setup();
+    void set_translation(GLfloat x, GLfloat y);
     void draw(GLuint tex);
     void cleanup();
 
     GLuint m_vbo;
     GLuint m_vao;
     GLuint m_fullscreenProgram;
+    GLint m_translationLoc;
+    GLfloat m_translationX;
+    GLfloat m_translationY;
 };
 
 struct RenderTarget
@@ -591,6 +598,7 @@ int main(int argc, char *argv[])
             glViewport(viewportLeftPx, viewportBottomPx,
                        viewportWidthPx, viewportHeightPx);
 
+            fs.set_translation(output.translateX, output.translateY);
             fs.draw(rt.m_tex);
 
             fgmesh.update(output.curr_tris->data, output.curr_tris->size);
@@ -912,17 +920,18 @@ void FSTexturePresenter::setup()
     const GLsizei vertexSize = (POS_DIM + UV_DIM) * sizeof(float);
 
     const char *vertex_src =
-        "  #version 330 core                             \n"
-        "  layout (location = 0) in vec2 i_msPosition;   \n"
-        "  layout (location = 1) in vec2 i_textureUV;    \n"
-        "  out vec2 l_textureUV;                         \n"
-        "  void main()                                   \n"
-        "  {                                             \n"
-        "      gl_Position.xy = i_msPosition;            \n"
-        "      gl_Position.z = 0.0f;                     \n"
-        "      gl_Position.w = 1.0f;                     \n"
-        "      l_textureUV = i_textureUV;                \n"
-        "  }                                             \n";
+        "  #version 330 core                                  \n"
+        "  layout (location = 0) in vec2 i_msPosition;        \n"
+        "  layout (location = 1) in vec2 i_textureUV;         \n"
+        "  out vec2 l_textureUV;                              \n"
+        "  uniform vec2 u_translation;                        \n"
+        "  void main()                                        \n"
+        "  {                                                  \n"
+        "      gl_Position.xy = i_msPosition + u_translation; \n"
+        "      gl_Position.z = 0.0f;                          \n"
+        "      gl_Position.w = 1.0f;                          \n"
+        "      l_textureUV = i_textureUV;                     \n"
+        "  }                                                  \n";
 
     const char *fragment_src =
         "  #version 330 core                                 \n"
@@ -935,6 +944,7 @@ void FSTexturePresenter::setup()
         "  }                                                 \n";
 
     m_fullscreenProgram = ::create_program(vertex_src, nullptr, fragment_src);
+    m_translationLoc = glGetUniformLocation(m_fullscreenProgram, "u_translation");
 
     glGenVertexArrays(1, &m_vao);
 
@@ -968,11 +978,18 @@ void FSTexturePresenter::cleanup()
     glDeleteProgram(m_fullscreenProgram);
 }
 
+void FSTexturePresenter::set_translation(GLfloat x, GLfloat y)
+{
+    m_translationX = x;
+    m_translationY = y;
+}
+
 void FSTexturePresenter::draw(GLuint tex)
 {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glUseProgram(m_fullscreenProgram);
+    glUniform2f(m_translationLoc, m_translationX, m_translationY);
     glBindTexture(GL_TEXTURE_2D, tex);
     glBindVertexArray(m_vao);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);

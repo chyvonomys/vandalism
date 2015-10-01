@@ -27,6 +27,14 @@ struct Vandalism
     // TODO: change this
     bool visiblesChanged;
 
+
+    // PAN related
+
+    float panStartX;
+    float panStartY;
+    float shiftX;
+    float shiftY;
+
     struct Pan
     {
         float dx;
@@ -57,17 +65,37 @@ struct Vandalism
 
 
     void idle(const Input *) {}
-    void start_pan(const Input *) {}
     void start_zoom(const Input *) {}
     void start_rotate(const Input *) {}
-    void done_pan(const Input *) {}
     void done_zoom(const Input *) {}
     void done_rotate(const Input *) {}
-    void do_pan(const Input *) {}
     void do_zoom(const Input *) {}
     void do_rotate(const Input *) {}
 
     void illegal(const Input *) {}
+
+    void start_pan(const Input *input)
+    {
+        panStartX = input->mousex;
+        panStartY = input->mousey;
+    }
+
+    void do_pan(const Input *input)
+    {
+        shiftX = input->mousex - panStartX;
+        shiftY = input->mousey - panStartY;
+    }
+
+    void done_pan(const Input *input)
+    {
+        pin = views.size();
+        views.push_back({TPAN,
+                input->mousex - panStartX, input->mousey - panStartY,
+                strokes.size(), strokes.size()});
+
+        shiftX = 0.0f;
+        shiftY = 0.0f;
+    }
 
     void start_draw(const Input *input)
     {
