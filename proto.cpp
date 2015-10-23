@@ -372,8 +372,7 @@ int main(int argc, char *argv[])
     GLsizei bufferHeightPx = 512;
 
     GLFWwindow* pWindow;
-    GLFWmonitor* pMonitor = nullptr; //glfwGetPrimaryMonitor();
-    pWindow = glfwCreateWindow(windowWidthPt, windowHeightPt,"proto", pMonitor, nullptr);
+    pWindow = glfwCreateWindow(windowWidthPt, windowHeightPt, "proto", nullptr, nullptr);
 
     // TODO: this doesn't seem to work, no matter what is set, frame takes ~16ms
     glfwMakeContextCurrent(pWindow);
@@ -391,11 +390,44 @@ int main(int argc, char *argv[])
     glfwSwapInterval(1);
 #endif
     
+    GLFWmonitor* pMonitor = glfwGetPrimaryMonitor();
+
+    int32 monitorWidthPt, monitorHeightPt;
+    const GLFWvidmode* pVideomode = glfwGetVideoMode(pMonitor);
+    monitorWidthPt = pVideomode->width;
+    monitorHeightPt = pVideomode->height;
+
+    int32 monitorWidthMm, monitorHeightMm;
+    glfwGetMonitorPhysicalSize(pMonitor, &monitorWidthMm, &monitorHeightMm);
+
+    const float MM_PER_IN = 25.4f;
+    float monitorWidthIn = monitorWidthMm / MM_PER_IN;
+    float monitorHeightIn = monitorHeightMm / MM_PER_IN;
+
+    float monitorHorDPI = monitorWidthPt / monitorWidthIn;
+    float monitorVerDPI = monitorHeightPt / monitorHeightIn;
+
+    ::printf("monitor: %d x %d pt\n", monitorWidthPt, monitorHeightPt);
+    ::printf("monitor: %d x %d mm\n", monitorWidthMm, monitorHeightMm);
+    ::printf("monitor: %f x %f in\n", monitorWidthIn, monitorHeightIn);
+    ::printf("monitor: %f x %f dpi\n", monitorHorDPI, monitorVerDPI);
+
     int32 windowWidthPx, windowHeightPx;
     glfwGetFramebufferSize(pWindow, &windowWidthPx, &windowHeightPx);
 
+    ::printf("window: %d x %d pt\n", windowWidthPt, windowHeightPt);
+    ::printf("window: %d x %d px\n", windowWidthPx, windowHeightPx);
+
     int32 viewportWidthPx = (windowWidthPx * viewportWidthPt) / windowWidthPt;
     int32 viewportHeightPx = (windowHeightPx * viewportHeightPt) / windowHeightPt;
+
+    float viewportWidthIn = viewportWidthPt / monitorHorDPI;
+    float viewportHeightIn = viewportHeightPt / monitorVerDPI;
+
+    ::printf("viewport: %d x %d pt\n", viewportWidthPt, viewportHeightPt);
+    ::printf("viewport: %f x %f in\n", viewportWidthIn, viewportHeightIn);
+    ::printf("viewport: %d x %d px\n", viewportWidthPx, viewportHeightPx);
+
 
     // viewport is centered in window
     int32 viewportLeftPx = (windowWidthPx - viewportWidthPx) / 2;
@@ -465,6 +497,8 @@ int main(int argc, char *argv[])
         output.bake_tris = &bake_tris;
         output.curr_tris = &curr_tris;
         output.buffer = &buffer;
+        output.bufferHeightIn = viewportHeightIn;
+        output.bufferWidthIn = viewportWidthIn;
 
         void *lib_handle = ::dlopen("client.dylib", RTLD_LAZY);
 

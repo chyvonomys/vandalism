@@ -356,10 +356,12 @@ void fill_triangles(triangles *tris,
 
 void fill_quads(triangles *tris,
                 const std::vector<Vandalism::Point> &points,
-                const Vandalism::Visible &vis)
+                const Vandalism::Visible &vis,
+                float viewportWIn, float viewportHIn)
 {
     float *xyz = tris->data + tris->size * 3;
     float zindex = 0.00001f * vis.strokeIdx;
+    const float lineThicknessIn = 0.1f;
     
     for (size_t i = vis.startIdx + 1; i < vis.endIdx; ++i)
     {
@@ -371,9 +373,7 @@ void fill_quads(triangles *tris,
         float2 dir = curr - prev;
         if (len(dir) > 0.001f)
         {
-            float2 side = perp(dir * (1.0 / len(dir)));
-            side.x *= 0.01f;
-            side.y *= 0.02f;
+            float2 side = lineThicknessIn * perp(dir * (1.0 / len(dir)));
 
             // x -ccw-> y
             float2 p0l = prev + side;
@@ -381,31 +381,31 @@ void fill_quads(triangles *tris,
             float2 p1l = curr + side;
             float2 p1r = curr - side;
 
-            xyz[3 * 0 + 0] = p0l.x;
-            xyz[3 * 0 + 1] = p0l.y;
+            xyz[3 * 0 + 0] = 2.0f * p0l.x / viewportWIn;
+            xyz[3 * 0 + 1] = 2.0f * p0l.y / viewportHIn;
             xyz[3 * 0 + 2] = zindex;
 
-            xyz[3 * 1 + 0] = p1r.x;
-            xyz[3 * 1 + 1] = p1r.y;
+            xyz[3 * 1 + 0] = 2.0f * p1r.x / viewportWIn;
+            xyz[3 * 1 + 1] = 2.0f * p1r.y / viewportHIn;
             xyz[3 * 1 + 2] = zindex;
 
-            xyz[3 * 2 + 0] = p1l.x;
-            xyz[3 * 2 + 1] = p1l.y;
+            xyz[3 * 2 + 0] = 2.0f * p1l.x / viewportWIn;
+            xyz[3 * 2 + 1] = 2.0f * p1l.y / viewportHIn;
             xyz[3 * 2 + 2] = zindex;
 
             xyz += 3 * 3;
             tris->size += 3;
 
-            xyz[3 * 0 + 0] = p0l.x;
-            xyz[3 * 0 + 1] = p0l.y;
+            xyz[3 * 0 + 0] = 2.0f * p0l.x / viewportWIn;
+            xyz[3 * 0 + 1] = 2.0f * p0l.y / viewportHIn;
             xyz[3 * 0 + 2] = zindex;
 
-            xyz[3 * 1 + 0] = p0r.x;
-            xyz[3 * 1 + 1] = p0r.y;
+            xyz[3 * 1 + 0] = 2.0f * p0r.x / viewportWIn;
+            xyz[3 * 1 + 1] = 2.0f * p0r.y / viewportHIn;
             xyz[3 * 1 + 2] = zindex;
 
-            xyz[3 * 2 + 0] = p1r.x;
-            xyz[3 * 2 + 1] = p1r.y;
+            xyz[3 * 2 + 0] = 2.0f * p1r.x / viewportWIn;
+            xyz[3 * 2 + 1] = 2.0f * p1r.y / viewportHIn;
             xyz[3 * 2 + 2] = zindex;
 
             xyz += 3 * 3;
@@ -519,8 +519,9 @@ test_box box_add_seg(const test_box &box, const test_segment &seg)
 }
 
 uint32 DrawTestAll(offscreen_buffer *buffer,
-                 uint32 x0, uint32 x1, uint32 y0, uint32 y1,
-                 const test_data &data)
+                   uint32 x0, uint32 x1, uint32 y0, uint32 y1,
+                   float viewportW, float viewportH,
+                   const test_data &data)
 {
     test_box ds_bbox = {INFINITY, -INFINITY, INFINITY, -INFINITY};
     test_transform accum_transform = id_transform();
@@ -530,6 +531,9 @@ uint32 DrawTestAll(offscreen_buffer *buffer,
 
     std::vector<test_box> ds_box_stack;
     std::vector<test_segment> ds_seg_stack;
+
+    test_box ls_viewport = {-0.5f * viewportW, 0.5f * viewportW,
+                            -0.5f * viewportH, 0.5f * viewportH};
 
     for (size_t vi = 0; vi < data.nviews; ++vi)
     {
@@ -552,7 +556,6 @@ uint32 DrawTestAll(offscreen_buffer *buffer,
             }
         }
 
-        test_box ls_viewport = {-2.5f, 2.5f, -2.5f, 2.5f};
         test_box ds_viewport = apply_transform_box(accum_transform,
                                                    ls_viewport);
 
@@ -613,12 +616,15 @@ uint32 DrawTestAll(offscreen_buffer *buffer,
 }
 
 uint32 DrawTestPin(offscreen_buffer *buffer,
-                 uint32 x0, uint32 x1, uint32 y0, uint32 y1,
-                 const test_data &data, size_t pin)
+                   uint32 x0, uint32 x1, uint32 y0, uint32 y1,
+                   float viewportW, float viewportH,
+                   const test_data &data, size_t pin)
 {
     std::vector<test_visible> visibles;
     std::vector<test_transform> ls2ps_transforms;
-    const test_box ps_viewport = {-2.5f, 2.5f, -2.5f, 2.5f};
+    const test_box ps_viewport = {-0.5f * viewportW, 0.5f * viewportW,
+                                  -0.5f * viewportH, 0.5f * viewportH};
+
     const test_box render_box =
     {
         static_cast<float>(x0),
@@ -652,20 +658,21 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 {
     offscreen_buffer *buffer = output->buffer;
 
-    float mx = 2.0f *
-        static_cast<float>(input->mousex) /
-        static_cast<float>(buffer->width) - 1.0f;
+    float mxnorm = static_cast<float>(input->mousex) /
+                   static_cast<float>(buffer->width) - 0.5f;
 
-    float my = 2.0f *
-        static_cast<float>(input->mousey) /
-        static_cast<float>(buffer->height) - 1.0f;
+    float mynorm = static_cast<float>(input->mousey) /
+                   static_cast<float>(buffer->height) - 0.5f;
+
+    float mxin = output->bufferWidthIn * mxnorm;
+    float myin = output->bufferHeightIn * mynorm;
 
     Vandalism::Input ism_input;
     ism_input.altdown = (gui_mode == ISM_ROTATE);
     ism_input.shiftdown = (gui_mode == ISM_PAN);
     ism_input.ctrldown = (gui_mode == ISM_ZOOM);
-    ism_input.mousex = mx;
-    ism_input.mousey = my;
+    ism_input.mousex = mxin;
+    ism_input.mousey = myin;
     ism_input.mousedown = input->mouseleft;
 
     ism->update(&ism_input);
@@ -676,7 +683,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
         output->bake_tris->size = 0;
         for (uint32 visIdx = 0; visIdx < ism->visibles.size(); ++visIdx)
         {
-            fill_quads(output->bake_tris, ism->points, ism->visibles[visIdx]);
+            fill_quads(output->bake_tris, ism->points, ism->visibles[visIdx],
+                       output->bufferWidthIn, output->bufferHeightIn);
             //fill_triangles(output->bake_tris, ism->points, ism->visibles[visIdx]);
         }
         output->bake_flag = true;
@@ -685,8 +693,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
         ism->visiblesChanged = false;
     }
 
-    output->translateX = ism->shiftX;
-    output->translateY = ism->shiftY;
+    output->translateX = 2.0f * ism->shiftX / output->bufferWidthIn;
+    output->translateY = 2.0f * ism->shiftY / output->bufferHeightIn;
 
     size_t currStart, currEnd;
     ism->get_current_stroke(currStart, currEnd);
@@ -699,7 +707,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     output->curr_tris->size = 0;
 
-    fill_quads(output->curr_tris, ism->points, curr);
+    fill_quads(output->curr_tris, ism->points, curr,
+               output->bufferWidthIn, output->bufferHeightIn);
     //fill_triangles(output->curr_tris, ism->points, curr);
 
 
@@ -724,11 +733,17 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     if (gui_showAllViews)
     {
-        seg_cnt = DrawTestAll(buffer, 0, 400, 0, 400, debug_data);
+        seg_cnt = DrawTestAll(buffer,
+                              0, 400, 0, 400,
+                              output->bufferWidthIn, output->bufferHeightIn,
+                              debug_data);
     }
     else
     {
-        seg_cnt = DrawTestPin(buffer, 0, 400, 0, 400, debug_data, gui_viewIdx);
+        seg_cnt = DrawTestPin(buffer,
+                              0, 400, 0, 400,
+                              output->bufferWidthIn, output->bufferHeightIn,
+                              debug_data, gui_viewIdx);
     }
 
     current_buffer = buffer;
@@ -745,7 +760,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     ImGui::SetNextWindowSize(ImVec2(200, 300), ImGuiSetCond_FirstUseEver);
     ImGui::Begin("vandalism");
-    ImGui::Text("mouse-norm: (%g, %g)", mx, my);
+    ImGui::Text("mouse-inch: (%g, %g)", mxin, myin);
+    ImGui::Text("mouse-norm: (%g, %g)", mxnorm, mynorm);
     ImGui::Text("mouse-raw: (%g, %g)",
                 static_cast<double>(input->mousex),
                 static_cast<double>(input->mousey));

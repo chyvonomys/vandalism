@@ -47,6 +47,9 @@ struct output_data
 
     float translateX;
     float translateY;
+
+    float bufferWidthIn;
+    float bufferHeightIn;
 };
 
 typedef void (*UPDATE_AND_RENDER_FUNC)(input_data *input, output_data *output);

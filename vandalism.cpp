@@ -90,7 +90,8 @@ struct Vandalism
     {
         pin = views.size();
         views.push_back({TPAN,
-                input->mousex - panStartX, input->mousey - panStartY,
+                -(input->mousex - panStartX),
+                -(input->mousey - panStartY),
                 strokes.size(), strokes.size()});
 
         shiftX = 0.0f;
