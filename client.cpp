@@ -329,41 +329,22 @@ extern "C" void cleanup()
     ImGui::Shutdown();
 }
 
-void fill_triangles(triangles *tris,
-                    const std::vector<Vandalism::Point> &points,
-                    const Vandalism::Visible &vis)
+inline test_point inches2snorm(const test_point& pt, float w, float h)
 {
-    for (size_t i = vis.startIdx + 2; i < vis.endIdx; ++i)
-    {
-        if (tris->size < tris->capacity)
-        {
-            tris->data[3 * (tris->size+0) + 0] = points[i-2].x;
-            tris->data[3 * (tris->size+0) + 1] = points[i-2].y;
-            tris->data[3 * (tris->size+0) + 2] = 0.00001f * vis.strokeIdx;
-
-            tris->data[3 * (tris->size+1) + 0] = points[i-1].x;
-            tris->data[3 * (tris->size+1) + 1] = points[i-1].y;
-            tris->data[3 * (tris->size+1) + 2] = 0.00001f * vis.strokeIdx;
-
-            tris->data[3 * (tris->size+2) + 0] = points[i-0].x;
-            tris->data[3 * (tris->size+2) + 1] = points[i-0].y;
-            tris->data[3 * (tris->size+2) + 2] = 0.00001f * vis.strokeIdx;
-
-            tris->size += 3;
-        }
-    }
+    return {2.0f * pt.x / w, 2.0f * pt.y / h};
 }
 
 void fill_quads(triangles *tris,
-                const std::vector<Vandalism::Point> &points,
-                const Vandalism::Visible &vis,
+                const test_point *points,
+                size_t pi0, size_t pi1, size_t si,
+                const test_transform& tform,
                 float viewportWIn, float viewportHIn)
 {
     float *xyz = tris->data + tris->size * 3;
-    float zindex = 0.00001f * vis.strokeIdx;
+    float zindex = 0.00001f * si;
     const float lineThicknessIn = 0.1f;
     
-    for (size_t i = vis.startIdx + 1; i < vis.endIdx; ++i)
+    for (size_t i = pi0 + 1; i < pi1; ++i)
     {
         if (tris->size >= tris->capacity)
             break;
@@ -381,31 +362,40 @@ void fill_quads(triangles *tris,
             float2 p1l = curr + side;
             float2 p1r = curr - side;
 
-            xyz[3 * 0 + 0] = 2.0f * p0l.x / viewportWIn;
-            xyz[3 * 0 + 1] = 2.0f * p0l.y / viewportHIn;
+            test_point a = inches2snorm(apply_transform_pt(tform, {p0l.x, p0l.y}),
+                                        viewportWIn, viewportHIn);
+            test_point b = inches2snorm(apply_transform_pt(tform, {p0r.x, p0r.y}),
+                                        viewportWIn, viewportHIn);
+            test_point c = inches2snorm(apply_transform_pt(tform, {p1l.x, p1l.y}),
+                                        viewportWIn, viewportHIn);
+            test_point d = inches2snorm(apply_transform_pt(tform, {p1r.x, p1r.y}),
+                                        viewportWIn, viewportHIn);
+
+            xyz[3 * 0 + 0] = a.x;
+            xyz[3 * 0 + 1] = a.y;
             xyz[3 * 0 + 2] = zindex;
 
-            xyz[3 * 1 + 0] = 2.0f * p1r.x / viewportWIn;
-            xyz[3 * 1 + 1] = 2.0f * p1r.y / viewportHIn;
+            xyz[3 * 1 + 0] = d.x;
+            xyz[3 * 1 + 1] = d.y;
             xyz[3 * 1 + 2] = zindex;
 
-            xyz[3 * 2 + 0] = 2.0f * p1l.x / viewportWIn;
-            xyz[3 * 2 + 1] = 2.0f * p1l.y / viewportHIn;
+            xyz[3 * 2 + 0] = c.x;
+            xyz[3 * 2 + 1] = c.y;
             xyz[3 * 2 + 2] = zindex;
 
             xyz += 3 * 3;
             tris->size += 3;
 
-            xyz[3 * 0 + 0] = 2.0f * p0l.x / viewportWIn;
-            xyz[3 * 0 + 1] = 2.0f * p0l.y / viewportHIn;
+            xyz[3 * 0 + 0] = a.x;
+            xyz[3 * 0 + 1] = a.y;
             xyz[3 * 0 + 2] = zindex;
 
-            xyz[3 * 1 + 0] = 2.0f * p0r.x / viewportWIn;
-            xyz[3 * 1 + 1] = 2.0f * p0r.y / viewportHIn;
+            xyz[3 * 1 + 0] = b.x;
+            xyz[3 * 1 + 1] = b.y;
             xyz[3 * 1 + 2] = zindex;
 
-            xyz[3 * 2 + 0] = 2.0f * p1r.x / viewportWIn;
-            xyz[3 * 2 + 1] = 2.0f * p1r.y / viewportHIn;
+            xyz[3 * 2 + 0] = d.x;
+            xyz[3 * 2 + 1] = d.y;
             xyz[3 * 2 + 2] = zindex;
 
             xyz += 3 * 3;
@@ -677,40 +667,47 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     ism->update(&ism_input);
 
+    const test_data &debug_data = ism->get_debug_data();
+
     if (ism->visiblesChanged)
     {
-        uint32 visiblesCount;
         output->bake_tris->size = 0;
-        for (uint32 visIdx = 0; visIdx < ism->visibles.size(); ++visIdx)
+        std::vector<test_visible> visibles;
+        std::vector<test_transform> transforms;
+        test_box viewbox = {-0.5f * output->bufferWidthIn,
+                            0.5f * output->bufferWidthIn,
+                            -0.5f * output->bufferHeightIn,
+                            0.5f * output->bufferHeightIn};
+
+        query(debug_data, debug_data.nviews - 1, viewbox, visibles, transforms);
+        for (uint32 visIdx = 0; visIdx < visibles.size(); ++visIdx)
         {
-            fill_quads(output->bake_tris, ism->points, ism->visibles[visIdx],
+            const test_visible& vis = visibles[visIdx];
+            const test_transform& tform = transforms[vis.ti];
+            const test_stroke& stroke = debug_data.strokes[vis.si];
+            fill_quads(output->bake_tris, debug_data.points,
+                       stroke.pi0, stroke.pi1, vis.si, tform,
                        output->bufferWidthIn, output->bufferHeightIn);
-            //fill_triangles(output->bake_tris, ism->points, ism->visibles[visIdx]);
         }
+
         output->bake_flag = true;
         // flag processed
         // TODO: make this better
         ism->visiblesChanged = false;
+        ::printf("update mesh: %lu visibles\n", visibles.size());
     }
 
     output->translateX = 2.0f * ism->shiftX / output->bufferWidthIn;
     output->translateY = 2.0f * ism->shiftY / output->bufferHeightIn;
 
     size_t currStart, currEnd;
-    ism->get_current_stroke(currStart, currEnd);
-
-    Vandalism::Visible curr;
-    curr.startIdx = currStart;
-    curr.endIdx = currEnd;
-    // TODO: this is bad
-    curr.strokeIdx = ism->strokes.size();
+    size_t currId = ism->get_current_stroke(currStart, currEnd);
 
     output->curr_tris->size = 0;
 
-    fill_quads(output->curr_tris, ism->points, curr,
+    fill_quads(output->curr_tris, debug_data.points,
+               currStart, currEnd, currId, id_transform(),
                output->bufferWidthIn, output->bufferHeightIn);
-    //fill_triangles(output->curr_tris, ism->points, curr);
-
 
     // Draw SW -----------------------------------------------------------------
 
@@ -726,8 +723,6 @@ extern "C" void update_and_render(input_data *input, output_data *output)
                 input->pTimeIntervals, input->nTimeIntervals);
 
     draw_pixel(buffer, input->mousex, input->mousey, pack_color(COLOR_YELLOW));
-
-    const test_data &debug_data = ism->get_debug_data();
 
     uint32 seg_cnt = 0;
 

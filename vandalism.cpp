@@ -9,16 +9,7 @@ struct Vandalism
 
     typedef test_stroke Stroke;
 
-    // a subrange of some stroke
-    struct Visible
-    {
-        uint32 startIdx;
-        uint32 endIdx;
-        uint32 strokeIdx;
-    };
-
     std::vector<Stroke> strokes;
-    std::vector<Visible> visibles;
 
     std::vector<test_view> views;
 
@@ -96,6 +87,8 @@ struct Vandalism
 
         shiftX = 0.0f;
         shiftY = 0.0f;
+
+        visiblesChanged = true;
     }
 
     void start_draw(const Input *input)
@@ -104,7 +97,6 @@ struct Vandalism
         stroke.pi0 = points.size();
         {
             Point point;
-            // TODO: transform from mouse to local space
             point.x = input->mousex;
             point.y = input->mousey;
             points.push_back(point);
@@ -116,7 +108,6 @@ struct Vandalism
     void do_draw(const Input *input)
     {
         Point point;
-        // TODO: transform from mouse to local space
         point.x = input->mousex;
         point.y = input->mousey;
         points.push_back(point);
@@ -126,13 +117,6 @@ struct Vandalism
 
     void done_draw(const Input *)
     {
-        Visible vis;
-        vis.startIdx = strokes.back().pi0;
-        vis.endIdx = strokes.back().pi1;
-        vis.strokeIdx = strokes.size();
-
-        visibles.push_back(vis);
-
         views[pin].si1 = strokes.size();
 
         visiblesChanged = true;
@@ -214,7 +198,7 @@ struct Vandalism
     {
     }
 
-    void get_current_stroke(size_t &from, size_t &to)
+    size_t get_current_stroke(size_t &from, size_t &to)
     {
         if (currentMode == DRAWING)
         {
@@ -226,6 +210,7 @@ struct Vandalism
             from = 0;
             to = 0;
         }
+        return strokes.size() - 1;
     }
 
     test_data get_debug_data() const
