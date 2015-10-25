@@ -47,6 +47,7 @@ struct output_data
 
     float translateX;
     float translateY;
+    float scale;
 
     float bufferWidthIn;
     float bufferHeightIn;

@@ -699,6 +699,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     output->translateX = 2.0f * ism->shiftX / output->bufferWidthIn;
     output->translateY = 2.0f * ism->shiftY / output->bufferHeightIn;
+    output->scale = ism->zoomCoeff;
 
     size_t currStart, currEnd;
     size_t currId = ism->get_current_stroke(currStart, currEnd);

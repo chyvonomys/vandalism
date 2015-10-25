@@ -26,6 +26,11 @@ struct Vandalism
     float shiftX;
     float shiftY;
 
+    // ZOOM related;
+
+    float zoomStartX;
+    float zoomCoeff;
+
     struct Pan
     {
         float dx;
@@ -56,14 +61,32 @@ struct Vandalism
 
 
     void idle(const Input *) {}
-    void start_zoom(const Input *) {}
     void start_rotate(const Input *) {}
-    void done_zoom(const Input *) {}
     void done_rotate(const Input *) {}
-    void do_zoom(const Input *) {}
     void do_rotate(const Input *) {}
 
     void illegal(const Input *) {}
+
+    void start_zoom(const Input *input)
+    {
+        zoomStartX = input->mousex;
+    }
+
+    void do_zoom(const Input *input)
+    {
+        zoomCoeff = zoomStartX / input->mousex;
+    }
+
+    void done_zoom(const Input *input)
+    {
+        pin = views.size();
+        views.push_back({TZOOM,
+                zoomStartX, input->mousex,
+                strokes.size(), strokes.size()});
+        zoomCoeff = 1.0f;
+
+        visiblesChanged = true;
+    }
 
     void start_pan(const Input *input)
     {
@@ -192,6 +215,10 @@ struct Vandalism
         views.push_back({TPAN, 0.0f, 0.0f, 0, 0});
 
         pin = 0;
+
+        shiftX = 0.0f;
+        shiftY = 0.0f;
+        zoomCoeff = 1.0f;
     }
 
     void cleanup()

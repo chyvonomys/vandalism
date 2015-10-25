@@ -106,6 +106,7 @@ LOAD(GLFRAMEBUFFERRENDERBUFFER, glFramebufferRenderbuffer)
 LOAD(GLDEPTHFUNC, glDepthFunc)
 
 LOAD(GLGETUNIFORMLOCATION, glGetUniformLocation)
+LOAD(GLUNIFORM1F, glUniform1f)
 LOAD(GLUNIFORM2F, glUniform2f)
 
 LOAD(GLFINISH, glFinish)
@@ -287,7 +288,7 @@ struct BufferPresenter
 struct FSTexturePresenter
 {
     void setup();
-    void set_translation(GLfloat x, GLfloat y);
+    void set_transform(GLfloat x, GLfloat y, GLfloat s);
     void draw(GLuint tex);
     void cleanup();
 
@@ -295,8 +296,10 @@ struct FSTexturePresenter
     GLuint m_vao;
     GLuint m_fullscreenProgram;
     GLint m_translationLoc;
+    GLint m_scaleLoc;
     GLfloat m_translationX;
     GLfloat m_translationY;
+    GLfloat m_scale;
 };
 
 struct RenderTarget
@@ -632,7 +635,7 @@ int main(int argc, char *argv[])
             glViewport(viewportLeftPx, viewportBottomPx,
                        viewportWidthPx, viewportHeightPx);
 
-            fs.set_translation(output.translateX, output.translateY);
+            fs.set_transform(output.translateX, output.translateY, output.scale);
             fs.draw(rt.m_tex);
 
             fgmesh.update(output.curr_tris->data, output.curr_tris->size);
@@ -959,9 +962,11 @@ void FSTexturePresenter::setup()
         "  layout (location = 1) in vec2 i_textureUV;         \n"
         "  out vec2 l_textureUV;                              \n"
         "  uniform vec2 u_translation;                        \n"
+        "  uniform float u_scale;                             \n"
         "  void main()                                        \n"
         "  {                                                  \n"
-        "      gl_Position.xy = i_msPosition + u_translation; \n"
+        "      gl_Position.xy = u_scale * i_msPosition +      \n"
+        "                       u_translation;                \n"
         "      gl_Position.z = 0.0f;                          \n"
         "      gl_Position.w = 1.0f;                          \n"
         "      l_textureUV = i_textureUV;                     \n"
@@ -979,6 +984,7 @@ void FSTexturePresenter::setup()
 
     m_fullscreenProgram = ::create_program(vertex_src, nullptr, fragment_src);
     m_translationLoc = glGetUniformLocation(m_fullscreenProgram, "u_translation");
+    m_scaleLoc = glGetUniformLocation(m_fullscreenProgram, "u_scale");
 
     glGenVertexArrays(1, &m_vao);
 
@@ -1012,10 +1018,11 @@ void FSTexturePresenter::cleanup()
     glDeleteProgram(m_fullscreenProgram);
 }
 
-void FSTexturePresenter::set_translation(GLfloat x, GLfloat y)
+void FSTexturePresenter::set_transform(GLfloat x, GLfloat y, GLfloat s)
 {
     m_translationX = x;
     m_translationY = y;
+    m_scale = s;
 }
 
 void FSTexturePresenter::draw(GLuint tex)
@@ -1024,6 +1031,7 @@ void FSTexturePresenter::draw(GLuint tex)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glUseProgram(m_fullscreenProgram);
     glUniform2f(m_translationLoc, m_translationX, m_translationY);
+    glUniform1f(m_scaleLoc, m_scale);
     glBindTexture(GL_TEXTURE_2D, tex);
     glBindVertexArray(m_vao);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
