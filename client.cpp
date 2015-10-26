@@ -329,32 +329,71 @@ extern "C" void cleanup()
     ImGui::Shutdown();
 }
 
-inline test_point inches2snorm(const test_point& pt, float w, float h)
+inline float2 inches2snorm(const test_point& pt, float w, float h)
 {
     return {2.0f * pt.x / w, 2.0f * pt.y / h};
+}
+
+struct test_brush
+{
+    float diameter;
+};
+
+void add_quad_tex(triangles *tris,
+                  float2 a, float2 b, float2 c, float2 d,
+                  float zindex)
+{
+    if (tris->size + 6 <= tris->capacity)
+    {
+        float *p = tris->data + tris->size * 5;
+
+        *p++ = a.x; *p++ = a.y; *p++ = zindex; *p++ = 0.0f, *p++ = 0.0f;
+        *p++ = b.x; *p++ = b.y; *p++ = zindex; *p++ = 0.0f, *p++ = 1.0f;
+        *p++ = c.x; *p++ = c.y; *p++ = zindex; *p++ = 1.0f, *p++ = 1.0f;
+
+        *p++ = c.x; *p++ = c.y; *p++ = zindex; *p++ = 1.0f, *p++ = 1.0f;
+        *p++ = d.x; *p++ = d.y; *p++ = zindex; *p++ = 1.0f, *p++ = 0.0f;
+        *p++ = a.x; *p++ = a.y; *p++ = zindex; *p++ = 0.0f, *p++ = 0.0f;
+
+        tris->size += 6;
+    }
+}
+
+void add_quad_const(triangles *tris,
+                    float2 a, float2 b, float2 c, float2 d,
+                    float zindex)
+{
+    if (tris->size + 6 <= tris->capacity)
+    {
+        float *p = tris->data + tris->size * 5;
+
+        *p++ = a.x; *p++ = a.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
+        *p++ = b.x; *p++ = b.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
+        *p++ = c.x; *p++ = c.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
+
+        *p++ = c.x; *p++ = c.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
+        *p++ = d.x; *p++ = d.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
+        *p++ = a.x; *p++ = a.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
+
+        tris->size += 6;
+    }
 }
 
 void fill_quads(triangles *tris,
                 const test_point *points,
                 size_t pi0, size_t pi1, size_t si,
                 const test_transform& tform,
+                const test_brush& brush,
                 float viewportWIn, float viewportHIn)
 {
-    float *xyz = tris->data + tris->size * 3;
-    float zindex = 0.00001f * si;
-    const float lineThicknessIn = 0.1f;
-    
     for (size_t i = pi0 + 1; i < pi1; ++i)
     {
-        if (tris->size >= tris->capacity)
-            break;
-
         float2 prev = {points[i-1].x, points[i-1].y};
         float2 curr = {points[i].x, points[i].y};
         float2 dir = curr - prev;
         if (len(dir) > 0.001f)
         {
-            float2 side = lineThicknessIn * perp(dir * (1.0 / len(dir)));
+            float2 side = brush.diameter * perp(dir * (1.0f / len(dir)));
 
             // x -ccw-> y
             float2 p0l = prev + side;
@@ -362,45 +401,41 @@ void fill_quads(triangles *tris,
             float2 p1l = curr + side;
             float2 p1r = curr - side;
 
-            test_point a = inches2snorm(apply_transform_pt(tform, {p0l.x, p0l.y}),
+            float2 a = inches2snorm(apply_transform_pt(tform, {p0r.x, p0r.y}),
                                         viewportWIn, viewportHIn);
-            test_point b = inches2snorm(apply_transform_pt(tform, {p0r.x, p0r.y}),
+            float2 b = inches2snorm(apply_transform_pt(tform, {p0l.x, p0l.y}),
                                         viewportWIn, viewportHIn);
-            test_point c = inches2snorm(apply_transform_pt(tform, {p1l.x, p1l.y}),
+            float2 c = inches2snorm(apply_transform_pt(tform, {p1l.x, p1l.y}),
                                         viewportWIn, viewportHIn);
-            test_point d = inches2snorm(apply_transform_pt(tform, {p1r.x, p1r.y}),
+            float2 d = inches2snorm(apply_transform_pt(tform, {p1r.x, p1r.y}),
                                         viewportWIn, viewportHIn);
 
-            xyz[3 * 0 + 0] = a.x;
-            xyz[3 * 0 + 1] = a.y;
-            xyz[3 * 0 + 2] = zindex;
-
-            xyz[3 * 1 + 0] = d.x;
-            xyz[3 * 1 + 1] = d.y;
-            xyz[3 * 1 + 2] = zindex;
-
-            xyz[3 * 2 + 0] = c.x;
-            xyz[3 * 2 + 1] = c.y;
-            xyz[3 * 2 + 2] = zindex;
-
-            xyz += 3 * 3;
-            tris->size += 3;
-
-            xyz[3 * 0 + 0] = a.x;
-            xyz[3 * 0 + 1] = a.y;
-            xyz[3 * 0 + 2] = zindex;
-
-            xyz[3 * 1 + 0] = b.x;
-            xyz[3 * 1 + 1] = b.y;
-            xyz[3 * 1 + 2] = zindex;
-
-            xyz[3 * 2 + 0] = d.x;
-            xyz[3 * 2 + 1] = d.y;
-            xyz[3 * 2 + 2] = zindex;
-
-            xyz += 3 * 3;
-            tris->size += 3;
+            float zindex = 0.00001f * si;
+            add_quad_const(tris, a, b, c, d, zindex);
         }
+    }
+
+    for (size_t i = pi0; i < pi1; ++i)
+    {
+        float2 curr = {points[i].x, points[i].y};
+        float2 right = {brush.diameter, 0.0f};
+        float2 up = {0.0, brush.diameter};
+        float2 bl = curr - right - up;
+        float2 br = curr + right - up;
+        float2 tl = curr - right + up;
+        float2 tr = curr + right + up;
+
+        float2 a = inches2snorm(apply_transform_pt(tform, {bl.x, bl.y}),
+                                viewportWIn, viewportHIn);
+        float2 b = inches2snorm(apply_transform_pt(tform, {tl.x, tl.y}),
+                                viewportWIn, viewportHIn);
+        float2 c = inches2snorm(apply_transform_pt(tform, {tr.x, tr.y}),
+                                viewportWIn, viewportHIn);
+        float2 d = inches2snorm(apply_transform_pt(tform, {br.x, br.y}),
+                                viewportWIn, viewportHIn);
+
+        float zindex = 0.00001f * si;
+        add_quad_tex(tris, a, b, c, d, zindex);
     }
 }
 
@@ -678,6 +713,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
                             0.5f * output->bufferWidthIn,
                             -0.5f * output->bufferHeightIn,
                             0.5f * output->bufferHeightIn};
+        test_brush brush = {0.1f};
 
         query(debug_data, debug_data.nviews - 1, viewbox, visibles, transforms);
         for (uint32 visIdx = 0; visIdx < visibles.size(); ++visIdx)
@@ -686,7 +722,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
             const test_transform& tform = transforms[vis.ti];
             const test_stroke& stroke = debug_data.strokes[vis.si];
             fill_quads(output->bake_tris, debug_data.points,
-                       stroke.pi0, stroke.pi1, vis.si, tform,
+                       stroke.pi0, stroke.pi1, vis.si, tform, brush,
                        output->bufferWidthIn, output->bufferHeightIn);
         }
 
@@ -707,7 +743,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     output->curr_tris->size = 0;
 
     fill_quads(output->curr_tris, debug_data.points,
-               currStart, currEnd, currId, id_transform(),
+               currStart, currEnd, currId, id_transform(), {0.1f},
                output->bufferWidthIn, output->bufferHeightIn);
 
     // Draw SW -----------------------------------------------------------------
