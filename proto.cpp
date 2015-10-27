@@ -473,7 +473,7 @@ int main(int argc, char *argv[])
         buffer.height = bufferHeightPx;
 
         const uint32 VERTS_PER_TRI = 3;
-        const uint32 VERT_DIM = 5; // xy and zindex and uv
+        const uint32 VERT_DIM = 9; // xy and zindex and uv and color
 
         const uint32 BAKE_TRIS_CNT = 5000;
         const uint32 CURR_TRIS_CNT = 500;
@@ -1046,11 +1046,13 @@ void Mesh::setup()
 {
     const GLuint POS_LOC = 0;
     const GLuint UV_LOC = 1;
+    const GLuint COL_LOC = 2;
 
     const GLuint POS_DIM = 3;
     const GLuint UV_DIM = 2;
+    const GLuint COL_DIM = 4;
 
-    const GLsizei vertexSize = (POS_DIM + UV_DIM) * sizeof(float);
+    const GLsizei vertexSize = (POS_DIM + UV_DIM + COL_DIM) * sizeof(float);
 
     glGenVertexArrays(1, &m_vao);
 
@@ -1068,10 +1070,13 @@ void Mesh::setup()
     glVertexAttribPointer(POS_LOC, POS_DIM, GL_FLOAT, GL_FALSE, vertexSize, 0);
     glVertexAttribPointer(UV_LOC, UV_DIM, GL_FLOAT, GL_FALSE, vertexSize,
                           reinterpret_cast<GLvoid*>(POS_DIM * sizeof(float)));
+    glVertexAttribPointer(COL_LOC, COL_DIM, GL_FLOAT, GL_FALSE, vertexSize,
+                          reinterpret_cast<GLvoid*>((POS_DIM + UV_DIM) * sizeof(float)));
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     glEnableVertexAttribArray(POS_LOC);
     glEnableVertexAttribArray(UV_LOC);
+    glEnableVertexAttribArray(COL_LOC);
 
     glBindVertexArray(0);
     // end vao setup
@@ -1083,11 +1088,11 @@ void Mesh::cleanup()
     glDeleteBuffers(1, &m_vbo);
 }
 
-void Mesh::update(const float *xyzuv, uint32 vtxCnt)
+void Mesh::update(const float *xyzuvc, uint32 vtxCnt)
 {
     glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-    glBufferData(GL_ARRAY_BUFFER, vtxCnt * 5 * sizeof(float),
-                 xyzuv, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, vtxCnt * (3 + 2 + 4) * sizeof(float),
+                 xyzuvc, GL_DYNAMIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     m_vtxCnt = vtxCnt;
@@ -1100,24 +1105,28 @@ void MeshPresenter::setup()
         "  #version 330 core                             \n"
         "  layout (location = 0) in vec3 i_msPosition;   \n"
         "  layout (location = 1) in vec2 i_uv;           \n"
+        "  layout (location = 2) in vec4 i_color;        \n"
         "  out vec2 l_uv;                                \n"
+        "  out vec4 l_color;                             \n"
         "  void main()                                   \n"
         "  {                                             \n"
         "      gl_Position.xy = i_msPosition.xy;         \n"
         "      gl_Position.z = i_msPosition.z;           \n"
         "      gl_Position.w = 1.0f;                     \n"
         "      l_uv = i_uv;                              \n"
+        "      l_color = i_color;                        \n"
         "  }                                             \n";
 
     const char *fragment_src =
         "  #version 330 core                                   \n"
         "  layout (location = 0) out vec4 o_color;             \n"
         "  in vec2 l_uv;                                       \n"
+        "  in vec4 l_color;                                    \n"
         "  void main()                                         \n"
         "  {                                                   \n"
         "      float radius = length(l_uv - vec2(0.5f, 0.5f)); \n"
         "      if (radius > 0.5) discard;                      \n"
-        "      o_color = vec4(1.0, 1.0, 1.0, 0.5);             \n"
+        "      o_color = l_color;                              \n"
         "  }                                                   \n";
 
     m_program = ::create_program(vertex_src, nullptr, fragment_src);

@@ -9,7 +9,14 @@ struct Vandalism
 
     typedef test_stroke Stroke;
 
+    struct Brush
+    {
+        float diameter;
+        float r, g, b, a;
+    };
+
     std::vector<Stroke> strokes;
+    std::vector<Brush> brushes;
 
     std::vector<test_view> views;
 
@@ -55,6 +62,8 @@ struct Vandalism
         bool shiftdown;
         bool ctrldown;
         bool altdown;
+        float brushred, brushgreen, brushblue, brushalpha;
+        float brushdiameter;
     };
 
     typedef void (Vandalism::*MC_FN)(const Input *);
@@ -125,6 +134,15 @@ struct Vandalism
             points.push_back(point);
         }
         stroke.pi1 = points.size();
+        stroke.brush_id = brushes.size();
+        // TODO: multiple strokes use one brush_id
+        Brush brush;
+        brush.r = input->brushred;
+        brush.g = input->brushgreen;
+        brush.b = input->brushblue;
+        brush.a = input->brushalpha;
+        brush.diameter = input->brushdiameter;
+        brushes.push_back(brush);
         strokes.push_back(stroke);
     }
 
@@ -238,6 +256,16 @@ struct Vandalism
             to = 0;
         }
         return strokes.size() - 1;
+    }
+
+    bool get_current_brush(Brush &brush) const
+    {
+        if (currentMode == DRAWING)
+        {
+            brush = brushes[strokes.back().brush_id];
+            return true;
+        }
+        return false;
     }
 
     test_data get_debug_data() const

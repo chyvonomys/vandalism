@@ -60,6 +60,7 @@ struct test_stroke
 {
     size_t pi0;
     size_t pi1;
+    size_t brush_id;
 };
 
 enum transition_type { TZOOM, TPAN };

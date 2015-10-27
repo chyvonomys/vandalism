@@ -293,6 +293,8 @@ enum IsmMode
 bool gui_showAllViews;
 int32 gui_viewIdx;
 int32 gui_mode;
+float gui_brush_color[4];
+float gui_brush_diameter;
 
 extern "C" void setup()
 {
@@ -319,6 +321,13 @@ extern "C" void setup()
     gui_showAllViews = true;
     gui_viewIdx = 0;
     gui_mode = ISM_DRAW;
+
+    gui_brush_color[0] = 1.0f;
+    gui_brush_color[1] = 1.0f;
+    gui_brush_color[2] = 1.0f;
+    gui_brush_color[3] = 1.0f;
+
+    gui_brush_diameter = 0.05f;
 }
 
 extern "C" void cleanup()
@@ -334,26 +343,27 @@ inline float2 inches2snorm(const test_point& pt, float w, float h)
     return {2.0f * pt.x / w, 2.0f * pt.y / h};
 }
 
-struct test_brush
-{
-    float diameter;
-};
-
 void add_quad_tex(triangles *tris,
                   float2 a, float2 b, float2 c, float2 d,
-                  float zindex)
+                  float zindex, float rc, float gc, float bc, float ac)
 {
     if (tris->size + 6 <= tris->capacity)
     {
-        float *p = tris->data + tris->size * 5;
+        float *p = tris->data + tris->size * 9;
 
         *p++ = a.x; *p++ = a.y; *p++ = zindex; *p++ = 0.0f, *p++ = 0.0f;
+        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
         *p++ = b.x; *p++ = b.y; *p++ = zindex; *p++ = 0.0f, *p++ = 1.0f;
+        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
         *p++ = c.x; *p++ = c.y; *p++ = zindex; *p++ = 1.0f, *p++ = 1.0f;
+        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
 
         *p++ = c.x; *p++ = c.y; *p++ = zindex; *p++ = 1.0f, *p++ = 1.0f;
+        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
         *p++ = d.x; *p++ = d.y; *p++ = zindex; *p++ = 1.0f, *p++ = 0.0f;
+        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
         *p++ = a.x; *p++ = a.y; *p++ = zindex; *p++ = 0.0f, *p++ = 0.0f;
+        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
 
         tris->size += 6;
     }
@@ -361,19 +371,25 @@ void add_quad_tex(triangles *tris,
 
 void add_quad_const(triangles *tris,
                     float2 a, float2 b, float2 c, float2 d,
-                    float zindex)
+                    float zindex, float rc, float gc, float bc, float ac)
 {
     if (tris->size + 6 <= tris->capacity)
     {
-        float *p = tris->data + tris->size * 5;
+        float *p = tris->data + tris->size * 9;
 
         *p++ = a.x; *p++ = a.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
+        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
         *p++ = b.x; *p++ = b.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
+        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
         *p++ = c.x; *p++ = c.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
+        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
 
         *p++ = c.x; *p++ = c.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
+        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
         *p++ = d.x; *p++ = d.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
+        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
         *p++ = a.x; *p++ = a.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
+        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
 
         tris->size += 6;
     }
@@ -383,7 +399,7 @@ void fill_quads(triangles *tris,
                 const test_point *points,
                 size_t pi0, size_t pi1, size_t si,
                 const test_transform& tform,
-                const test_brush& brush,
+                const Vandalism::Brush& brush,
                 float viewportWIn, float viewportHIn)
 {
     for (size_t i = pi0 + 1; i < pi1; ++i)
@@ -411,7 +427,8 @@ void fill_quads(triangles *tris,
                                         viewportWIn, viewportHIn);
 
             float zindex = 0.00001f * si;
-            add_quad_const(tris, a, b, c, d, zindex);
+            add_quad_const(tris, a, b, c, d, zindex,
+                           brush.r, brush.g, brush.b, brush.a);
         }
     }
 
@@ -435,7 +452,8 @@ void fill_quads(triangles *tris,
                                 viewportWIn, viewportHIn);
 
         float zindex = 0.00001f * si;
-        add_quad_tex(tris, a, b, c, d, zindex);
+        add_quad_tex(tris, a, b, c, d, zindex,
+                     brush.r, brush.g, brush.b, brush.a);
     }
 }
 
@@ -699,6 +717,11 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ism_input.mousex = mxin;
     ism_input.mousey = myin;
     ism_input.mousedown = input->mouseleft;
+    ism_input.brushred = gui_brush_color[0];
+    ism_input.brushgreen = gui_brush_color[1];
+    ism_input.brushblue = gui_brush_color[2];
+    ism_input.brushalpha = gui_brush_color[3];
+    ism_input.brushdiameter = gui_brush_diameter;
 
     ism->update(&ism_input);
 
@@ -713,7 +736,6 @@ extern "C" void update_and_render(input_data *input, output_data *output)
                             0.5f * output->bufferWidthIn,
                             -0.5f * output->bufferHeightIn,
                             0.5f * output->bufferHeightIn};
-        test_brush brush = {0.1f};
 
         query(debug_data, debug_data.nviews - 1, viewbox, visibles, transforms);
         for (uint32 visIdx = 0; visIdx < visibles.size(); ++visIdx)
@@ -721,6 +743,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
             const test_visible& vis = visibles[visIdx];
             const test_transform& tform = transforms[vis.ti];
             const test_stroke& stroke = debug_data.strokes[vis.si];
+            const Vandalism::Brush& brush = ism->brushes[stroke.brush_id];
             fill_quads(output->bake_tris, debug_data.points,
                        stroke.pi0, stroke.pi1, vis.si, tform, brush,
                        output->bufferWidthIn, output->bufferHeightIn);
@@ -742,9 +765,13 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     output->curr_tris->size = 0;
 
-    fill_quads(output->curr_tris, debug_data.points,
-               currStart, currEnd, currId, id_transform(), {0.1f},
-               output->bufferWidthIn, output->bufferHeightIn);
+    Vandalism::Brush currBrush;
+    if (ism->get_current_brush(currBrush))
+    {
+        fill_quads(output->curr_tris, debug_data.points,
+                   currStart, currEnd, currId, id_transform(), currBrush,
+                   output->bufferWidthIn, output->bufferHeightIn);
+    }
 
     // Draw SW -----------------------------------------------------------------
 
@@ -790,8 +817,14 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     ImGui::NewFrame();
 
+    ImGui::SetNextWindowSize(ImVec2(100, 200), ImGuiSetCond_FirstUseEver);
+    ImGui::Begin("brush");
+    ImGui::ColorEdit4("color", gui_brush_color);
+    ImGui::SliderFloat("diameter", &gui_brush_diameter, 0.01f, 0.1f);
+    ImGui::End();
+
     ImGui::SetNextWindowSize(ImVec2(200, 300), ImGuiSetCond_FirstUseEver);
-    ImGui::Begin("vandalism");
+    ImGui::Begin("debug");
     ImGui::Text("mouse-inch: (%g, %g)", mxin, myin);
     ImGui::Text("mouse-norm: (%g, %g)", mxnorm, mynorm);
     ImGui::Text("mouse-raw: (%g, %g)",
