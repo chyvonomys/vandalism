@@ -56,11 +56,55 @@ struct test_segment
     test_point b;
 };
 
+struct test_box
+{
+    float x0, x1;
+    float y0, y1;
+
+    test_box() :
+        x0(INFINITY), x1(-INFINITY),
+        y0(INFINITY), y1(-INFINITY)
+    {}
+
+    test_box(float l, float r, float b, float t) :
+        x0(l), x1(r),
+        y0(b), y1(t)
+    {}
+
+    void grow(float s)
+    {
+        x0 -= s;
+        x1 += s;
+        y0 -= s;
+        y1 += s;
+    }
+
+    void add(const test_point &p)
+    {
+        if (p.x > x1) x1 = p.x;
+        if (p.x < x0) x0 = p.x;
+        if (p.y > y1) y1 = p.y;
+        if (p.y < y0) y0 = p.y;
+    }
+
+    void add_box(const test_box &b)
+    {
+        add({b.x0, b.y0});
+        add({b.x1, b.y1});
+    }
+
+    bool empty() const
+    {
+        return x0 > x1 || y0 > y1;
+    }
+};
+
 struct test_stroke
 {
     size_t pi0;
     size_t pi1;
     size_t brush_id;
+    test_box bbox;
 };
 
 enum transition_type { TZOOM, TPAN };
@@ -77,6 +121,7 @@ struct test_view
     test_transition tr;
     size_t si0;
     size_t si1;
+    test_box bbox;
 };
 
 struct test_data
@@ -169,11 +214,6 @@ const size_t PIN3 = 1;
 
 test_data test3 = {t_points3, t_strokes3, t_views3, NVIEWS3};
 
-struct test_box
-{
-    float x0, x1;
-    float y0, y1;
-};
 
 struct test_visible
 {
@@ -269,22 +309,33 @@ bool intersects(const test_box &viewport,
                         p0.x, p0.y, p1.x, p1.y);
 }
 
+bool overlaps(const test_box &b1, const test_box &b2)
+{
+    if (b1.empty() || b2.empty()) return false;
+    if (b1.y0 > b2.y1) return false;
+    if (b2.y0 > b1.y1) return false;
+    if (b1.x0 > b2.x1) return false;
+    if (b2.x0 > b1.x1) return false;
+    return true;
+}
+
 void crop(const test_data &data, size_t vi, size_t ti,
           const test_box &viewport,
           std::vector<test_visible> &visibles)
 {
     test_view view = data.views[vi];
-    for (size_t si = view.si0; si < view.si1; ++si)
+    if (overlaps(viewport, view.bbox))
     {
-        test_stroke stroke = data.strokes[si];
-        if (intersects(viewport,
-                       data.points[stroke.pi0],
-                       data.points[stroke.pi1-1]))
+        for (size_t si = view.si0; si < view.si1; ++si)
         {
-            test_visible vis;
-            vis.si = si;
-            vis.ti = ti;
-            visibles.push_back(vis);
+            test_stroke stroke = data.strokes[si];
+            if (overlaps(viewport, stroke.bbox))
+            {
+                test_visible vis;
+                vis.si = si;
+                vis.ti = ti;
+                visibles.push_back(vis);
+            }
         }
     }
 }

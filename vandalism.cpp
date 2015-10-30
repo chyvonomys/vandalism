@@ -153,11 +153,16 @@ struct Vandalism
         point.y = input->mousey;
         points.push_back(point);
 
+        strokes.back().bbox.add(point);
+
         strokes.back().pi1 = points.size();
     }
 
     void done_draw(const Input *)
     {
+        strokes.back().bbox.grow(0.5f * brushes.back().diameter);
+        views[pin].bbox.add_box(strokes.back().bbox);
+
         views[pin].si1 = strokes.size();
 
         visiblesChanged = true;
