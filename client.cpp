@@ -295,6 +295,8 @@ int32 gui_viewIdx;
 int32 gui_mode;
 float gui_brush_color[4];
 float gui_brush_diameter;
+bool gui_mouse_occupied;
+bool gui_mouse_hover;
 
 extern "C" void setup()
 {
@@ -328,6 +330,9 @@ extern "C" void setup()
     gui_brush_color[3] = 1.0f;
 
     gui_brush_diameter = 0.05f;
+
+    gui_mouse_occupied = false;
+    gui_mouse_hover = false;
 }
 
 extern "C" void cleanup()
@@ -710,13 +715,15 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     float mxin = output->bufferWidthIn * mxnorm;
     float myin = output->bufferHeightIn * mynorm;
 
+    bool mouse_in_ui = gui_mouse_occupied || gui_mouse_hover;
+
     Vandalism::Input ism_input;
     ism_input.altdown = (gui_mode == ISM_ROTATE);
     ism_input.shiftdown = (gui_mode == ISM_PAN);
     ism_input.ctrldown = (gui_mode == ISM_ZOOM);
     ism_input.mousex = mxin;
     ism_input.mousey = myin;
-    ism_input.mousedown = input->mouseleft;
+    ism_input.mousedown = input->mouseleft && !mouse_in_ui;
     ism_input.brushred = gui_brush_color[0];
     ism_input.brushgreen = gui_brush_color[1];
     ism_input.brushblue = gui_brush_color[2];
@@ -786,7 +793,12 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     draw_timing(buffer, input->nFrames,
                 input->pTimeIntervals, input->nTimeIntervals);
 
-    draw_pixel(buffer, input->mousex, input->mousey, pack_color(COLOR_YELLOW));
+    if (!mouse_in_ui)
+    {
+        draw_pixel(buffer,
+                   input->mousex, input->mousey,
+                   pack_color(COLOR_YELLOW));
+    }
 
     uint32 seg_cnt = 0;
 
@@ -861,7 +873,13 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ImGui::Checkbox("all views", &gui_showAllViews);
     ImGui::SliderInt("view", &gui_viewIdx, 0, debug_data.nviews - 1);
 
+    ImGui::Text("mouse occupied: %d", static_cast<int>(gui_mouse_occupied));
+    ImGui::Text("mouse hover: %d", static_cast<int>(gui_mouse_hover));
+
     ImGui::End();
 
     ImGui::Render();
+
+    gui_mouse_occupied = ImGui::IsAnyItemActive();
+    gui_mouse_hover = ImGui::IsMouseHoveringAnyWindow();
 }
