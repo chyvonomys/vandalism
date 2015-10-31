@@ -64,6 +64,7 @@ struct Vandalism
         bool altdown;
         float brushred, brushgreen, brushblue, brushalpha;
         float brushdiameter;
+        float negligibledistance;
     };
 
     typedef void (Vandalism::*MC_FN)(const Input *);
@@ -151,11 +152,16 @@ struct Vandalism
         Point point;
         point.x = input->mousex;
         point.y = input->mousey;
-        points.push_back(point);
 
-        strokes.back().bbox.add(point);
-
-        strokes.back().pi1 = points.size();
+        float dx = point.x - points.back().x;
+        float dy = point.y - points.back().y;
+        float eps = input->negligibledistance * input->negligibledistance;
+        if (dx * dx + dy * dy > eps)
+        {
+            points.push_back(point);
+            strokes.back().bbox.add(point);
+            strokes.back().pi1 = points.size();
+        }
     }
 
     void done_draw(const Input *)

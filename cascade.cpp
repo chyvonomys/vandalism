@@ -97,6 +97,16 @@ struct test_box
     {
         return x0 > x1 || y0 > y1;
     }
+
+    float width() const
+    {
+        return x1 - x0;
+    }
+
+    float height() const
+    {
+        return y1 - y0;
+    }
 };
 
 struct test_stroke
@@ -321,15 +331,20 @@ bool overlaps(const test_box &b1, const test_box &b2)
 
 void crop(const test_data &data, size_t vi, size_t ti,
           const test_box &viewport,
-          std::vector<test_visible> &visibles)
+          std::vector<test_visible> &visibles,
+          float negligibledist)
 {
     test_view view = data.views[vi];
-    if (overlaps(viewport, view.bbox))
+    if (overlaps(viewport, view.bbox) &&
+        view.bbox.width() > negligibledist &&
+        view.bbox.height() > negligibledist)
     {
         for (size_t si = view.si0; si < view.si1; ++si)
         {
             test_stroke stroke = data.strokes[si];
-            if (overlaps(viewport, stroke.bbox))
+            if (overlaps(viewport, stroke.bbox) &&
+                stroke.bbox.width() > negligibledist &&
+                stroke.bbox.height() > negligibledist)
             {
                 test_visible vis;
                 vis.si = si;
@@ -418,7 +433,7 @@ test_box apply_transition_to_viewport(const test_transition &transition,
 */
 
 test_point apply_transform_pt(const test_transform &t,
-                           const test_point &p)
+                              const test_point &p)
 {
     test_point result;
 
@@ -429,15 +444,20 @@ test_point apply_transform_pt(const test_transform &t,
 }
 
 test_box apply_transform_box(const test_transform &t,
-                         const test_box &b)
+                             const test_box &b)
 {
     test_point BL = apply_transform_pt(t, {b.x0, b.y0});
     test_point TR = apply_transform_pt(t, {b.x1, b.y1});
     return {BL.x, TR.x, BL.y, TR.y};
 }
 
+float apply_transform_dist(const test_transform &t, float d)
+{
+    return d * t.s;
+}
+
 test_segment apply_transform_seg(const test_transform &t,
-                             const test_segment &s)
+                                 const test_segment &s)
 {
     return {apply_transform_pt(t, s.a), apply_transform_pt(t, s.b)};
 }
@@ -528,7 +548,8 @@ test_transform get_relative_transform(const test_data &data,
 // which is in pin's view local space
 void query(const test_data &data, size_t pin, const test_box &viewport,
            std::vector<test_visible> &visibles,
-           std::vector<test_transform> &transforms)
+           std::vector<test_transform> &transforms,
+           float negligibledist)
 {
     // ps_*** -- pin space
     // ls_*** -- current view's space
@@ -539,7 +560,8 @@ void query(const test_data &data, size_t pin, const test_box &viewport,
         test_transform ps2ls = get_relative_transform(data, pin, vi);
 
         test_box ls_box = apply_transform_box(ps2ls, viewport);
-        crop(data, vi, transforms.size(), ls_box, visibles);
+        float ls_negligible = apply_transform_dist(ps2ls, negligibledist);
+        crop(data, vi, transforms.size(), ls_box, visibles, ls_negligible);
         transforms.push_back(ls2ps);
     }
 }

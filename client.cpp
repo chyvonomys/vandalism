@@ -681,7 +681,7 @@ uint32 DrawTestPin(offscreen_buffer *buffer,
         static_cast<float>(y1)
     };
 
-    query(data, pin, ps_viewport, visibles, ls2ps_transforms);
+    query(data, pin, ps_viewport, visibles, ls2ps_transforms, 1000.0f);
 
     draw_solid_rect(buffer, x0, x1, y0, y1, pack_color(COLOR_GRAY));
 
@@ -717,12 +717,15 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     bool mouse_in_ui = gui_mouse_occupied || gui_mouse_hover;
 
+    float pixel_height_in = output->bufferHeightIn / buffer->height;
+
     Vandalism::Input ism_input;
     ism_input.altdown = (gui_mode == ISM_ROTATE);
     ism_input.shiftdown = (gui_mode == ISM_PAN);
     ism_input.ctrldown = (gui_mode == ISM_ZOOM);
     ism_input.mousex = mxin;
     ism_input.mousey = myin;
+    ism_input.negligibledistance = pixel_height_in;
     ism_input.mousedown = input->mouseleft && !mouse_in_ui;
     ism_input.brushred = gui_brush_color[0];
     ism_input.brushgreen = gui_brush_color[1];
@@ -744,7 +747,9 @@ extern "C" void update_and_render(input_data *input, output_data *output)
                             -0.5f * output->bufferHeightIn,
                             0.5f * output->bufferHeightIn};
 
-        query(debug_data, debug_data.nviews - 1, viewbox, visibles, transforms);
+        query(debug_data, debug_data.nviews - 1,
+              viewbox, visibles, transforms,
+              pixel_height_in);
         for (uint32 visIdx = 0; visIdx < visibles.size(); ++visIdx)
         {
             const test_visible& vis = visibles[visIdx];
