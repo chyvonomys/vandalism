@@ -83,14 +83,14 @@ struct Vandalism
 
     void do_zoom(const Input *input)
     {
-        zoomCoeff = zoomStartX / input->mousex;
+        zoomCoeff = input->mousex / zoomStartX;
     }
 
     void done_zoom(const Input *input)
     {
         pin = views.size();
         views.push_back({TZOOM,
-                zoomStartX, input->mousex,
+                input->mousex, zoomStartX,
                 strokes.size(), strokes.size()});
         zoomCoeff = 1.0f;
 
