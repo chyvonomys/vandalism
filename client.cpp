@@ -294,10 +294,15 @@ bool gui_showAllViews;
 int32 gui_viewIdx;
 int32 gui_mode;
 float gui_brush_color[4];
-float gui_brush_diameter;
+int32 gui_brush_diameter_units;
 bool gui_mouse_occupied;
 bool gui_mouse_hover;
 float gui_background_color[3];
+
+const int32 cfg_min_brush_diameter_units = 1;
+const int32 cfg_max_brush_diameter_units = 64;
+const int32 cfg_def_brush_diameter_units = 4;
+const float cfg_brush_diameter_inches_per_unit = 1.0f / 64.0f;
 
 extern "C" void setup()
 {
@@ -334,7 +339,7 @@ extern "C" void setup()
     gui_background_color[1] = 0.3f;
     gui_background_color[2] = 0.3f;
 
-    gui_brush_diameter = 0.05f;
+    gui_brush_diameter_units = cfg_def_brush_diameter_units;
 
     gui_mouse_occupied = false;
     gui_mouse_hover = false;
@@ -412,6 +417,8 @@ void fill_quads(triangles *tris,
                 const Vandalism::Brush& brush,
                 float viewportWIn, float viewportHIn)
 {
+    float radius = brush.diameter * 0.5f;
+
     for (size_t i = pi0 + 1; i < pi1; ++i)
     {
         float2 prev = {points[i-1].x, points[i-1].y};
@@ -419,7 +426,7 @@ void fill_quads(triangles *tris,
         float2 dir = curr - prev;
         if (len(dir) > 0.001f)
         {
-            float2 side = brush.diameter * perp(dir * (1.0f / len(dir)));
+            float2 side = radius * perp(dir * (1.0f / len(dir)));
 
             // x -ccw-> y
             float2 p0l = prev + side;
@@ -445,8 +452,8 @@ void fill_quads(triangles *tris,
     for (size_t i = pi0; i < pi1; ++i)
     {
         float2 curr = {points[i].x, points[i].y};
-        float2 right = {brush.diameter, 0.0f};
-        float2 up = {0.0, brush.diameter};
+        float2 right = {radius, 0.0f};
+        float2 up = {0.0, radius};
         float2 bl = curr - right - up;
         float2 br = curr + right - up;
         float2 tl = curr - right + up;
@@ -736,7 +743,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ism_input.brushgreen = gui_brush_color[1];
     ism_input.brushblue = gui_brush_color[2];
     ism_input.brushalpha = gui_brush_color[3];
-    ism_input.brushdiameter = gui_brush_diameter;
+    ism_input.brushdiameter = gui_brush_diameter_units * cfg_brush_diameter_inches_per_unit;
 
     ism->update(&ism_input);
 
@@ -849,7 +856,9 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ImGui::Begin("brush");
     ImGui::ColorEdit4("color", gui_brush_color);
     ImGui::ColorEdit3("background", gui_background_color);
-    ImGui::SliderFloat("diameter", &gui_brush_diameter, 0.01f, 0.1f);
+    ImGui::SliderInt("diameter", &gui_brush_diameter_units,
+                     cfg_min_brush_diameter_units, cfg_max_brush_diameter_units);
+
     ImGui::End();
 
     ImGui::SetNextWindowSize(ImVec2(200, 300), ImGuiSetCond_FirstUseEver);
