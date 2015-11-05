@@ -48,6 +48,7 @@ bool initr_for_##n()                                                \
 LOAD(GLENABLE, glEnable)
 LOAD(GLDISABLE, glDisable)
 LOAD(GLBLENDFUNC, glBlendFunc)
+LOAD(GLBLENDFUNCSEPARATE, glBlendFuncSeparate)
 LOAD(GLVIEWPORT, glViewport)
 LOAD(GLCLEAR, glClear)
 LOAD(GLCLEARCOLOR, glClearColor)
@@ -289,7 +290,7 @@ struct FSTexturePresenter
 {
     void setup();
     void set_transform(GLfloat x, GLfloat y, GLfloat s);
-    void draw(GLuint tex);
+    void draw(GLuint tex, bool specialRT);
     void cleanup();
 
     GLuint m_vbo;
@@ -336,7 +337,7 @@ struct MeshPresenter
     void setup();
     void cleanup();
 
-    void draw(GLuint vao, uint32 vtxCnt);
+    void draw(GLuint vao, uint32 vtxCnt, bool forRT);
 
     GLuint m_program;
 };
@@ -617,10 +618,6 @@ int main(int argc, char *argv[])
 
             (*upd_and_rnd)(&input, &output);
 
-            glViewport(viewportLeftPx, viewportBottomPx,
-                       viewportWidthPx, viewportHeightPx);
-            blit.draw(pixels);
-
             if (output.bake_flag)
             {
                 bgmesh.update(output.bake_tris->data, output.bake_tris->size);
@@ -628,18 +625,27 @@ int main(int argc, char *argv[])
                 // TODO: ??
                 output.bake_flag = false;
                 rt.before();
-                render.draw(bgmesh.m_vao, bgmesh.m_vtxCnt);
+                render.draw(bgmesh.m_vao, bgmesh.m_vtxCnt, true);
                 rt.after();
             }
+
+            glClearColor(output.bg_red, output.bg_green, output.bg_blue, 1.0);
+
+            GLbitfield clear_bits = (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glClear(clear_bits);
 
             glViewport(viewportLeftPx, viewportBottomPx,
                        viewportWidthPx, viewportHeightPx);
 
             fs.set_transform(output.translateX, output.translateY, output.scale);
-            fs.draw(rt.m_tex);
+            fs.draw(rt.m_tex, true);
 
             fgmesh.update(output.curr_tris->data, output.curr_tris->size);
-            render.draw(fgmesh.m_vao, fgmesh.m_vtxCnt);
+            render.draw(fgmesh.m_vao, fgmesh.m_vtxCnt, false);
+
+            glViewport(viewportLeftPx, viewportBottomPx,
+                       viewportWidthPx, viewportHeightPx);
+            blit.draw(pixels);
 
             TIME; // finish ---------------------------------------------------------
             
@@ -817,11 +823,8 @@ void BufferPresenter::draw(const uint8* pixels)
             
     // drawcall ------------------------------------------------------------
 
-    glClearColor(0.3, 0.3, 0.3, 1.0);
-
-    GLbitfield clear_bits = (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glClear(clear_bits);
-
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glUseProgram(m_fullscreenProgram);
     glBindTexture(GL_TEXTURE_2D, m_tex);
     glBindVertexArray(m_vao);
@@ -829,6 +832,7 @@ void BufferPresenter::draw(const uint8* pixels)
     glBindVertexArray(0);
     glBindTexture(GL_TEXTURE_2D, 0);
     glUseProgram(0);
+    glDisable(GL_BLEND);
 }
 
 /*
@@ -918,7 +922,7 @@ void RenderTarget::before()
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_fbo);
     glViewport(0, 0, m_width, m_height);
 
-    glClearColor(1.0, 1.0, 1.0, 0.0);
+    glClearColor(0.0, 0.0, 0.0, 1.0);
     glClearDepth(-1.0);
 
     GLbitfield clear_bits = (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1025,10 +1029,17 @@ void FSTexturePresenter::set_transform(GLfloat x, GLfloat y, GLfloat s)
     m_scale = s;
 }
 
-void FSTexturePresenter::draw(GLuint tex)
+void FSTexturePresenter::draw(GLuint tex, bool specialRT)
 {
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    if (specialRT)
+    {
+        glBlendFunc(GL_ONE, GL_SRC_ALPHA);
+    }
+    else
+    {
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    }
     glUseProgram(m_fullscreenProgram);
     glUniform2f(m_translationLoc, m_translationX, m_translationY);
     glUniform1f(m_scaleLoc, m_scale);
@@ -1137,12 +1148,20 @@ void MeshPresenter::cleanup()
     glDeleteProgram(m_program);
 }
 
-void MeshPresenter::draw(GLuint vao, uint32 vtxCnt)
+void MeshPresenter::draw(GLuint vao, uint32 vtxCnt, bool forRT)
 {
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_GREATER);
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    if (forRT)
+    {
+        glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
+                            GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
+    }
+    else
+    {
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    }
     glUseProgram(m_program);
     glBindVertexArray(vao);
     glDrawArrays(GL_TRIANGLES, 0, vtxCnt);

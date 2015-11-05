@@ -297,6 +297,7 @@ float gui_brush_color[4];
 float gui_brush_diameter;
 bool gui_mouse_occupied;
 bool gui_mouse_hover;
+float gui_background_color[3];
 
 extern "C" void setup()
 {
@@ -328,6 +329,10 @@ extern "C" void setup()
     gui_brush_color[1] = 1.0f;
     gui_brush_color[2] = 1.0f;
     gui_brush_color[3] = 1.0f;
+
+    gui_background_color[0] = 0.3f;
+    gui_background_color[1] = 0.3f;
+    gui_background_color[2] = 0.3f;
 
     gui_brush_diameter = 0.05f;
 
@@ -476,11 +481,11 @@ void draw_timing(offscreen_buffer *buffer, uint32 frame,
     draw_line(buffer,
               (framex + 2) % buffer->width, 0,
               (framex + 2) % buffer->width, maxy,
-              pack_color(COLOR_BLACK));
+              0x00000000);
     draw_line(buffer,
               (framex + 3) % buffer->width, 0,
               (framex + 3) % buffer->width, maxy,
-              pack_color(COLOR_BLACK));
+              0x00000000);
 
     if (total > maxti)
     {
@@ -772,6 +777,10 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     output->translateY = 2.0f * ism->shiftY / output->bufferHeightIn;
     output->scale = ism->zoomCoeff;
 
+    output->bg_red   = gui_background_color[0];
+    output->bg_green = gui_background_color[1];
+    output->bg_blue  = gui_background_color[2];
+
     size_t currStart, currEnd;
     size_t currId = ism->get_current_stroke(currStart, currEnd);
 
@@ -805,6 +814,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
                    pack_color(COLOR_YELLOW));
     }
 
+#ifdef DEBUG_CASCADE
     uint32 seg_cnt = 0;
 
     if (gui_showAllViews)
@@ -821,6 +831,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
                               output->bufferWidthIn, output->bufferHeightIn,
                               debug_data, gui_viewIdx);
     }
+#endif
 
     current_buffer = buffer;
 
@@ -837,6 +848,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ImGui::SetNextWindowSize(ImVec2(100, 200), ImGuiSetCond_FirstUseEver);
     ImGui::Begin("brush");
     ImGui::ColorEdit4("color", gui_brush_color);
+    ImGui::ColorEdit3("background", gui_background_color);
     ImGui::SliderFloat("diameter", &gui_brush_diameter, 0.01f, 0.1f);
     ImGui::End();
 
@@ -873,10 +885,12 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ImGui::RadioButton("zoom", &gui_mode, ISM_ZOOM); ImGui::SameLine();
     ImGui::RadioButton("rot", &gui_mode, ISM_ROTATE);
 
+#ifdef DEBUG_CASCADE
     ImGui::Text("test_segments: %d", seg_cnt);
 
     ImGui::Checkbox("all views", &gui_showAllViews);
     ImGui::SliderInt("view", &gui_viewIdx, 0, debug_data.nviews - 1);
+#endif
 
     ImGui::Text("mouse occupied: %d", static_cast<int>(gui_mouse_occupied));
     ImGui::Text("mouse hover: %d", static_cast<int>(gui_mouse_hover));

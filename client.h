@@ -51,6 +51,10 @@ struct output_data
 
     float bufferWidthIn;
     float bufferHeightIn;
+
+    float bg_red;
+    float bg_green;
+    float bg_blue;
 };
 
 typedef void (*UPDATE_AND_RENDER_FUNC)(input_data *input, output_data *output);
