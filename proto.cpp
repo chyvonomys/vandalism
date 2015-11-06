@@ -268,42 +268,6 @@ GLuint create_program(const char *vert_src, const char *geom_src, const char *fr
     return program;
 }
 
-
-struct BufferPresenter
-{
-    void setup(uint32 width, uint32 height);
-    void draw(const uint8 *pixels);
-    void cleanup();
-
-    GLuint m_pbo[2];
-    GLuint m_tex;
-    GLuint m_vbo;
-    GLuint m_vao;
-    GLuint m_fullscreenProgram;
-
-    uint32 m_width;
-    uint32 m_height;
-
-    uint32 m_writeIdx;
-};
-
-struct FSTexturePresenter
-{
-    void setup();
-    void set_transform(GLfloat x, GLfloat y, GLfloat s);
-    void draw(GLuint tex, bool specialRT);
-    void cleanup();
-
-    GLuint m_vbo;
-    GLuint m_vao;
-    GLuint m_fullscreenProgram;
-    GLint m_translationLoc;
-    GLint m_scaleLoc;
-    GLfloat m_translationX;
-    GLfloat m_translationY;
-    GLfloat m_scale;
-};
-
 struct FSQuad
 {
     void setup();
@@ -314,9 +278,42 @@ struct FSQuad
     GLuint m_vbo;
 };
 
+struct BufferPresenter
+{
+    void setup(FSQuad *quad, uint32 width, uint32 height);
+    void draw(const uint8 *pixels);
+    void cleanup();
+
+    GLuint m_pbo[2];
+    GLuint m_tex;
+    FSQuad *m_quad;
+    GLuint m_fullscreenProgram;
+
+    uint32 m_width;
+    uint32 m_height;
+
+    uint32 m_writeIdx;
+};
+
+struct FSTexturePresenter
+{
+    void setup(FSQuad *quad);
+    void set_transform(GLfloat x, GLfloat y, GLfloat s);
+    void draw(GLuint tex, bool specialRT);
+    void cleanup();
+
+    FSQuad *m_quad;
+    GLuint m_fullscreenProgram;
+    GLint m_translationLoc;
+    GLint m_scaleLoc;
+    GLfloat m_translationX;
+    GLfloat m_translationY;
+    GLfloat m_scale;
+};
+
 struct FSGrid
 {
-    void setup(uint32 width, uint32 height);
+    void setup(FSQuad *quad, uint32 width, uint32 height);
     void draw(const GLfloat *bgcolor, const GLfloat *fgcolor,
               const GLfloat *translation, GLfloat zoom);
     void cleanup();
@@ -324,7 +321,7 @@ struct FSGrid
     GLuint m_fullscreenProgram;
     GLuint m_bgColorLoc;
     GLuint m_fgColorLoc;
-    FSQuad m_quad;
+    FSQuad *m_quad;
 };
 
 struct RenderTarget
@@ -476,17 +473,20 @@ int main(int argc, char *argv[])
             ::printf("----------------------------\n");
         }
 
+        FSQuad quad;
+        quad.setup();
+
         FSTexturePresenter fs;
-        fs.setup();
+        fs.setup(&quad);
 
         RenderTarget rt;
         rt.setup(viewportWidthPx, viewportHeightPx);
         
         BufferPresenter blit;
-        blit.setup(bufferWidthPx, bufferHeightPx);
+        blit.setup(&quad, bufferWidthPx, bufferHeightPx);
 
         FSGrid grid;
-        grid.setup(viewportWidthPx, viewportHeightPx);
+        grid.setup(&quad, viewportWidthPx, viewportHeightPx);
 
         check_gl_errors("after setup");
 
@@ -703,6 +703,8 @@ int main(int argc, char *argv[])
         blit.cleanup();
         rt.cleanup();
         fs.cleanup();
+        grid.cleanup();
+        quad.cleanup();
 
         delete [] bake_xys;
         delete [] curr_xys;
@@ -720,27 +722,12 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-
-void BufferPresenter::setup(uint32 width, uint32 height)
+void BufferPresenter::setup(FSQuad *quad, uint32 width, uint32 height)
 {
     m_width = width;
     m_height = height;
-    
-    const float fullscreenQuadVertices[4*2*2] =
-    {//   X      Y       U     V
-        -1.0f, -1.0f,   0.0f, 0.0f,
-        -1.0f, +1.0f,   0.0f, 1.0f,
-        +1.0f, +1.0f,   1.0f, 1.0f,
-        +1.0f, -1.0f,   1.0f, 0.0f
-    };
 
-    const GLuint POS_LOC = 0;
-    const GLuint UV_LOC = 1;
-
-    const GLint POS_DIM = 2;
-    const GLint UV_DIM = 2;
-
-    const GLsizei vertexSize = (POS_DIM + UV_DIM) * sizeof(float);
+    m_quad = quad;
 
     const char *vertex_src =
         "  #version 330 core                             \n"
@@ -778,31 +765,6 @@ void BufferPresenter::setup(uint32 width, uint32 height)
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     }
 
-    glGenVertexArrays(1, &m_vao);
-
-    // vao setup
-    glBindVertexArray(m_vao);
-
-    glGenBuffers(1, &m_vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-    glBufferData(GL_ARRAY_BUFFER, 4 * vertexSize,
-                 fullscreenQuadVertices, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-    glVertexAttribPointer(POS_LOC, POS_DIM, GL_FLOAT, GL_FALSE, vertexSize, 0);
-    glVertexAttribPointer(UV_LOC, UV_DIM, GL_FLOAT, GL_FALSE, vertexSize,
-                          reinterpret_cast<GLvoid*>(POS_DIM * sizeof(float)));
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    glEnableVertexAttribArray(POS_LOC);
-    glEnableVertexAttribArray(UV_LOC);
-
-    glBindVertexArray(0);
-    // end vao setup
-
-
     glGenTextures(1, &m_tex);
     glBindTexture(GL_TEXTURE_2D, m_tex);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_width, m_height, 0,
@@ -817,8 +779,6 @@ void BufferPresenter::setup(uint32 width, uint32 height)
 void BufferPresenter::cleanup()
 {
     glDeleteTextures(1, &m_tex);
-    glDeleteVertexArrays(1, &m_vao);
-    glDeleteBuffers(1, &m_vbo);
     glDeleteBuffers(2, m_pbo);
     glDeleteProgram(m_fullscreenProgram);
 }
@@ -858,9 +818,7 @@ void BufferPresenter::draw(const uint8* pixels)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glUseProgram(m_fullscreenProgram);
     glBindTexture(GL_TEXTURE_2D, m_tex);
-    glBindVertexArray(m_vao);
-    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-    glBindVertexArray(0);
+    m_quad->draw();
     glBindTexture(GL_TEXTURE_2D, 0);
     glUseProgram(0);
     glDisable(GL_BLEND);
@@ -973,23 +931,9 @@ void RenderTarget::cleanup()
 }
 
 
-void FSTexturePresenter::setup()
+void FSTexturePresenter::setup(FSQuad *quad)
 {
-    const float fullscreenQuadVertices[4*2*2] =
-    {//   X      Y       U     V
-        -1.0f, -1.0f,   0.0f, 0.0f,
-        -1.0f, +1.0f,   0.0f, 1.0f,
-        +1.0f, +1.0f,   1.0f, 1.0f,
-        +1.0f, -1.0f,   1.0f, 0.0f
-    };
-
-    const GLuint POS_LOC = 0;
-    const GLuint UV_LOC = 1;
-
-    const GLint POS_DIM = 2;
-    const GLint UV_DIM = 2;
-
-    const GLsizei vertexSize = (POS_DIM + UV_DIM) * sizeof(float);
+    m_quad = quad;
 
     const char *vertex_src =
         "  #version 330 core                                  \n"
@@ -1020,36 +964,10 @@ void FSTexturePresenter::setup()
     m_fullscreenProgram = ::create_program(vertex_src, nullptr, fragment_src);
     m_translationLoc = glGetUniformLocation(m_fullscreenProgram, "u_translation");
     m_scaleLoc = glGetUniformLocation(m_fullscreenProgram, "u_scale");
-
-    glGenVertexArrays(1, &m_vao);
-
-    // vao setup
-    glBindVertexArray(m_vao);
-
-    glGenBuffers(1, &m_vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-    glBufferData(GL_ARRAY_BUFFER, 4 * vertexSize,
-                 fullscreenQuadVertices, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-    glVertexAttribPointer(POS_LOC, POS_DIM, GL_FLOAT, GL_FALSE, vertexSize, 0);
-    glVertexAttribPointer(UV_LOC, UV_DIM, GL_FLOAT, GL_FALSE, vertexSize,
-                          reinterpret_cast<GLvoid*>(POS_DIM * sizeof(float)));
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    glEnableVertexAttribArray(POS_LOC);
-    glEnableVertexAttribArray(UV_LOC);
-
-    glBindVertexArray(0);
-    // end vao setup
 }
 
 void FSTexturePresenter::cleanup()
 {
-    glDeleteVertexArrays(1, &m_vao);
-    glDeleteBuffers(1, &m_vbo);
     glDeleteProgram(m_fullscreenProgram);
 }
 
@@ -1075,9 +993,7 @@ void FSTexturePresenter::draw(GLuint tex, bool specialRT)
     glUniform2f(m_translationLoc, m_translationX, m_translationY);
     glUniform1f(m_scaleLoc, m_scale);
     glBindTexture(GL_TEXTURE_2D, tex);
-    glBindVertexArray(m_vao);
-    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-    glBindVertexArray(0);
+    m_quad->draw();
     glBindTexture(GL_TEXTURE_2D, 0);
     glUseProgram(0);
     glDisable(GL_BLEND);
@@ -1139,8 +1055,10 @@ void FSQuad::cleanup()
     glDeleteBuffers(1, &m_vbo);
 }
 
-void FSGrid::setup(uint32 width, uint32 height)
+void FSGrid::setup(FSQuad *quad, uint32 width, uint32 height)
 {
+    m_quad = quad;
+
     const char *vertex_src =
         "  #version 330 core                                  \n"
         "  layout (location = 0) in vec2 i_msPosition;        \n"
@@ -1172,7 +1090,6 @@ void FSGrid::setup(uint32 width, uint32 height)
     m_fullscreenProgram = ::create_program(vertex_src, nullptr, fragment_src);
     m_bgColorLoc = glGetUniformLocation(m_fullscreenProgram, "u_bgColor");
     m_fgColorLoc = glGetUniformLocation(m_fullscreenProgram, "u_fgColor");
-    m_quad.setup();
 }
 
 void FSGrid::draw(const GLfloat *bgcolor, const GLfloat *fgcolor,
@@ -1181,13 +1098,12 @@ void FSGrid::draw(const GLfloat *bgcolor, const GLfloat *fgcolor,
     glUseProgram(m_fullscreenProgram);
     glUniform3f(m_bgColorLoc, bgcolor[0], bgcolor[1], bgcolor[2]);
     glUniform3f(m_fgColorLoc, fgcolor[0], fgcolor[1], fgcolor[2]);
-    m_quad.draw();
+    m_quad->draw();
     glUseProgram(0);
 }
 
 void FSGrid::cleanup()
 {
-    m_quad.cleanup();
     glDeleteProgram(m_fullscreenProgram);
 }
 
