@@ -109,6 +109,7 @@ LOAD(GLDEPTHFUNC, glDepthFunc)
 LOAD(GLGETUNIFORMLOCATION, glGetUniformLocation)
 LOAD(GLUNIFORM1F, glUniform1f)
 LOAD(GLUNIFORM2F, glUniform2f)
+LOAD(GLUNIFORM3F, glUniform3f)
 
 LOAD(GLFINISH, glFinish)
 LOAD(GLGETERROR, glGetError)
@@ -303,6 +304,29 @@ struct FSTexturePresenter
     GLfloat m_scale;
 };
 
+struct FSQuad
+{
+    void setup();
+    void draw();
+    void cleanup();
+
+    GLuint m_vao;
+    GLuint m_vbo;
+};
+
+struct FSGrid
+{
+    void setup(uint32 width, uint32 height);
+    void draw(const GLfloat *bgcolor, const GLfloat *fgcolor,
+              const GLfloat *translation, GLfloat zoom);
+    void cleanup();
+
+    GLuint m_fullscreenProgram;
+    GLuint m_bgColorLoc;
+    GLuint m_fgColorLoc;
+    FSQuad m_quad;
+};
+
 struct RenderTarget
 {
     void setup(uint32 width, uint32 height);
@@ -460,6 +484,10 @@ int main(int argc, char *argv[])
         
         BufferPresenter blit;
         blit.setup(bufferWidthPx, bufferHeightPx);
+
+        FSGrid grid;
+        grid.setup(viewportWidthPx, viewportHeightPx);
+
         check_gl_errors("after setup");
 
         Mesh bgmesh, fgmesh;
@@ -636,6 +664,9 @@ int main(int argc, char *argv[])
 
             glViewport(viewportLeftPx, viewportBottomPx,
                        viewportWidthPx, viewportHeightPx);
+
+            grid.draw(output.grid_bg_color, output.grid_fg_color,
+                      output.grid_translation, output.grid_zoom);
 
             fs.set_transform(output.translateX, output.translateY, output.scale);
             fs.draw(rt.m_tex, true);
@@ -1052,6 +1083,113 @@ void FSTexturePresenter::draw(GLuint tex, bool specialRT)
     glDisable(GL_BLEND);
 }
 
+void FSQuad::setup()
+{
+    const float fullscreenQuadVertices[4*2*2] =
+    {//   X      Y       U     V
+        -1.0f, -1.0f,   0.0f, 0.0f,
+        -1.0f, +1.0f,   0.0f, 1.0f,
+        +1.0f, +1.0f,   1.0f, 1.0f,
+        +1.0f, -1.0f,   1.0f, 0.0f
+    };
+
+    const GLuint POS_LOC = 0;
+    const GLuint UV_LOC = 1;
+
+    const GLint POS_DIM = 2;
+    const GLint UV_DIM = 2;
+
+    const GLsizei vertexSize = (POS_DIM + UV_DIM) * sizeof(float);
+
+    glGenVertexArrays(1, &m_vao);
+
+    // vao setup
+    glBindVertexArray(m_vao);
+
+    glGenBuffers(1, &m_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
+    glBufferData(GL_ARRAY_BUFFER, 4 * vertexSize,
+                 fullscreenQuadVertices, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
+    glVertexAttribPointer(POS_LOC, POS_DIM, GL_FLOAT, GL_FALSE, vertexSize, 0);
+    glVertexAttribPointer(UV_LOC, UV_DIM, GL_FLOAT, GL_FALSE, vertexSize,
+                          reinterpret_cast<GLvoid*>(POS_DIM * sizeof(float)));
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    glEnableVertexAttribArray(POS_LOC);
+    glEnableVertexAttribArray(UV_LOC);
+
+    glBindVertexArray(0);
+    // end vao setup
+}
+
+void FSQuad::draw()
+{
+    glBindVertexArray(m_vao);
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    glBindVertexArray(0);
+}
+
+void FSQuad::cleanup()
+{
+    glDeleteVertexArrays(1, &m_vao);
+    glDeleteBuffers(1, &m_vbo);
+}
+
+void FSGrid::setup(uint32 width, uint32 height)
+{
+    const char *vertex_src =
+        "  #version 330 core                                  \n"
+        "  layout (location = 0) in vec2 i_msPosition;        \n"
+        "  layout (location = 1) in vec2 i_textureUV;         \n"
+        "  out vec2 l_textureUV;                              \n"
+        "  void main()                                        \n"
+        "  {                                                  \n"
+        "      gl_Position.xy = i_msPosition;                 \n"
+        "      gl_Position.z = 0.0f;                          \n"
+        "      gl_Position.w = 1.0f;                          \n"
+        "      l_textureUV = i_textureUV;                     \n"
+        "  }                                                  \n";
+
+    const char *fragment_src =
+        "  #version 330 core                                    \n"
+        "  in vec2 l_textureUV;                                 \n"
+        "  layout (location = 0) out vec4 o_color;              \n"
+        "  uniform vec3 u_bgColor;                              \n"
+        "  uniform vec3 u_fgColor;                              \n"
+        "  void main()                                          \n"
+        "  {                                                    \n"
+        "      float isLine = max(                              \n"
+        "          step(abs(l_textureUV.x - 0.5f), 0.004f),     \n"
+        "          step(abs(l_textureUV.y - 0.5f), 0.004f));    \n"
+        "      o_color.rgb = mix(u_bgColor, u_fgColor, isLine); \n"
+        "      o_color.a = 1.0f;                                \n"
+        "  }                                                    \n";
+
+    m_fullscreenProgram = ::create_program(vertex_src, nullptr, fragment_src);
+    m_bgColorLoc = glGetUniformLocation(m_fullscreenProgram, "u_bgColor");
+    m_fgColorLoc = glGetUniformLocation(m_fullscreenProgram, "u_fgColor");
+    m_quad.setup();
+}
+
+void FSGrid::draw(const GLfloat *bgcolor, const GLfloat *fgcolor,
+                  const GLfloat *translation, GLfloat zoom)
+{
+    glUseProgram(m_fullscreenProgram);
+    glUniform3f(m_bgColorLoc, bgcolor[0], bgcolor[1], bgcolor[2]);
+    glUniform3f(m_fgColorLoc, fgcolor[0], fgcolor[1], fgcolor[2]);
+    m_quad.draw();
+    glUseProgram(0);
+}
+
+void FSGrid::cleanup()
+{
+    m_quad.cleanup();
+    glDeleteProgram(m_fullscreenProgram);
+}
 
 void Mesh::setup()
 {

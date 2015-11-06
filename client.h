@@ -55,6 +55,11 @@ struct output_data
     float bg_red;
     float bg_green;
     float bg_blue;
+
+    float grid_bg_color[3];
+    float grid_fg_color[3];
+    float grid_translation[2];
+    float grid_zoom;
 };
 
 typedef void (*UPDATE_AND_RENDER_FUNC)(input_data *input, output_data *output);

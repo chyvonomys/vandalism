@@ -298,6 +298,8 @@ int32 gui_brush_diameter_units;
 bool gui_mouse_occupied;
 bool gui_mouse_hover;
 float gui_background_color[3];
+float gui_grid_bg_color[3];
+float gui_grid_fg_color[3];
 
 const int32 cfg_min_brush_diameter_units = 1;
 const int32 cfg_max_brush_diameter_units = 64;
@@ -338,6 +340,14 @@ extern "C" void setup()
     gui_background_color[0] = 0.3f;
     gui_background_color[1] = 0.3f;
     gui_background_color[2] = 0.3f;
+
+    gui_grid_bg_color[0] = 0.0f;
+    gui_grid_bg_color[1] = 0.0f;
+    gui_grid_bg_color[2] = 0.5f;
+
+    gui_grid_fg_color[0] = 0.5f;
+    gui_grid_fg_color[1] = 0.5f;
+    gui_grid_fg_color[2] = 1.0f;
 
     gui_brush_diameter_units = cfg_def_brush_diameter_units;
 
@@ -479,7 +489,7 @@ void draw_timing(offscreen_buffer *buffer, uint32 frame,
 {
     uint32 framex = 2 * frame % buffer->width;
     uint32 maxy = buffer->height - 1;
-    double maxti = 100; // ms
+    double maxti = 200; // ms
     double sum = 0.0;
     double total = 0.0;
     for (uint32 ti = 0; ti < intervalCnt; ++ti)
@@ -788,6 +798,14 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     output->bg_green = gui_background_color[1];
     output->bg_blue  = gui_background_color[2];
 
+    output->grid_bg_color[0] = gui_grid_bg_color[0];
+    output->grid_bg_color[1] = gui_grid_bg_color[1];
+    output->grid_bg_color[2] = gui_grid_bg_color[2];
+
+    output->grid_fg_color[0] = gui_grid_fg_color[0];
+    output->grid_fg_color[1] = gui_grid_fg_color[1];
+    output->grid_fg_color[2] = gui_grid_fg_color[2];
+
     size_t currStart, currEnd;
     size_t currId = ism->get_current_stroke(currStart, currEnd);
 
@@ -856,6 +874,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ImGui::Begin("brush");
     ImGui::ColorEdit4("color", gui_brush_color);
     ImGui::ColorEdit3("background", gui_background_color);
+    ImGui::ColorEdit3("grid bg", gui_grid_bg_color);
+    ImGui::ColorEdit3("grid fg", gui_grid_fg_color);
     ImGui::SliderInt("diameter", &gui_brush_diameter_units,
                      cfg_min_brush_diameter_units, cfg_max_brush_diameter_units);
 
