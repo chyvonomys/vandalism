@@ -285,9 +285,10 @@ Vandalism *ism = nullptr;
 enum IsmMode
 {
     ISM_DRAW = 0,
-    ISM_PAN = 1,
-    ISM_ZOOM = 2,
-    ISM_ROTATE = 3
+    ISM_ERASE = 1,
+    ISM_PAN = 2,
+    ISM_ZOOM = 3,
+    ISM_ROTATE = 4
 };
 
 bool gui_showAllViews;
@@ -300,6 +301,7 @@ bool gui_mouse_hover;
 float gui_background_color[3];
 float gui_grid_bg_color[3];
 float gui_grid_fg_color[3];
+float gui_eraser_alpha;
 
 const int32 cfg_min_brush_diameter_units = 1;
 const int32 cfg_max_brush_diameter_units = 64;
@@ -351,6 +353,8 @@ extern "C" void setup()
 
     gui_brush_diameter_units = cfg_def_brush_diameter_units;
 
+    gui_eraser_alpha = 1.0f;
+
     gui_mouse_occupied = false;
     gui_mouse_hover = false;
 }
@@ -368,55 +372,62 @@ inline float2 inches2snorm(const test_point& pt, float w, float h)
     return {2.0f * pt.x / w, 2.0f * pt.y / h};
 }
 
+// TODO: this currently should be in sync with VAO and shaders, improve
+const size_t FLOATS_PER_VERTEX = 10; //xyzuvergba
+const size_t VERTS_PER_QUAD = 6; // two separate triangles
+// TODO: optimize with triangle fans/strips maybe?
+
 void add_quad_tex(triangles *tris,
                   float2 a, float2 b, float2 c, float2 d,
-                  float zindex, float rc, float gc, float bc, float ac)
+                  float zindex, float ec,
+                  float rc, float gc, float bc, float ac)
 {
-    if (tris->size + 6 <= tris->capacity)
+    if (tris->size + VERTS_PER_QUAD <= tris->capacity)
     {
-        float *p = tris->data + tris->size * 9;
+        float *p = tris->data + tris->size * FLOATS_PER_VERTEX;
 
         *p++ = a.x; *p++ = a.y; *p++ = zindex; *p++ = 0.0f, *p++ = 0.0f;
-        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
+        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
         *p++ = b.x; *p++ = b.y; *p++ = zindex; *p++ = 0.0f, *p++ = 1.0f;
-        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
+        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
         *p++ = c.x; *p++ = c.y; *p++ = zindex; *p++ = 1.0f, *p++ = 1.0f;
-        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
+        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
 
         *p++ = c.x; *p++ = c.y; *p++ = zindex; *p++ = 1.0f, *p++ = 1.0f;
-        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
+        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
         *p++ = d.x; *p++ = d.y; *p++ = zindex; *p++ = 1.0f, *p++ = 0.0f;
-        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
+        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
         *p++ = a.x; *p++ = a.y; *p++ = zindex; *p++ = 0.0f, *p++ = 0.0f;
-        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
+        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
 
-        tris->size += 6;
+        tris->size += VERTS_PER_QUAD;
     }
 }
 
 void add_quad_const(triangles *tris,
                     float2 a, float2 b, float2 c, float2 d,
-                    float zindex, float rc, float gc, float bc, float ac)
+                    float zindex, float ec,
+                    float rc, float gc, float bc, float ac)
 {
-    if (tris->size + 6 <= tris->capacity)
+    if (tris->size + VERTS_PER_QUAD <= tris->capacity)
     {
-        float *p = tris->data + tris->size * 9;
+        float *p = tris->data + tris->size * FLOATS_PER_VERTEX;
 
         *p++ = a.x; *p++ = a.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
-        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
+        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
         *p++ = b.x; *p++ = b.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
-        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
+        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
         *p++ = c.x; *p++ = c.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
-        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
+        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
 
         *p++ = c.x; *p++ = c.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
-        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
+        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
         *p++ = d.x; *p++ = d.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
-        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
+        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
         *p++ = a.x; *p++ = a.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
-        *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
+        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
 
-        tris->size += 6;
+        tris->size += VERTS_PER_QUAD;
     }
 }
 
@@ -454,7 +465,7 @@ void fill_quads(triangles *tris,
                                         viewportWIn, viewportHIn);
 
             float zindex = 0.00001f * si;
-            add_quad_const(tris, a, b, c, d, zindex,
+            add_quad_const(tris, a, b, c, d, zindex, brush.e,
                            brush.r, brush.g, brush.b, brush.a);
         }
     }
@@ -479,7 +490,7 @@ void fill_quads(triangles *tris,
                                 viewportWIn, viewportHIn);
 
         float zindex = 0.00001f * si;
-        add_quad_tex(tris, a, b, c, d, zindex,
+        add_quad_tex(tris, a, b, c, d, zindex, brush.e,
                      brush.r, brush.g, brush.b, brush.a);
     }
 }
@@ -752,7 +763,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ism_input.brushred = gui_brush_color[0];
     ism_input.brushgreen = gui_brush_color[1];
     ism_input.brushblue = gui_brush_color[2];
-    ism_input.brushalpha = gui_brush_color[3];
+    ism_input.brushalpha = (gui_mode == ISM_ERASE ? 0.0f : gui_brush_color[3]);
+    ism_input.eraseralpha = (gui_mode == ISM_ERASE ? gui_eraser_alpha : 0.0f);
     ism_input.brushdiameter = gui_brush_diameter_units * cfg_brush_diameter_inches_per_unit;
 
     ism->update(&ism_input);
@@ -878,6 +890,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ImGui::ColorEdit3("grid fg", gui_grid_fg_color);
     ImGui::SliderInt("diameter", &gui_brush_diameter_units,
                      cfg_min_brush_diameter_units, cfg_max_brush_diameter_units);
+    ImGui::SliderFloat("eraser", &gui_eraser_alpha, 0.0f, 1.0f);
 
     ImGui::End();
 
@@ -909,9 +922,10 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     ImGui::Text("mode: %d", ism->currentMode);
 
-    ImGui::RadioButton("draw", &gui_mode, ISM_DRAW); ImGui::SameLine();
-    ImGui::RadioButton("pan", &gui_mode, ISM_PAN); ImGui::SameLine();
-    ImGui::RadioButton("zoom", &gui_mode, ISM_ZOOM); ImGui::SameLine();
+    ImGui::RadioButton("draw", &gui_mode, ISM_DRAW);
+    ImGui::RadioButton("erase", &gui_mode, ISM_ERASE);
+    ImGui::RadioButton("pan", &gui_mode, ISM_PAN);
+    ImGui::RadioButton("zoom", &gui_mode, ISM_ZOOM);
     ImGui::RadioButton("rot", &gui_mode, ISM_ROTATE);
 
 #ifdef DEBUG_CASCADE

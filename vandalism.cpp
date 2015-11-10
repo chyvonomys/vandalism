@@ -12,7 +12,7 @@ struct Vandalism
     struct Brush
     {
         float diameter;
-        float r, g, b, a;
+        float r, g, b, a, e;
     };
 
     std::vector<Stroke> strokes;
@@ -64,6 +64,7 @@ struct Vandalism
         bool altdown;
         float brushred, brushgreen, brushblue, brushalpha;
         float brushdiameter;
+        float eraseralpha;
         float negligibledistance;
     };
 
@@ -142,6 +143,7 @@ struct Vandalism
         brush.g = input->brushgreen;
         brush.b = input->brushblue;
         brush.a = input->brushalpha;
+        brush.e = input->eraseralpha;
         brush.diameter = input->brushdiameter;
         brushes.push_back(brush);
         strokes.push_back(stroke);

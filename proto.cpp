@@ -502,7 +502,7 @@ int main(int argc, char *argv[])
         buffer.height = bufferHeightPx;
 
         const uint32 VERTS_PER_TRI = 3;
-        const uint32 VERT_DIM = 9; // xy and zindex and uv and color
+        const uint32 VERT_DIM = 10; // xy and zindex and uv and e and color
 
         const uint32 BAKE_TRIS_CNT = 5000;
         const uint32 CURR_TRIS_CNT = 500;
@@ -1113,9 +1113,9 @@ void Mesh::setup()
     const GLuint UV_LOC = 1;
     const GLuint COL_LOC = 2;
 
-    const GLuint POS_DIM = 3;
-    const GLuint UV_DIM = 2;
-    const GLuint COL_DIM = 4;
+    const GLuint POS_DIM = 3; // x, y, zindex
+    const GLuint UV_DIM = 3; // u, v, e
+    const GLuint COL_DIM = 4; // rgba
 
     const GLsizei vertexSize = (POS_DIM + UV_DIM + COL_DIM) * sizeof(float);
 
@@ -1156,7 +1156,7 @@ void Mesh::cleanup()
 void Mesh::update(const float *xyzuvc, uint32 vtxCnt)
 {
     glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-    glBufferData(GL_ARRAY_BUFFER, vtxCnt * (3 + 2 + 4) * sizeof(float),
+    glBufferData(GL_ARRAY_BUFFER, vtxCnt * (3 + 3 + 4) * sizeof(float),
                  xyzuvc, GL_DYNAMIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
@@ -1169,30 +1169,36 @@ void MeshPresenter::setup()
     const char *vertex_src =
         "  #version 330 core                             \n"
         "  layout (location = 0) in vec3 i_msPosition;   \n"
-        "  layout (location = 1) in vec2 i_uv;           \n"
+        "  layout (location = 1) in vec3 i_uve;          \n"
         "  layout (location = 2) in vec4 i_color;        \n"
-        "  out vec2 l_uv;                                \n"
+        "  out vec3 l_uve;                               \n"
         "  out vec4 l_color;                             \n"
         "  void main()                                   \n"
         "  {                                             \n"
         "      gl_Position.xy = i_msPosition.xy;         \n"
         "      gl_Position.z = i_msPosition.z;           \n"
         "      gl_Position.w = 1.0f;                     \n"
-        "      l_uv = i_uv;                              \n"
+        "      l_uve = i_uve;                            \n"
         "      l_color = i_color;                        \n"
         "  }                                             \n";
 
     const char *fragment_src =
-        "  #version 330 core                                   \n"
-        "  layout (location = 0) out vec4 o_color;             \n"
-        "  in vec2 l_uv;                                       \n"
-        "  in vec4 l_color;                                    \n"
-        "  void main()                                         \n"
-        "  {                                                   \n"
-        "      float radius = length(l_uv - vec2(0.5f, 0.5f)); \n"
-        "      if (radius > 0.5) discard;                      \n"
-        "      o_color = l_color;                              \n"
-        "  }                                                   \n";
+        "  #version 330 core                                        \n"
+        "  layout (location = 0) out vec4 o_color;                  \n"
+        "  layout (location = 1) out vec4 o_color1;                 \n"
+        "  in vec3 l_uve;                                           \n"
+        "  in vec4 l_color;                                         \n"
+        "  void main()                                              \n"
+        "  {                                                        \n"
+        "      float radius = length(l_uve.xy - vec2(0.5f, 0.5f));  \n"
+        "      if (radius > 0.5) discard;                           \n"
+        "      float E = l_uve.z;                                   \n"
+        "      float SRCa = (1.0f - l_color.a) * E;                 \n"
+        "      float SRC1a = (1.0f - l_color.a) * (1.0f - E);       \n"
+        "      o_color.rgb = l_color.rgb * l_color.a;               \n"
+        "      o_color.a = SRCa;                                    \n"
+        "      o_color1.a = SRC1a;                                  \n"
+        "  }                                                        \n";
 
     m_program = ::create_program(vertex_src, nullptr, fragment_src);
 }
@@ -1209,8 +1215,8 @@ void MeshPresenter::draw(GLuint vao, uint32 vtxCnt, bool forRT)
     glEnable(GL_BLEND);
     if (forRT)
     {
-        glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
-                            GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
+        glBlendFuncSeparate(GL_ONE, GL_SRC1_ALPHA,
+                            GL_ONE, GL_SRC1_ALPHA);
     }
     else
     {
