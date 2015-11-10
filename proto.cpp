@@ -329,7 +329,7 @@ struct RenderTarget
     void setup(uint32 width, uint32 height);
     void cleanup();
 
-    void before();
+    void before(bool clear);
     void after();
 
     GLuint m_fbo;
@@ -358,7 +358,7 @@ struct MeshPresenter
     void setup();
     void cleanup();
 
-    void draw(GLuint vao, uint32 vtxCnt, bool forRT);
+    void draw(GLuint vao, uint32 vtxCnt);
 
     GLuint m_program;
 };
@@ -646,14 +646,24 @@ int main(int argc, char *argv[])
 
             (*upd_and_rnd)(&input, &output);
 
+            fgmesh.update(output.curr_tris->data, output.curr_tris->size);
+
             if (output.bake_flag)
             {
                 bgmesh.update(output.bake_tris->data, output.bake_tris->size);
                 // flag processed
                 // TODO: ??
                 output.bake_flag = false;
-                rt.before();
-                render.draw(bgmesh.m_vao, bgmesh.m_vtxCnt, true);
+                rt.before(true);
+                render.draw(bgmesh.m_vao, bgmesh.m_vtxCnt);
+                render.draw(fgmesh.m_vao, fgmesh.m_vtxCnt);
+                rt.after();
+            }
+            else
+            {
+                // append
+                rt.before(false);
+                render.draw(fgmesh.m_vao, fgmesh.m_vtxCnt);
                 rt.after();
             }
 
@@ -670,9 +680,6 @@ int main(int argc, char *argv[])
 
             fs.set_transform(output.translateX, output.translateY, output.scale);
             fs.draw(rt.m_tex, true);
-
-            fgmesh.update(output.curr_tris->data, output.curr_tris->size);
-            render.draw(fgmesh.m_vao, fgmesh.m_vtxCnt, false);
 
             glViewport(viewportLeftPx, viewportBottomPx,
                        viewportWidthPx, viewportHeightPx);
@@ -906,16 +913,19 @@ void RenderTarget::setup(uint32 width, uint32 height)
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void RenderTarget::before()
+void RenderTarget::before(bool clear)
 {
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_fbo);
     glViewport(0, 0, m_width, m_height);
 
-    glClearColor(0.0, 0.0, 0.0, 1.0);
-    glClearDepth(-1.0);
+    if (clear)
+    {
+        glClearColor(0.0, 0.0, 0.0, 1.0);
+        glClearDepth(-1.0);
 
-    GLbitfield clear_bits = (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glClear(clear_bits);
+        GLbitfield clear_bits = (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glClear(clear_bits);
+    }
 }
 
 void RenderTarget::after()
@@ -1208,20 +1218,12 @@ void MeshPresenter::cleanup()
     glDeleteProgram(m_program);
 }
 
-void MeshPresenter::draw(GLuint vao, uint32 vtxCnt, bool forRT)
+void MeshPresenter::draw(GLuint vao, uint32 vtxCnt)
 {
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_GREATER);
     glEnable(GL_BLEND);
-    if (forRT)
-    {
-        glBlendFuncSeparate(GL_ONE, GL_SRC1_ALPHA,
-                            GL_ONE, GL_SRC1_ALPHA);
-    }
-    else
-    {
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    }
+    glBlendFunc(GL_ONE, GL_SRC1_ALPHA);
     glUseProgram(m_program);
     glBindVertexArray(vao);
     glDrawArrays(GL_TRIANGLES, 0, vtxCnt);
