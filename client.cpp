@@ -282,18 +282,9 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
 
 Vandalism *ism = nullptr;
 
-enum IsmMode
-{
-    ISM_DRAW = 0,
-    ISM_ERASE = 1,
-    ISM_PAN = 2,
-    ISM_ZOOM = 3,
-    ISM_ROTATE = 4
-};
-
 bool gui_showAllViews;
 int32 gui_viewIdx;
-int32 gui_mode;
+int32 gui_tool;
 float gui_brush_color[4];
 int32 gui_brush_diameter_units;
 bool gui_mouse_occupied;
@@ -332,7 +323,7 @@ extern "C" void setup()
 
     gui_showAllViews = true;
     gui_viewIdx = 0;
-    gui_mode = ISM_DRAW;
+    gui_tool = static_cast<int>(Vandalism::DRAW);
 
     gui_brush_color[0] = 1.0f;
     gui_brush_color[1] = 1.0f;
@@ -753,9 +744,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     float pixel_height_in = output->bufferHeightIn / buffer->height;
 
     Vandalism::Input ism_input;
-    ism_input.altdown = (gui_mode == ISM_ROTATE);
-    ism_input.shiftdown = (gui_mode == ISM_PAN);
-    ism_input.ctrldown = (gui_mode == ISM_ZOOM);
+    ism_input.tool = static_cast<Vandalism::Tool>(gui_tool);
     ism_input.mousex = mxin;
     ism_input.mousey = myin;
     ism_input.negligibledistance = pixel_height_in;
@@ -763,8 +752,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ism_input.brushred = gui_brush_color[0];
     ism_input.brushgreen = gui_brush_color[1];
     ism_input.brushblue = gui_brush_color[2];
-    ism_input.brushalpha = (gui_mode == ISM_ERASE ? 0.0f : gui_brush_color[3]);
-    ism_input.eraseralpha = (gui_mode == ISM_ERASE ? gui_eraser_alpha : 0.0f);
+    ism_input.brushalpha = gui_brush_color[3];
+    ism_input.eraseralpha = gui_eraser_alpha;
     ism_input.brushdiameter = gui_brush_diameter_units * cfg_brush_diameter_inches_per_unit;
 
     ism->update(&ism_input);
@@ -902,11 +891,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
                 static_cast<double>(input->mousex),
                 static_cast<double>(input->mousey));
 
-    ImGui::Text("Alt Ctrl Shift LMB: (%d %d %d %d)",
-                static_cast<int>(ism_input.altdown),
-                static_cast<int>(ism_input.ctrldown),
-                static_cast<int>(ism_input.shiftdown),
-                static_cast<int>(ism_input.mousedown));
+    ImGui::Text("tool active: %d", static_cast<int>(ism_input.mousedown));
 
     ImGui::Text("ism strokes: %lu", ism->strokes.size());
     ImGui::Text("ism points: %lu", ism->points.size());
@@ -922,11 +907,11 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     ImGui::Text("mode: %d", ism->currentMode);
 
-    ImGui::RadioButton("draw", &gui_mode, ISM_DRAW);
-    ImGui::RadioButton("erase", &gui_mode, ISM_ERASE);
-    ImGui::RadioButton("pan", &gui_mode, ISM_PAN);
-    ImGui::RadioButton("zoom", &gui_mode, ISM_ZOOM);
-    ImGui::RadioButton("rot", &gui_mode, ISM_ROTATE);
+    ImGui::RadioButton("draw", &gui_tool, static_cast<int>(Vandalism::DRAW));
+    ImGui::RadioButton("erase", &gui_tool, static_cast<int>(Vandalism::ERASE));
+    ImGui::RadioButton("pan", &gui_tool, static_cast<int>(Vandalism::PAN));
+    ImGui::RadioButton("zoom", &gui_tool, static_cast<int>(Vandalism::ZOOM));
+    ImGui::RadioButton("rot", &gui_tool, static_cast<int>(Vandalism::ROTATE));
 
 #ifdef DEBUG_CASCADE
     ImGui::Text("test_segments: %d", seg_cnt);

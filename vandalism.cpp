@@ -54,14 +54,21 @@ struct Vandalism
         MODECNT  = 5
     };
 
+    enum Tool
+    {
+        DRAW   = 0,
+        ERASE  = 1,
+        PAN    = 2,
+        ZOOM   = 3,
+        ROTATE = 4
+    };
+
     struct Input
     {
         float mousex;
         float mousey;
         bool mousedown;
-        bool shiftdown;
-        bool ctrldown;
-        bool altdown;
+        Tool tool;
         float brushred, brushgreen, brushblue, brushalpha;
         float brushdiameter;
         float eraseralpha;
@@ -142,8 +149,8 @@ struct Vandalism
         brush.r = input->brushred;
         brush.g = input->brushgreen;
         brush.b = input->brushblue;
-        brush.a = input->brushalpha;
-        brush.e = input->eraseralpha;
+        brush.a = (input->tool == ERASE ? 0.0f : input->brushalpha);
+        brush.e = (input->tool == ERASE ? input->eraseralpha : 0.0f);
         brush.diameter = input->brushdiameter;
         brushes.push_back(brush);
         strokes.push_back(stroke);
@@ -205,26 +212,20 @@ struct Vandalism
 
     Mode current_mode(Input *input)
     {
-        bool l = input->mousedown;
-        bool s = input->shiftdown;
-        bool c = input->ctrldown;
-        bool a = input->altdown;
-
-        if (l && !s && !c && !a)
+        if (input->mousedown)
         {
-            return DRAWING;
-        }
-        else if (l && s && !c && !a)
-        {
-            return PANNING;
-        }
-        else if (l && !s && c && !a)
-        {
-            return ZOOMING;
-        }
-        else if (l && !s && !c && a)
-        {
-            return ROTATING;
+            switch (input->tool)
+            {
+            case DRAW:
+            case ERASE:
+                return DRAWING;
+            case PAN:
+                return PANNING;
+            case ZOOM:
+                return ZOOMING;
+            case ROTATE:
+                return ROTATING;
+            }
         }
         return IDLE;
     }
