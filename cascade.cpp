@@ -71,7 +71,7 @@ struct test_stroke
     test_box bbox;
 };
 
-enum transition_type { TZOOM, TPAN };
+enum transition_type { TZOOM, TPAN, TROTATE };
 
 struct test_transition
 {
@@ -185,11 +185,47 @@ struct test_transform
     float s;
     float tx;
     float ty;
+    float a;
 };
+
+// coordinates of center (x0, y0) and x axis (xx, xy)
+// y axis is (-xy, xx)
+struct test_basis
+{
+    float x0;
+    float y0;
+    float xx;
+    float xy;
+};
+
+test_transform transform_from_basis(const test_basis &basis)
+{
+    test_transform result;
+    result.tx = basis.x0;
+    result.ty = basis.y0;
+    result.s = si_sqrtf(basis.xx * basis.xx + basis.xy * basis.xy);
+    result.a = si_atan2(basis.xy, basis.xx);
+    return result;
+}
+
+test_basis basis_from_transform(const test_transform &transform)
+{
+    test_basis result;
+    result.x0 = transform.tx;
+    result.y0 = transform.ty;
+    result.xx = transform.s * si_cosf(transform.a);
+    result.xy = transform.s * si_sinf(transform.a);
+    return result;
+}
+
+test_basis default_basis()
+{
+    return {0.0f, 0.0f, 1.0f, 0.0f};
+}
 
 test_transform id_transform()
 {
-    return {1.0f, 0.0f, 0.0f};
+    return {1.0f, 0.0f, 0.0f, 0.0f};
 }
 
 test_transform transform_from_transition(const test_transition &transition)
@@ -204,6 +240,10 @@ test_transform transform_from_transition(const test_transition &transition)
     {
         result.tx = transition.a;
         result.ty = transition.b;
+    }
+    else if (transition.type == TROTATE)
+    {
+        result.a = transition.a;
     }
 
     return result;
@@ -222,6 +262,10 @@ test_transition inverse_transition(const test_transition &transition)
     {
         result.a = -transition.a;
         result.b = -transition.b;
+    }
+    else if (transition.type == TROTATE)
+    {
+        result.a = -transition.a;
     }
 
     return result;
@@ -257,14 +301,41 @@ test_box apply_transition_to_viewport(const test_transition &transition,
 }
 */
 
+test_point point_in_basis(const test_basis &b,
+                          const test_point &p)
+{
+    float Xx =  b.xx;
+    float Xy =  b.xy;
+    float Yx = -b.xy;
+    float Yy =  b.xx;
+
+    test_point result;
+    result.x = p.x * Xx + p.y * Yx + b.x0;
+    result.y = p.x * Xy + p.y * Yy + b.y0;
+    return result;
+}
+
 test_point apply_transform_pt(const test_transform &t,
                               const test_point &p)
 {
-    test_point result;
+    test_basis basis = basis_from_transform(t);
+    return point_in_basis(basis, p);
+}
 
-    result.x = p.x * t.s + t.tx;
-    result.y = p.y * t.s + t.ty;
+test_basis basis_in_basis(const test_basis &b0,
+                          const test_basis &b1)
+{
+    test_point b1o = {b1.x0, b1.y0};
+    test_point b1x = {b1.x0 + b1.xx, b1.y0 + b1.xy};
 
+    test_point b1o_ = point_in_basis(b0, b1o);
+    test_point b1x_ = point_in_basis(b0, b1x);
+    
+    test_basis result;
+    result.x0 = b1o_.x;
+    result.y0 = b1o_.y;
+    result.xx = b1x_.x - b1o_.x;
+    result.xy = b1x_.y - b1o_.y;
     return result;
 }
 
@@ -290,11 +361,11 @@ test_segment apply_transform_seg(const test_transform &t,
 test_transform combine_transforms(const test_transform &t0,
                                   const test_transform &t1)
 {
-    test_transform result;
+    test_basis b0 = basis_from_transform(t0);
+    test_basis b1 = basis_from_transform(t1);
 
-    result.s = t0.s * t1.s;
-    result.tx = t0.s * t1.tx + t0.tx;
-    result.ty = t0.s * t1.ty + t0.ty;
+    test_basis combined = basis_in_basis(b0, b1);
+    test_transform result = transform_from_basis(combined);
 
     return result;
 }

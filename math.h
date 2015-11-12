@@ -15,6 +15,21 @@ inline float si_sqrtf(float x)
     return ::sqrtf(x);
 }
 
+inline float si_sinf(float x)
+{
+    return ::sinf(x);
+}
+
+inline float si_cosf(float x)
+{
+    return ::cosf(x);
+}
+
+inline float si_atan2(float y, float x)
+{
+    return ::atan2f(y, x);
+}
+
 inline float lerp(float a, float b, float t)
 {
     return a * (1.0f - t) + b * t;

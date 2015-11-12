@@ -33,10 +33,15 @@ struct Vandalism
     float shiftX;
     float shiftY;
 
-    // ZOOM related;
+    // ZOOM related
 
     float zoomStartX;
     float zoomCoeff;
+
+    // ROTATE related
+
+    float rotateStartX;
+    float rotateAngle;
 
     struct Pan
     {
@@ -79,11 +84,32 @@ struct Vandalism
 
 
     void idle(const Input *) {}
-    void start_rotate(const Input *) {}
-    void done_rotate(const Input *) {}
-    void do_rotate(const Input *) {}
-
     void illegal(const Input *) {}
+
+
+    void start_rotate(const Input *input)
+    {
+        rotateStartX = input->mousex;
+    }
+    
+    void done_rotate(const Input *input)
+    {
+        pin = views.size();
+        float dx = input->mousex - rotateStartX;
+        float angle = M_PI * dx;
+        views.push_back({TROTATE,
+                angle, 0.0f,
+                strokes.size(), strokes.size()});
+        rotateAngle = 0.0f;
+
+        visiblesChanged = true; // TODO: really? depends on boundary shape
+    }
+    
+    void do_rotate(const Input *input)
+    {
+        float dx = input->mousex - rotateStartX;
+        rotateAngle = M_PI * dx;
+    }
 
     void start_zoom(const Input *input)
     {
@@ -251,6 +277,7 @@ struct Vandalism
         shiftX = 0.0f;
         shiftY = 0.0f;
         zoomCoeff = 1.0f;
+        rotateAngle = 0.0f;
     }
 
     void cleanup()

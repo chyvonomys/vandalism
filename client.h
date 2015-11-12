@@ -45,9 +45,11 @@ struct output_data
     triangles *curr_tris;
     bool bake_flag;
 
+    // baked texture quad manipulations
     float translateX;
     float translateY;
     float scale;
+    float rotate;
 
     float bufferWidthIn;
     float bufferHeightIn;

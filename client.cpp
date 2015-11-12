@@ -794,6 +794,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     output->translateX = 2.0f * ism->shiftX / output->bufferWidthIn;
     output->translateY = 2.0f * ism->shiftY / output->bufferHeightIn;
     output->scale = ism->zoomCoeff;
+    output->rotate = ism->rotateAngle;
 
     output->bg_red   = gui_background_color[0];
     output->bg_green = gui_background_color[1];
