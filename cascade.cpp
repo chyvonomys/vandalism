@@ -342,9 +342,12 @@ test_basis basis_in_basis(const test_basis &b0,
 test_box apply_transform_box(const test_transform &t,
                              const test_box &b)
 {
-    test_point BL = apply_transform_pt(t, {b.x0, b.y0});
-    test_point TR = apply_transform_pt(t, {b.x1, b.y1});
-    return {BL.x, TR.x, BL.y, TR.y};
+    test_box result;
+    result.add(apply_transform_pt(t, {b.x0, b.y0})); // BL
+    result.add(apply_transform_pt(t, {b.x0, b.y1})); // TL
+    result.add(apply_transform_pt(t, {b.x1, b.y1})); // TR
+    result.add(apply_transform_pt(t, {b.x1, b.y0})); // BR
+    return result;
 }
 
 float apply_transform_dist(const test_transform &t, float d)
