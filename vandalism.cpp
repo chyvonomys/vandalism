@@ -98,7 +98,7 @@ struct Vandalism
         float dx = input->mousex - rotateStartX;
         float angle = M_PI * dx;
         views.push_back({TROTATE,
-                angle, 0.0f,
+                -angle, 0.0f,
                 strokes.size(), strokes.size()});
         rotateAngle = 0.0f;
 

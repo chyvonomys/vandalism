@@ -298,8 +298,9 @@ struct BufferPresenter
 struct FSTexturePresenter
 {
     void setup(FSQuad *quad);
-    void set_transform(GLfloat x, GLfloat y, GLfloat s, GLfloat a);
-    void draw(GLuint tex, bool specialRT);
+    void draw(GLuint tex, bool specialRT,
+              GLfloat x, GLfloat y, GLfloat s, GLfloat a,
+              GLfloat vpW, GLfloat vpH);
     void cleanup();
 
     FSQuad *m_quad;
@@ -307,10 +308,8 @@ struct FSTexturePresenter
     GLint m_translationLoc;
     GLint m_scaleLoc;
     GLint m_rotationLoc;
-    GLfloat m_translationX;
-    GLfloat m_translationY;
-    GLfloat m_scale;
-    GLfloat m_rotation;
+    GLint m_vpHWLoc;
+    GLint m_vpHHLoc;
 };
 
 struct FSGrid
@@ -680,9 +679,10 @@ int main(int argc, char *argv[])
             grid.draw(output.grid_bg_color, output.grid_fg_color,
                       output.grid_translation, output.grid_zoom);
 
-            fs.set_transform(output.translateX, output.translateY,
-                             output.scale, output.rotate);
-            fs.draw(rt.m_tex, true);
+            fs.draw(rt.m_tex, true,
+                    output.translateX, output.translateY,
+                    output.scale, output.rotate,
+                    output.bufferWidthIn, output.bufferHeightIn);
 
             glViewport(viewportLeftPx, viewportBottomPx,
                        viewportWidthPx, viewportHeightPx);
@@ -956,15 +956,20 @@ void FSTexturePresenter::setup(FSQuad *quad)
         "  uniform vec2 u_translation;                        \n"
         "  uniform float u_scale;                             \n"
         "  uniform float u_rotation;                          \n"
+        "  uniform float u_vpHalfWidth;                       \n"
+        "  uniform float u_vpHalfHeight;                      \n"
         "  void main()                                        \n"
         "  {                                                  \n"
+        "      float px = i_msPosition.x * u_vpHalfWidth;     \n"
+        "      float py = i_msPosition.y * u_vpHalfHeight;    \n"
         "      float s = sin(u_rotation);                     \n"
         "      float c = cos(u_rotation);                     \n"
         "      vec2 X = u_scale * vec2(c, s);                 \n"
         "      vec2 Y = u_scale * vec2(-s, c);                \n"
-        "      gl_Position.xy = i_msPosition.x * X +          \n"
-        "                       i_msPosition.y * Y +          \n"
-        "                       u_translation;                \n"
+        "      vec2 pos = px * X + py * Y;                    \n"
+        "      gl_Position.x = pos.x / u_vpHalfWidth;         \n"
+        "      gl_Position.y = pos.y / u_vpHalfHeight;        \n"
+        "      gl_Position.xy += u_translation;               \n"
         "      gl_Position.z = 0.0f;                          \n"
         "      gl_Position.w = 1.0f;                          \n"
         "      l_textureUV = i_textureUV;                     \n"
@@ -984,6 +989,9 @@ void FSTexturePresenter::setup(FSQuad *quad)
     m_translationLoc = glGetUniformLocation(m_fullscreenProgram, "u_translation");
     m_scaleLoc = glGetUniformLocation(m_fullscreenProgram, "u_scale");
     m_rotationLoc = glGetUniformLocation(m_fullscreenProgram, "u_rotation");
+
+    m_vpHWLoc = glGetUniformLocation(m_fullscreenProgram, "u_vpHalfWidth");
+    m_vpHHLoc = glGetUniformLocation(m_fullscreenProgram, "u_vpHalfHeight");
 }
 
 void FSTexturePresenter::cleanup()
@@ -991,15 +999,9 @@ void FSTexturePresenter::cleanup()
     glDeleteProgram(m_fullscreenProgram);
 }
 
-void FSTexturePresenter::set_transform(GLfloat x, GLfloat y, GLfloat s, GLfloat a)
-{
-    m_translationX = x;
-    m_translationY = y;
-    m_scale = s;
-    m_rotation = a;
-}
-
-void FSTexturePresenter::draw(GLuint tex, bool specialRT)
+void FSTexturePresenter::draw(GLuint tex, bool specialRT,
+                              GLfloat x, GLfloat y, GLfloat s, GLfloat a,
+                              GLfloat vpW, GLfloat vpH)
 {
     glEnable(GL_BLEND);
     if (specialRT)
@@ -1011,9 +1013,11 @@ void FSTexturePresenter::draw(GLuint tex, bool specialRT)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }
     glUseProgram(m_fullscreenProgram);
-    glUniform2f(m_translationLoc, m_translationX, m_translationY);
-    glUniform1f(m_scaleLoc, m_scale);
-    glUniform1f(m_rotationLoc, m_rotation);
+    glUniform2f(m_translationLoc, x, y);
+    glUniform1f(m_scaleLoc, s);
+    glUniform1f(m_rotationLoc, a);
+    glUniform1f(m_vpHWLoc, 0.5f * vpW);
+    glUniform1f(m_vpHHLoc, 0.5f * vpH);
     glBindTexture(GL_TEXTURE_2D, tex);
     m_quad->draw();
     glBindTexture(GL_TEXTURE_2D, 0);
