@@ -36,6 +36,14 @@ struct input_data
     int32 mousex;
     int32 mousey;
     bool mouseleft;
+
+    int32 windowWidthPx, windowHeightPx;
+    int32 windowWidthPt, windowHeightPt;
+    int32 windowPosXPt, windowPosYPt;
+
+    int32 vpWidthPx, vpHeightPx;
+    int32 vpWidthPt, vpHeightPt;
+    float vpWidthIn, vpHeightIn;
 };
 
 struct output_data

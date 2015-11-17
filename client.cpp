@@ -873,14 +873,21 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ImGui::NewFrame();
 
     ImGui::SetNextWindowSize(ImVec2(100, 200), ImGuiSetCond_FirstUseEver);
-    ImGui::Begin("brush");
+    ImGui::Begin("vandalism");
     ImGui::ColorEdit4("color", gui_brush_color);
     ImGui::ColorEdit3("background", gui_background_color);
-    ImGui::ColorEdit3("grid bg", gui_grid_bg_color);
-    ImGui::ColorEdit3("grid fg", gui_grid_fg_color);
     ImGui::SliderInt("diameter", &gui_brush_diameter_units,
                      cfg_min_brush_diameter_units, cfg_max_brush_diameter_units);
     ImGui::SliderFloat("eraser", &gui_eraser_alpha, 0.0f, 1.0f);
+    ImGui::Separator();
+    ImGui::ColorEdit3("grid bg", gui_grid_bg_color);
+    ImGui::ColorEdit3("grid fg", gui_grid_fg_color);
+    ImGui::Separator();
+    ImGui::RadioButton("draw", &gui_tool, static_cast<int>(Vandalism::DRAW));
+    ImGui::RadioButton("erase", &gui_tool, static_cast<int>(Vandalism::ERASE));
+    ImGui::RadioButton("pan", &gui_tool, static_cast<int>(Vandalism::PAN));
+    ImGui::RadioButton("zoom", &gui_tool, static_cast<int>(Vandalism::ZOOM));
+    ImGui::RadioButton("rot", &gui_tool, static_cast<int>(Vandalism::ROTATE));
 
     ImGui::End();
 
@@ -908,12 +915,6 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     ImGui::Text("mode: %d", ism->currentMode);
 
-    ImGui::RadioButton("draw", &gui_tool, static_cast<int>(Vandalism::DRAW));
-    ImGui::RadioButton("erase", &gui_tool, static_cast<int>(Vandalism::ERASE));
-    ImGui::RadioButton("pan", &gui_tool, static_cast<int>(Vandalism::PAN));
-    ImGui::RadioButton("zoom", &gui_tool, static_cast<int>(Vandalism::ZOOM));
-    ImGui::RadioButton("rot", &gui_tool, static_cast<int>(Vandalism::ROTATE));
-
 #ifdef DEBUG_CASCADE
     ImGui::Text("test_segments: %d", seg_cnt);
 
@@ -923,6 +924,14 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     ImGui::Text("mouse occupied: %d", static_cast<int>(gui_mouse_occupied));
     ImGui::Text("mouse hover: %d", static_cast<int>(gui_mouse_hover));
+
+    ImGui::Separator();
+    ImGui::Text("vp size %d x %d pt", input->vpWidthPt, input->vpHeightPt);
+    ImGui::Text("vp size %d x %d px", input->vpWidthPx, input->vpHeightPx);
+    ImGui::Text("vp size %g x %g in", input->vpWidthIn, input->vpHeightIn);
+    ImGui::Text("win size %d x %d pt", input->windowWidthPt, input->windowHeightPt);
+    ImGui::Text("win size %d x %d px", input->windowWidthPx, input->windowHeightPx);
+    ImGui::Text("win pos %d, %d pt", input->windowPosXPt, input->windowPosYPt);
 
     ImGui::End();
 

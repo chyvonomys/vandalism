@@ -381,24 +381,26 @@ int main(int argc, char *argv[])
 
     glfwInit();
 
-    glfwWindowHint(GLFW_RESIZABLE, 0);
+    glfwWindowHint(GLFW_RESIZABLE, 1);
     glfwWindowHint(GLFW_DECORATED, 1);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, 1);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    int32 windowWidthPt = 64 + 1024 + 64;
-    int32 windowHeightPt = 64 + 512 + 64;
+    int32 initialVpWidthPt = 1024;
+    int32 initialVpHeightPt = 512;
 
-    int32 viewportWidthPt = 1024;
-    int32 viewportHeightPt = 512;
+    int32 vpPaddingPt = 64;
+
+    int32 initialWindowWidthPt = vpPaddingPt + initialVpWidthPt + vpPaddingPt;
+    int32 initialWindowHeightPt = vpPaddingPt + initialVpHeightPt + vpPaddingPt;
 
     GLsizei bufferWidthPx = 1024;
     GLsizei bufferHeightPx = 512;
 
     GLFWwindow* pWindow;
-    pWindow = glfwCreateWindow(windowWidthPt, windowHeightPt, "proto", nullptr, nullptr);
+    pWindow = glfwCreateWindow(initialWindowWidthPt, initialWindowHeightPt, "proto", nullptr, nullptr);
 
     // TODO: this doesn't seem to work, no matter what is set, frame takes ~16ms
     glfwMakeContextCurrent(pWindow);
@@ -438,28 +440,6 @@ int main(int argc, char *argv[])
     ::printf("monitor: %f x %f in\n", monitorWidthIn, monitorHeightIn);
     ::printf("monitor: %f x %f dpi\n", monitorHorDPI, monitorVerDPI);
 
-    int32 windowWidthPx, windowHeightPx;
-    glfwGetFramebufferSize(pWindow, &windowWidthPx, &windowHeightPx);
-
-    ::printf("window: %d x %d pt\n", windowWidthPt, windowHeightPt);
-    ::printf("window: %d x %d px\n", windowWidthPx, windowHeightPx);
-
-    int32 viewportWidthPx = (windowWidthPx * viewportWidthPt) / windowWidthPt;
-    int32 viewportHeightPx = (windowHeightPx * viewportHeightPt) / windowHeightPt;
-
-    float viewportWidthIn = viewportWidthPt / monitorHorDPI;
-    float viewportHeightIn = viewportHeightPt / monitorVerDPI;
-
-    ::printf("viewport: %d x %d pt\n", viewportWidthPt, viewportHeightPt);
-    ::printf("viewport: %f x %f in\n", viewportWidthIn, viewportHeightIn);
-    ::printf("viewport: %d x %d px\n", viewportWidthPx, viewportHeightPx);
-
-
-    // viewport is centered in window
-    int32 viewportLeftPx = (windowWidthPx - viewportWidthPx) / 2;
-    int32 viewportBottomPx = (windowHeightPx - viewportHeightPx) / 2;
-
-
     bool gl_ok = load_gl_functions();
 
     if (gl_ok)
@@ -481,13 +461,13 @@ int main(int argc, char *argv[])
         fs.setup(&quad);
 
         RenderTarget rt;
-        rt.setup(viewportWidthPx, viewportHeightPx);
+        rt.setup(2048, 2048);
         
         BufferPresenter blit;
         blit.setup(&quad, bufferWidthPx, bufferHeightPx);
 
         FSGrid grid;
-        grid.setup(&quad, viewportWidthPx, viewportHeightPx);
+        grid.setup(&quad, 2048, 2048);
 
         check_gl_errors("after setup");
 
@@ -530,8 +510,6 @@ int main(int argc, char *argv[])
         output.bake_tris = &bake_tris;
         output.curr_tris = &curr_tris;
         output.buffer = &buffer;
-        output.bufferHeightIn = viewportHeightIn;
-        output.bufferWidthIn = viewportWidthIn;
 
         void *lib_handle = ::dlopen("client.dylib", RTLD_LAZY);
 
@@ -605,12 +583,36 @@ int main(int argc, char *argv[])
 
             input.mouseleft =
                 (glfwGetMouseButton(pWindow, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+            glfwGetFramebufferSize(pWindow,
+                                   &input.windowWidthPx,
+                                   &input.windowHeightPx);
+
+            glfwGetWindowPos(pWindow,
+                             &input.windowPosXPt,
+                             &input.windowPosYPt);
+
+            glfwGetWindowSize(pWindow,
+                              &input.windowWidthPt,
+                              &input.windowHeightPt);
+
+            input.vpWidthPt = input.windowWidthPt - 2 * vpPaddingPt;
+            input.vpHeightPt = input.windowHeightPt - 2 * vpPaddingPt;
+
+            input.vpWidthPx = (input.windowWidthPx * input.vpWidthPt) / input.windowWidthPt;
+            input.vpHeightPx = (input.windowHeightPx * input.vpHeightPt) / input.windowHeightPt;
+
+            input.vpWidthIn = input.vpWidthPt / monitorHorDPI;
+            input.vpHeightIn = input.vpHeightPt / monitorVerDPI;
 
             // viewport is centered in window
-            double viewportLeftPt = 0.5 * (windowWidthPt - viewportWidthPt);
-            double viewportBottomPt = 0.5 * (windowHeightPt - viewportHeightPt);
-            double viewportRightPt = viewportLeftPt + viewportWidthPt;
-            double viewportTopPt = viewportBottomPt + viewportHeightPt;
+            int32 viewportLeftPx = (input.windowWidthPx - input.vpWidthPx) / 2;
+            int32 viewportBottomPx = (input.windowHeightPx - input.vpHeightPx) / 2;
+
+            // viewport is centered in window
+            double viewportLeftPt = 0.5 * (input.windowWidthPt - input.vpWidthPt);
+            double viewportBottomPt = 0.5 * (input.windowHeightPt - input.vpHeightPt);
+            double viewportRightPt = viewportLeftPt + input.vpWidthPt;
+            double viewportTopPt = viewportBottomPt + input.vpHeightPt;
 
             double mousePtX, mousePtY;
             glfwGetCursorPos(pWindow, &mousePtX, &mousePtY);
@@ -624,8 +626,8 @@ int main(int argc, char *argv[])
             mousePtY = mousePtY - viewportBottomPt;
 
             // transform to buffer Px coords
-            double mousePxX = mousePtX * bufferWidthPx / viewportWidthPt;
-            double mousePxY = mousePtY * bufferHeightPx / viewportHeightPt;
+            double mousePxX = mousePtX * bufferWidthPx / input.vpWidthPt;
+            double mousePxY = mousePtY * bufferHeightPx / input.vpHeightPt;
 
             input.mousex = mousePxX;
             input.mousey = mousePxY;
@@ -637,6 +639,9 @@ int main(int argc, char *argv[])
 
             // invert vertically
             input.mousey = bufferHeightPx - 1 - input.mousey;
+
+            output.bufferHeightIn = input.vpHeightIn;
+            output.bufferWidthIn = input.vpWidthIn;
 
             if (glfwWindowShouldClose(pWindow))
             {
@@ -674,7 +679,7 @@ int main(int argc, char *argv[])
             glClear(clear_bits);
 
             glViewport(viewportLeftPx, viewportBottomPx,
-                       viewportWidthPx, viewportHeightPx);
+                       input.vpWidthPx, input.vpHeightPx);
 
             grid.draw(output.grid_bg_color, output.grid_fg_color,
                       output.grid_translation, output.grid_zoom);
@@ -685,7 +690,7 @@ int main(int argc, char *argv[])
                     output.bufferWidthIn, output.bufferHeightIn);
 
             glViewport(viewportLeftPx, viewportBottomPx,
-                       viewportWidthPx, viewportHeightPx);
+                       input.vpWidthPx, input.vpHeightPx);
             blit.draw(pixels);
 
             TIME; // finish ---------------------------------------------------------
