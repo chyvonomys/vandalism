@@ -33,8 +33,8 @@ struct input_data
 
     uint64 nFrames;
 
-    int32 mousex;
-    int32 mousey;
+    int32 swMouseXPx;
+    int32 swMouseYPx;
     bool mouseleft;
 
     int32 windowWidthPx, windowHeightPx;
@@ -44,6 +44,8 @@ struct input_data
     int32 vpWidthPx, vpHeightPx;
     int32 vpWidthPt, vpHeightPt;
     float vpWidthIn, vpHeightIn;
+
+    float rtWidthIn, rtHeightIn;
 };
 
 struct output_data
@@ -58,9 +60,6 @@ struct output_data
     float translateY;
     float scale;
     float rotate;
-
-    float bufferWidthIn;
-    float bufferHeightIn;
 
     float bg_red;
     float bg_green;

@@ -358,18 +358,13 @@ extern "C" void cleanup()
     ImGui::Shutdown();
 }
 
-inline float2 inches2snorm(const test_point& pt, float w, float h)
-{
-    return {2.0f * pt.x / w, 2.0f * pt.y / h};
-}
-
 // TODO: this currently should be in sync with VAO and shaders, improve
 const size_t FLOATS_PER_VERTEX = 10; //xyzuvergba
 const size_t VERTS_PER_QUAD = 6; // two separate triangles
 // TODO: optimize with triangle fans/strips maybe?
 
 void add_quad_tex(triangles *tris,
-                  float2 a, float2 b, float2 c, float2 d,
+                  test_point a, test_point b, test_point c, test_point d,
                   float zindex, float ec,
                   float rc, float gc, float bc, float ac)
 {
@@ -396,7 +391,7 @@ void add_quad_tex(triangles *tris,
 }
 
 void add_quad_const(triangles *tris,
-                    float2 a, float2 b, float2 c, float2 d,
+                    test_point a, test_point b, test_point c, test_point d,
                     float zindex, float ec,
                     float rc, float gc, float bc, float ac)
 {
@@ -426,8 +421,7 @@ void fill_quads(triangles *tris,
                 const test_point *points,
                 size_t pi0, size_t pi1, size_t si,
                 const test_transform& tform,
-                const Vandalism::Brush& brush,
-                float viewportWIn, float viewportHIn)
+                const Vandalism::Brush& brush)
 {
     float radius = brush.diameter * 0.5f;
 
@@ -446,14 +440,10 @@ void fill_quads(triangles *tris,
             float2 p1l = curr + side;
             float2 p1r = curr - side;
 
-            float2 a = inches2snorm(apply_transform_pt(tform, {p0r.x, p0r.y}),
-                                        viewportWIn, viewportHIn);
-            float2 b = inches2snorm(apply_transform_pt(tform, {p0l.x, p0l.y}),
-                                        viewportWIn, viewportHIn);
-            float2 c = inches2snorm(apply_transform_pt(tform, {p1l.x, p1l.y}),
-                                        viewportWIn, viewportHIn);
-            float2 d = inches2snorm(apply_transform_pt(tform, {p1r.x, p1r.y}),
-                                        viewportWIn, viewportHIn);
+            test_point a = apply_transform_pt(tform, {p0r.x, p0r.y});
+            test_point b = apply_transform_pt(tform, {p0l.x, p0l.y});
+            test_point c = apply_transform_pt(tform, {p1l.x, p1l.y});
+            test_point d = apply_transform_pt(tform, {p1r.x, p1r.y});
 
             float zindex = 0.00001f * si;
             add_quad_const(tris, a, b, c, d, zindex, brush.e,
@@ -471,14 +461,10 @@ void fill_quads(triangles *tris,
         float2 tl = curr - right + up;
         float2 tr = curr + right + up;
 
-        float2 a = inches2snorm(apply_transform_pt(tform, {bl.x, bl.y}),
-                                viewportWIn, viewportHIn);
-        float2 b = inches2snorm(apply_transform_pt(tform, {tl.x, tl.y}),
-                                viewportWIn, viewportHIn);
-        float2 c = inches2snorm(apply_transform_pt(tform, {tr.x, tr.y}),
-                                viewportWIn, viewportHIn);
-        float2 d = inches2snorm(apply_transform_pt(tform, {br.x, br.y}),
-                                viewportWIn, viewportHIn);
+        test_point a = apply_transform_pt(tform, {bl.x, bl.y});
+        test_point b = apply_transform_pt(tform, {tl.x, tl.y});
+        test_point c = apply_transform_pt(tform, {tr.x, tr.y});
+        test_point d = apply_transform_pt(tform, {br.x, br.y});
 
         float zindex = 0.00001f * si;
         add_quad_tex(tris, a, b, c, d, zindex, brush.e,
@@ -730,18 +716,18 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 {
     offscreen_buffer *buffer = output->buffer;
 
-    float mxnorm = static_cast<float>(input->mousex) /
-                   static_cast<float>(buffer->width) - 0.5f;
+    float mxnorm = static_cast<float>(input->swMouseXPx) /
+                   static_cast<float>(output->buffer->width) - 0.5f;
 
-    float mynorm = static_cast<float>(input->mousey) /
-                   static_cast<float>(buffer->height) - 0.5f;
+    float mynorm = static_cast<float>(input->swMouseYPx) /
+                   static_cast<float>(output->buffer->height) - 0.5f;
 
-    float mxin = output->bufferWidthIn * mxnorm;
-    float myin = output->bufferHeightIn * mynorm;
+    float mxin = input->vpWidthIn * mxnorm;
+    float myin = input->vpHeightIn * mynorm;
 
     bool mouse_in_ui = gui_mouse_occupied || gui_mouse_hover;
 
-    float pixel_height_in = output->bufferHeightIn / buffer->height;
+    float pixel_height_in = input->vpHeightIn / input->vpHeightPx;
 
     Vandalism::Input ism_input;
     ism_input.tool = static_cast<Vandalism::Tool>(gui_tool);
@@ -765,10 +751,10 @@ extern "C" void update_and_render(input_data *input, output_data *output)
         output->bake_tris->size = 0;
         std::vector<test_visible> visibles;
         std::vector<test_transform> transforms;
-        test_box viewbox = {-0.5f * output->bufferWidthIn,
-                            0.5f * output->bufferWidthIn,
-                            -0.5f * output->bufferHeightIn,
-                            0.5f * output->bufferHeightIn};
+        test_box viewbox = {-0.5f * input->rtWidthIn,
+                            +0.5f * input->rtWidthIn,
+                            -0.5f * input->rtHeightIn,
+                            +0.5f * input->rtHeightIn};
 
         query(debug_data, debug_data.nviews - 1,
               viewbox, visibles, transforms,
@@ -780,8 +766,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
             const test_stroke& stroke = debug_data.strokes[vis.si];
             const Vandalism::Brush& brush = ism->brushes[stroke.brush_id];
             fill_quads(output->bake_tris, debug_data.points,
-                       stroke.pi0, stroke.pi1, vis.si, tform, brush,
-                       output->bufferWidthIn, output->bufferHeightIn);
+                       stroke.pi0, stroke.pi1, vis.si, tform, brush);
         }
 
         output->bake_flag = true;
@@ -791,10 +776,10 @@ extern "C" void update_and_render(input_data *input, output_data *output)
         ::printf("update mesh: %lu visibles\n", visibles.size());
     }
 
-    output->translateX = 2.0f * ism->shiftX / output->bufferWidthIn;
-    output->translateY = 2.0f * ism->shiftY / output->bufferHeightIn;
-    output->scale = ism->zoomCoeff;
-    output->rotate = ism->rotateAngle;
+    output->translateX = ism->shiftX;
+    output->translateY = ism->shiftY;
+    output->scale      = ism->zoomCoeff;
+    output->rotate     = ism->rotateAngle;
 
     output->bg_red   = gui_background_color[0];
     output->bg_green = gui_background_color[1];
@@ -817,8 +802,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     if (ism->get_current_brush(currBrush))
     {
         fill_quads(output->curr_tris, debug_data.points,
-                   currStart, currEnd, currId, id_transform(), currBrush,
-                   output->bufferWidthIn, output->bufferHeightIn);
+                   currStart, currEnd, currId, id_transform(), currBrush);
     }
 
     // Draw SW -----------------------------------------------------------------
@@ -837,7 +821,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     if (!mouse_in_ui)
     {
         draw_pixel(buffer,
-                   input->mousex, input->mousey,
+                   input->swMouseXPx, input->swMouseYPx,
                    pack_color(COLOR_YELLOW));
     }
 
@@ -867,7 +851,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = ImVec2(buffer->width, buffer->height);
     io.DeltaTime = 0.01666666f;
-    io.MousePos = ImVec2(input->mousex, buffer->height - 1 - input->mousey);
+    io.MousePos = ImVec2(input->swMouseXPx,
+                         buffer->height - 1 - input->swMouseYPx);
     io.MouseDown[0] = input->mouseleft;
 
     ImGui::NewFrame();
@@ -895,11 +880,19 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ImGui::Begin("debug");
     ImGui::Text("mouse-inch: (%g, %g)", mxin, myin);
     ImGui::Text("mouse-norm: (%g, %g)", mxnorm, mynorm);
-    ImGui::Text("mouse-raw: (%g, %g)",
-                static_cast<double>(input->mousex),
-                static_cast<double>(input->mousey));
+    ImGui::Text("mouse-ui-px: (%g, %g)",
+                static_cast<double>(input->swMouseXPx),
+                static_cast<double>(input->swMouseYPx));
 
     ImGui::Text("tool active: %d", static_cast<int>(ism_input.mousedown));
+
+    ImGui::Separator();
+
+    ImGui::Text("shift-inch: (%g, %g)", ism->shiftX, ism->shiftY);
+    ImGui::Text("zoom-coeff: %g", ism->zoomCoeff);
+    ImGui::Text("rotate-angle: %g", ism->rotateAngle);
+
+    ImGui::Separator();
 
     ImGui::Text("ism strokes: %lu", ism->strokes.size());
     ImGui::Text("ism points: %lu", ism->points.size());

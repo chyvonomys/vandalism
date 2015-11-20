@@ -300,7 +300,8 @@ struct FSTexturePresenter
     void setup(FSQuad *quad);
     void draw(GLuint tex, bool specialRT,
               GLfloat x, GLfloat y, GLfloat s, GLfloat a,
-              GLfloat vpW, GLfloat vpH);
+              GLfloat vpW, GLfloat vpH,
+              GLfloat rtW, GLfloat rtH);
     void cleanup();
 
     FSQuad *m_quad;
@@ -308,8 +309,8 @@ struct FSTexturePresenter
     GLint m_translationLoc;
     GLint m_scaleLoc;
     GLint m_rotationLoc;
-    GLint m_vpHWLoc;
-    GLint m_vpHHLoc;
+    GLint m_vpSizeLoc;
+    GLint m_rtSizeLoc;
 };
 
 struct FSGrid
@@ -359,9 +360,10 @@ struct MeshPresenter
     void setup();
     void cleanup();
 
-    void draw(GLuint vao, uint32 vtxCnt);
+    void draw(GLuint vao, uint32 vtxCnt, GLfloat scaleX, GLfloat scaleY);
 
     GLuint m_program;
+    GLint m_scaleLoc;
 };
 
 int main(int argc, char *argv[])
@@ -388,36 +390,6 @@ int main(int argc, char *argv[])
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, 1);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    int32 initialVpWidthPt = 1024;
-    int32 initialVpHeightPt = 512;
-
-    int32 vpPaddingPt = 64;
-
-    int32 initialWindowWidthPt = vpPaddingPt + initialVpWidthPt + vpPaddingPt;
-    int32 initialWindowHeightPt = vpPaddingPt + initialVpHeightPt + vpPaddingPt;
-
-    GLsizei bufferWidthPx = 1024;
-    GLsizei bufferHeightPx = 512;
-
-    GLFWwindow* pWindow;
-    pWindow = glfwCreateWindow(initialWindowWidthPt, initialWindowHeightPt, "proto", nullptr, nullptr);
-
-    // TODO: this doesn't seem to work, no matter what is set, frame takes ~16ms
-    glfwMakeContextCurrent(pWindow);
-    /*
-    CGLGetCurrentContext();
-    CGLSetParameter();
-    */
-#if false
-    id nsgl = (id)GLFWNative::glfwGetNSGLContext(pWindow);
-    int swapInterval = 1;
-    const int NSOpenGLCPSwapInterval = 222;
-    objc_msgSend(nsgl, sel_registerName("setValues:forParameter:"),
-                 &swapInterval, NSOpenGLCPSwapInterval);
-#else
-    glfwSwapInterval(1);
-#endif
-    
     GLFWmonitor* pMonitor = glfwGetPrimaryMonitor();
 
     int32 monitorWidthPt, monitorHeightPt;
@@ -440,6 +412,46 @@ int main(int argc, char *argv[])
     ::printf("monitor: %f x %f in\n", monitorWidthIn, monitorHeightIn);
     ::printf("monitor: %f x %f dpi\n", monitorHorDPI, monitorVerDPI);
 
+    int32 initialVpWidthPt = monitorWidthPt / 2;
+    int32 initialVpHeightPt = monitorHeightPt / 2;
+
+    int32 vpPaddingPt = 64;
+
+    int32 windowWidthPt = vpPaddingPt + initialVpWidthPt + vpPaddingPt;
+    int32 windowHeightPt = vpPaddingPt + initialVpHeightPt + vpPaddingPt;
+
+    GLsizei swWidthPx = initialVpWidthPt;
+    GLsizei swHeightPx = initialVpHeightPt;
+
+    GLFWwindow* pWindow;
+    pWindow = glfwCreateWindow(windowWidthPt, windowHeightPt,
+                               "proto", nullptr, nullptr);
+
+    int32 windowWidthPx, windowHeightPx;
+    glfwGetFramebufferSize(pWindow, &windowWidthPx, &windowHeightPx);
+
+    float pxPerPtHor = windowWidthPx / windowWidthPt;
+    float pxPerPtVer = windowHeightPx / windowHeightPt;
+
+    int32 rtWidthPx = monitorWidthPt * pxPerPtHor;
+    int32 rtHeightPx = monitorHeightPt * pxPerPtVer;
+
+    // TODO: this doesn't seem to work, no matter what is set, frame takes ~16ms
+    glfwMakeContextCurrent(pWindow);
+    /*
+    CGLGetCurrentContext();
+    CGLSetParameter();
+    */
+#if false
+    id nsgl = (id)GLFWNative::glfwGetNSGLContext(pWindow);
+    int swapInterval = 1;
+    const int NSOpenGLCPSwapInterval = 222;
+    objc_msgSend(nsgl, sel_registerName("setValues:forParameter:"),
+                 &swapInterval, NSOpenGLCPSwapInterval);
+#else
+    glfwSwapInterval(1);
+#endif
+    
     bool gl_ok = load_gl_functions();
 
     if (gl_ok)
@@ -461,13 +473,13 @@ int main(int argc, char *argv[])
         fs.setup(&quad);
 
         RenderTarget rt;
-        rt.setup(2048, 2048);
+        rt.setup(rtWidthPx, rtHeightPx);
         
         BufferPresenter blit;
-        blit.setup(&quad, bufferWidthPx, bufferHeightPx);
+        blit.setup(&quad, swWidthPx, swHeightPx);
 
-        FSGrid grid;
-        grid.setup(&quad, 2048, 2048);
+        // FSGrid grid;
+        // grid.setup(&quad, 2048, 2048);
 
         check_gl_errors("after setup");
 
@@ -475,12 +487,12 @@ int main(int argc, char *argv[])
         bgmesh.setup();
         fgmesh.setup();
 
-        GLubyte *pixels = new GLubyte[bufferWidthPx * bufferHeightPx * 4];
+        GLubyte *pixels = new GLubyte[swWidthPx * swHeightPx * 4];
 
         offscreen_buffer buffer;
         buffer.data = pixels;
-        buffer.width = bufferWidthPx;
-        buffer.height = bufferHeightPx;
+        buffer.width = swWidthPx;
+        buffer.height = swHeightPx;
 
         const uint32 VERTS_PER_TRI = 3;
         const uint32 VERT_DIM = 10; // xy and zindex and uv and e and color
@@ -604,6 +616,9 @@ int main(int argc, char *argv[])
             input.vpWidthIn = input.vpWidthPt / monitorHorDPI;
             input.vpHeightIn = input.vpHeightPt / monitorVerDPI;
 
+            input.rtWidthIn = rtWidthPx / pxPerPtHor / monitorHorDPI;
+            input.rtHeightIn = rtHeightPx / pxPerPtVer / monitorVerDPI;
+
             // viewport is centered in window
             int32 viewportLeftPx = (input.windowWidthPx - input.vpWidthPx) / 2;
             int32 viewportBottomPx = (input.windowHeightPx - input.vpHeightPx) / 2;
@@ -626,22 +641,19 @@ int main(int argc, char *argv[])
             mousePtY = mousePtY - viewportBottomPt;
 
             // transform to buffer Px coords
-            double mousePxX = mousePtX * bufferWidthPx / input.vpWidthPt;
-            double mousePxY = mousePtY * bufferHeightPx / input.vpHeightPt;
+            double swMousePxX = mousePtX * swWidthPx / input.vpWidthPt;
+            double swMousePxY = mousePtY * swHeightPx / input.vpHeightPt;
 
-            input.mousex = mousePxX;
-            input.mousey = mousePxY;
+            input.swMouseXPx = swMousePxX;
+            input.swMouseYPx = swMousePxY;
 
-            if (input.mousex == bufferWidthPx)
-                --input.mousex;
-            if (input.mousey == bufferHeightPx)
-                --input.mousey;
+            if (input.swMouseXPx == swWidthPx)
+                --input.swMouseXPx;
+            if (input.swMouseYPx == swHeightPx)
+                --input.swMouseYPx;
 
             // invert vertically
-            input.mousey = bufferHeightPx - 1 - input.mousey;
-
-            output.bufferHeightIn = input.vpHeightIn;
-            output.bufferWidthIn = input.vpWidthIn;
+            input.swMouseYPx = swHeightPx - 1 - input.swMouseYPx;
 
             if (glfwWindowShouldClose(pWindow))
             {
@@ -661,15 +673,18 @@ int main(int argc, char *argv[])
                 // TODO: ??
                 output.bake_flag = false;
                 rt.before(true);
-                render.draw(bgmesh.m_vao, bgmesh.m_vtxCnt);
-                render.draw(fgmesh.m_vao, fgmesh.m_vtxCnt);
+                render.draw(bgmesh.m_vao, bgmesh.m_vtxCnt,
+                            2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
+                render.draw(fgmesh.m_vao, fgmesh.m_vtxCnt,
+                            2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
                 rt.after();
             }
             else
             {
                 // append
                 rt.before(false);
-                render.draw(fgmesh.m_vao, fgmesh.m_vtxCnt);
+                render.draw(fgmesh.m_vao, fgmesh.m_vtxCnt,
+                            2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
                 rt.after();
             }
 
@@ -681,13 +696,14 @@ int main(int argc, char *argv[])
             glViewport(viewportLeftPx, viewportBottomPx,
                        input.vpWidthPx, input.vpHeightPx);
 
-            grid.draw(output.grid_bg_color, output.grid_fg_color,
-                      output.grid_translation, output.grid_zoom);
+            // grid.draw(output.grid_bg_color, output.grid_fg_color,
+            //           output.grid_translation, output.grid_zoom);
 
             fs.draw(rt.m_tex, true,
                     output.translateX, output.translateY,
                     output.scale, output.rotate,
-                    output.bufferWidthIn, output.bufferHeightIn);
+                    input.vpWidthIn, input.vpHeightIn,
+                    input.rtWidthIn, input.rtHeightIn);
 
             glViewport(viewportLeftPx, viewportBottomPx,
                        input.vpWidthPx, input.vpHeightPx);
@@ -718,7 +734,7 @@ int main(int argc, char *argv[])
         blit.cleanup();
         rt.cleanup();
         fs.cleanup();
-        grid.cleanup();
+        //grid.cleanup();
         quad.cleanup();
 
         delete [] bake_xys;
@@ -961,20 +977,18 @@ void FSTexturePresenter::setup(FSQuad *quad)
         "  uniform vec2 u_translation;                        \n"
         "  uniform float u_scale;                             \n"
         "  uniform float u_rotation;                          \n"
-        "  uniform float u_vpHalfWidth;                       \n"
-        "  uniform float u_vpHalfHeight;                      \n"
+        "  uniform vec2 u_rtSize;                             \n"
+        "  uniform vec2 u_vpSize;                             \n"
         "  void main()                                        \n"
         "  {                                                  \n"
-        "      float px = i_msPosition.x * u_vpHalfWidth;     \n"
-        "      float py = i_msPosition.y * u_vpHalfHeight;    \n"
+        "      vec2 xy_i = i_msPosition * u_rtSize / 2;       \n"
+        "      xy_i += u_translation;                         \n"
         "      float s = sin(u_rotation);                     \n"
         "      float c = cos(u_rotation);                     \n"
         "      vec2 X = u_scale * vec2(c, s);                 \n"
         "      vec2 Y = u_scale * vec2(-s, c);                \n"
-        "      vec2 pos = px * X + py * Y;                    \n"
-        "      gl_Position.x = pos.x / u_vpHalfWidth;         \n"
-        "      gl_Position.y = pos.y / u_vpHalfHeight;        \n"
-        "      gl_Position.xy += u_translation;               \n"
+        "      xy_i = xy_i.x * X + xy_i.y * Y;                \n"
+        "      gl_Position.xy = 2 * xy_i / u_vpSize;          \n"
         "      gl_Position.z = 0.0f;                          \n"
         "      gl_Position.w = 1.0f;                          \n"
         "      l_textureUV = i_textureUV;                     \n"
@@ -995,8 +1009,8 @@ void FSTexturePresenter::setup(FSQuad *quad)
     m_scaleLoc = glGetUniformLocation(m_fullscreenProgram, "u_scale");
     m_rotationLoc = glGetUniformLocation(m_fullscreenProgram, "u_rotation");
 
-    m_vpHWLoc = glGetUniformLocation(m_fullscreenProgram, "u_vpHalfWidth");
-    m_vpHHLoc = glGetUniformLocation(m_fullscreenProgram, "u_vpHalfHeight");
+    m_vpSizeLoc = glGetUniformLocation(m_fullscreenProgram, "u_vpSize");
+    m_rtSizeLoc = glGetUniformLocation(m_fullscreenProgram, "u_rtSize");
 }
 
 void FSTexturePresenter::cleanup()
@@ -1006,7 +1020,8 @@ void FSTexturePresenter::cleanup()
 
 void FSTexturePresenter::draw(GLuint tex, bool specialRT,
                               GLfloat x, GLfloat y, GLfloat s, GLfloat a,
-                              GLfloat vpW, GLfloat vpH)
+                              GLfloat vpW, GLfloat vpH,
+                              GLfloat rtW, GLfloat rtH)
 {
     glEnable(GL_BLEND);
     if (specialRT)
@@ -1021,8 +1036,8 @@ void FSTexturePresenter::draw(GLuint tex, bool specialRT,
     glUniform2f(m_translationLoc, x, y);
     glUniform1f(m_scaleLoc, s);
     glUniform1f(m_rotationLoc, a);
-    glUniform1f(m_vpHWLoc, 0.5f * vpW);
-    glUniform1f(m_vpHHLoc, 0.5f * vpH);
+    glUniform2f(m_rtSizeLoc, rtW, rtH);
+    glUniform2f(m_vpSizeLoc, vpW, vpH);
     glBindTexture(GL_TEXTURE_2D, tex);
     m_quad->draw();
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -1198,20 +1213,21 @@ void Mesh::update(const float *xyzuvc, uint32 vtxCnt)
 void MeshPresenter::setup()
 {
     const char *vertex_src =
-        "  #version 330 core                             \n"
-        "  layout (location = 0) in vec3 i_msPosition;   \n"
-        "  layout (location = 1) in vec3 i_uve;          \n"
-        "  layout (location = 2) in vec4 i_color;        \n"
-        "  out vec3 l_uve;                               \n"
-        "  out vec4 l_color;                             \n"
-        "  void main()                                   \n"
-        "  {                                             \n"
-        "      gl_Position.xy = i_msPosition.xy;         \n"
-        "      gl_Position.z = i_msPosition.z;           \n"
-        "      gl_Position.w = 1.0f;                     \n"
-        "      l_uve = i_uve;                            \n"
-        "      l_color = i_color;                        \n"
-        "  }                                             \n";
+        "  #version 330 core                               \n"
+        "  layout (location = 0) in vec3 i_msPosition;     \n"
+        "  layout (location = 1) in vec3 i_uve;            \n"
+        "  layout (location = 2) in vec4 i_color;          \n"
+        "  uniform vec2 u_scale;                           \n"
+        "  out vec3 l_uve;                                 \n"
+        "  out vec4 l_color;                               \n"
+        "  void main()                                     \n"
+        "  {                                               \n"
+        "      gl_Position.xy = i_msPosition.xy * u_scale; \n"
+        "      gl_Position.z = i_msPosition.z;             \n"
+        "      gl_Position.w = 1.0f;                       \n"
+        "      l_uve = i_uve;                              \n"
+        "      l_color = i_color;                          \n"
+        "  }                                               \n";
 
     const char *fragment_src =
         "  #version 330 core                                        \n"
@@ -1232,6 +1248,7 @@ void MeshPresenter::setup()
         "  }                                                        \n";
 
     m_program = ::create_program(vertex_src, nullptr, fragment_src);
+    m_scaleLoc = glGetUniformLocation(m_program, "u_scale");
 }
 
 void MeshPresenter::cleanup()
@@ -1239,13 +1256,15 @@ void MeshPresenter::cleanup()
     glDeleteProgram(m_program);
 }
 
-void MeshPresenter::draw(GLuint vao, uint32 vtxCnt)
+void MeshPresenter::draw(GLuint vao, uint32 vtxCnt,
+                         GLfloat scaleX, GLfloat scaleY)
 {
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_GREATER);
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_SRC1_ALPHA);
     glUseProgram(m_program);
+    glUniform2f(m_scaleLoc, scaleX, scaleY);
     glBindVertexArray(vao);
     glDrawArrays(GL_TRIANGLES, 0, vtxCnt);
     glBindVertexArray(0);
