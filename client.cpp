@@ -22,8 +22,8 @@ void DrawLine(const ImDrawVert &v0, const ImDrawVert &v1)
         v1.pos.y <= current_buffer->height - 1)
     {
         draw_line(current_buffer,
-                  v0.pos.x, current_buffer->height - 1 - v0.pos.y,
-                  v1.pos.x, current_buffer->height - 1 - v1.pos.y,
+                  v0.pos.x, v0.pos.y,
+                  v1.pos.x, v1.pos.y,
                   v0.col);
     }
 }
@@ -75,9 +75,7 @@ void DrawTri(const ImDrawVert &v0,
 
             if (f01 >= 0 && f12 >= 0 && f20 >= 0)
             {
-                draw_pixel(current_buffer,
-                           x, current_buffer->height - 1 - y,
-                           pcol);
+                draw_pixel(current_buffer, x, y, pcol);
             }
         }
     }
@@ -117,8 +115,7 @@ void DrawRect(const ImDrawVert &c0, const ImDrawVert &c1)
 
         draw_solid_rect(current_buffer,
                         xmin, xmax+1,
-                        current_buffer->height - 1 - ymax,
-                        current_buffer->height - ymin,
+                        ymin, ymax+1,
                         pack_color(col));
     }
     else
@@ -138,8 +135,7 @@ void DrawRect(const ImDrawVert &c0, const ImDrawVert &c1)
                                                  u, v);
             col = modulate(col, lum);
 
-            draw_pixel(current_buffer, c, current_buffer->height - 1 - r,
-                       pack_color(col));
+            draw_pixel(current_buffer, c, r, pack_color(col));
         }
 }
 
@@ -717,10 +713,12 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     offscreen_buffer *buffer = output->buffer;
 
     float mxnorm = static_cast<float>(input->swMouseXPx) /
-                   static_cast<float>(output->buffer->width) - 0.5f;
+                   static_cast<float>(input->swWidthPx) - 0.5f;
 
     float mynorm = static_cast<float>(input->swMouseYPx) /
-                   static_cast<float>(output->buffer->height) - 0.5f;
+                   static_cast<float>(input->swHeightPx) - 0.5f;
+
+    mynorm = -mynorm;
 
     float mxin = input->vpWidthIn * mxnorm;
     float myin = input->vpHeightIn * mynorm;
@@ -849,10 +847,9 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     // Draw ImGui --------------------------------------------------------------
 
     ImGuiIO& io = ImGui::GetIO();
-    io.DisplaySize = ImVec2(buffer->width, buffer->height);
+    io.DisplaySize = ImVec2(input->swWidthPx, input->swHeightPx);
     io.DeltaTime = 0.01666666f;
-    io.MousePos = ImVec2(input->swMouseXPx,
-                         buffer->height - 1 - input->swMouseYPx);
+    io.MousePos = ImVec2(input->swMouseXPx, input->swMouseYPx);
     io.MouseDown[0] = input->mouseleft;
 
     ImGui::NewFrame();

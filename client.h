@@ -46,6 +46,8 @@ struct input_data
     float vpWidthIn, vpHeightIn;
 
     float rtWidthIn, rtHeightIn;
+
+    int32 swWidthPx, swHeightPx;
 };
 
 struct output_data

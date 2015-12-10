@@ -281,13 +281,14 @@ struct FSQuad
 struct BufferPresenter
 {
     void setup(FSQuad *quad, uint32 width, uint32 height);
-    void draw(const uint8 *pixels);
+    void draw(const uint8 *pixels, GLfloat pX, GLfloat pY);
     void cleanup();
 
     GLuint m_pbo[2];
     GLuint m_tex;
     FSQuad *m_quad;
     GLuint m_fullscreenProgram;
+    GLint m_scaleLoc;
 
     uint32 m_width;
     uint32 m_height;
@@ -420,8 +421,8 @@ int main(int argc, char *argv[])
     int32 windowWidthPt = vpPaddingPt + initialVpWidthPt + vpPaddingPt;
     int32 windowHeightPt = vpPaddingPt + initialVpHeightPt + vpPaddingPt;
 
-    GLsizei swWidthPx = initialVpWidthPt;
-    GLsizei swHeightPx = initialVpHeightPt;
+    GLsizei swWidthPx = monitorWidthPt;
+    GLsizei swHeightPx = monitorHeightPt;
 
     GLFWwindow* pWindow;
     pWindow = glfwCreateWindow(windowWidthPt, windowHeightPt,
@@ -640,20 +641,17 @@ int main(int argc, char *argv[])
             mousePtX = mousePtX - viewportLeftPt;
             mousePtY = mousePtY - viewportBottomPt;
 
+            input.swWidthPx = input.vpWidthPt;
+            input.swHeightPx = input.vpHeightPt;
+
             // transform to buffer Px coords
-            double swMousePxX = mousePtX * swWidthPx / input.vpWidthPt;
-            double swMousePxY = mousePtY * swHeightPx / input.vpHeightPt;
+            double swMousePxX = mousePtX / input.vpWidthPt * input.swWidthPx;
+            double swMousePxY = mousePtY / input.vpHeightPt * input.swHeightPx;
 
             input.swMouseXPx = swMousePxX;
             input.swMouseYPx = swMousePxY;
 
-            if (input.swMouseXPx == swWidthPx)
-                --input.swMouseXPx;
-            if (input.swMouseYPx == swHeightPx)
-                --input.swMouseYPx;
-
-            // invert vertically
-            input.swMouseYPx = swHeightPx - 1 - input.swMouseYPx;
+            // NOTE: all mouse coords have Y axis pointing down.
 
             if (glfwWindowShouldClose(pWindow))
             {
@@ -707,7 +705,10 @@ int main(int argc, char *argv[])
 
             glViewport(viewportLeftPx, viewportBottomPx,
                        input.vpWidthPx, input.vpHeightPx);
-            blit.draw(pixels);
+
+            blit.draw(pixels,
+                      static_cast<float>(input.vpWidthPt) / swWidthPx,
+                      static_cast<float>(input.vpHeightPt) / swHeightPx);
 
             TIME; // finish ---------------------------------------------------------
             
@@ -761,17 +762,19 @@ void BufferPresenter::setup(FSQuad *quad, uint32 width, uint32 height)
     m_quad = quad;
 
     const char *vertex_src =
-        "  #version 330 core                             \n"
-        "  layout (location = 0) in vec2 i_msPosition;   \n"
-        "  layout (location = 1) in vec2 i_textureUV;    \n"
-        "  out vec2 l_textureUV;                         \n"
-        "  void main()                                   \n"
-        "  {                                             \n"
-        "      gl_Position.xy = i_msPosition;            \n"
-        "      gl_Position.z = 0.0f;                     \n"
-        "      gl_Position.w = 1.0f;                     \n"
-        "      l_textureUV = i_textureUV;                \n"
-        "  }                                             \n";
+        "  #version 330 core                                       \n"
+        "  layout (location = 0) in vec2 i_msPosition;             \n"
+        "  layout (location = 1) in vec2 i_textureUV;              \n"
+        "  uniform vec2 u_scale;                                   \n"
+        "  out vec2 l_textureUV;                                   \n"
+        "  void main()                                             \n"
+        "  {                                                       \n"
+        "      gl_Position.xy = i_msPosition;                      \n"
+        "      gl_Position.z = 0.0f;                               \n"
+        "      gl_Position.w = 1.0f;                               \n"
+        "      l_textureUV.x = u_scale.x * i_textureUV.x;          \n"
+        "      l_textureUV.y = u_scale.y * (1.0f - i_textureUV.y); \n"
+        "  }                                                       \n";
 
     const char *fragment_src =
         "  #version 330 core                                 \n"
@@ -784,6 +787,7 @@ void BufferPresenter::setup(FSQuad *quad, uint32 width, uint32 height)
         "  }                                                 \n";
 
     m_fullscreenProgram = ::create_program(vertex_src, nullptr, fragment_src);
+    m_scaleLoc = glGetUniformLocation(m_fullscreenProgram, "u_scale");
 
     
     glGenBuffers(2, m_pbo);
@@ -814,7 +818,7 @@ void BufferPresenter::cleanup()
     glDeleteProgram(m_fullscreenProgram);
 }
 
-void BufferPresenter::draw(const uint8* pixels)
+void BufferPresenter::draw(const uint8* pixels, GLfloat portionX, GLfloat portionY)
 {
     // PBO -dma-> texture --------------------------------------------------
 
@@ -848,6 +852,7 @@ void BufferPresenter::draw(const uint8* pixels)
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glUseProgram(m_fullscreenProgram);
+    glUniform2f(m_scaleLoc, portionX, portionY);
     glBindTexture(GL_TEXTURE_2D, m_tex);
     m_quad->draw();
     glBindTexture(GL_TEXTURE_2D, 0);
