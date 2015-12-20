@@ -77,6 +77,7 @@ LOAD(GLENABLEVERTEXATTRIBARRAY, glEnableVertexAttribArray)
 LOAD(GLVERTEXATTRIBPOINTER, glVertexAttribPointer)
 
 LOAD(GLDRAWARRAYS, glDrawArrays)
+LOAD(GLDRAWELEMENTS, glDrawElements)
 
 LOAD(GLGENBUFFERS, glGenBuffers)
 LOAD(GLBINDBUFFER, glBindBuffer)
@@ -356,6 +357,23 @@ struct Mesh
     uint32 m_vtxCnt;
 };
 
+struct IndexedMesh
+{
+    void setup();
+    void cleanup();
+
+    void update(const float *xy, uint32 vtxCnt,
+                const uint32 *ids, uint32 elemCnt);
+
+    GLuint m_vao;
+
+    GLuint m_ebo;
+    GLuint m_vbo;
+
+    uint32 m_vtxCnt;
+    uint32 m_elemCnt;
+};
+
 struct MeshPresenter
 {
     void setup();
@@ -366,6 +384,168 @@ struct MeshPresenter
     GLuint m_program;
     GLint m_scaleLoc;
 };
+
+struct UIPresenter
+{
+    void setup();
+    void cleanup();
+
+    void draw(kernel_services::TexID ti, kernel_services::MeshID mi,
+              GLuint offset, GLuint count, GLfloat vpW, GLfloat vpH);
+
+    GLuint m_program;
+    GLint m_vpSizeLoc;
+};
+
+struct Mesh2
+{
+    GLuint vao;
+    GLuint ibuf;
+    GLuint vbuf;
+    uint32 vsize;
+    uint32 isize;
+};
+
+// TODO: this runs always up
+uint32 next_mesh_idx = 0;
+const uint32 MAXMESHCNT = 20;
+Mesh2 meshes[MAXMESHCNT];
+
+// TODO: implement vertex LAYOUT and use it in all places
+
+// TODO: this is actually "create dynamic mesh of one particular layout (ui)"
+kernel_services::MeshID create_mesh()
+{
+    Mesh2 &mesh = meshes[next_mesh_idx];
+
+    const GLuint POS_LOC = 0;
+    const GLuint UV_LOC = 1;
+    const GLuint COL_LOC = 2;
+
+    const GLint POS_DIM = 2;
+    const GLint UV_DIM = 2;
+    const GLint COL_DIM = 4;
+
+    const GLuint POS_SZ = sizeof(float);
+    const GLuint UV_SZ = sizeof(float);
+    const GLuint COL_SZ = sizeof(uint8);
+
+    const GLenum POS_TYPE = GL_FLOAT;
+    const GLenum UV_TYPE = GL_FLOAT;
+    const GLenum COL_TYPE = GL_UNSIGNED_BYTE;
+
+    const GLsizei vertexSize = POS_DIM * POS_SZ + UV_DIM * UV_SZ + COL_DIM * COL_SZ;
+
+    mesh.vsize = vertexSize;
+    mesh.isize = sizeof(unsigned short);
+
+    glGenVertexArrays(1, &mesh.vao);
+
+    // vao setup
+    glBindVertexArray(mesh.vao);
+
+    glGenBuffers(1, &mesh.vbuf);
+    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbuf);
+    // TODO: initial size?
+    glBufferData(GL_ARRAY_BUFFER, 1000 * vertexSize,
+                 nullptr, GL_DYNAMIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbuf);
+    glVertexAttribPointer(POS_LOC, POS_DIM, POS_TYPE, GL_FALSE, vertexSize, 0);
+    glVertexAttribPointer(UV_LOC, UV_DIM, UV_TYPE, GL_FALSE, vertexSize,
+                          reinterpret_cast<GLvoid*>(POS_DIM * POS_SZ));
+    // NOTE: normalize=true
+    glVertexAttribPointer(COL_LOC, COL_DIM, COL_TYPE, GL_TRUE, vertexSize,
+                          reinterpret_cast<GLvoid*>(POS_DIM * POS_SZ + UV_DIM * UV_SZ));
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    glEnableVertexAttribArray(POS_LOC);
+    glEnableVertexAttribArray(UV_LOC);
+    glEnableVertexAttribArray(COL_LOC);
+
+    glBindVertexArray(0);
+
+    glGenBuffers(1, &mesh.ibuf);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.ibuf);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, 1000 * mesh.isize,
+                 nullptr, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+    ++next_mesh_idx;
+
+    return next_mesh_idx - 1;
+}
+
+void update_mesh(kernel_services::MeshID mi,
+                 const void *vtxdata, uint32 vtxcnt,
+                 const unsigned short *idxdata, uint32 idxcnt)
+{
+    glBindBuffer(GL_ARRAY_BUFFER, meshes[mi].vbuf);
+    glBufferData(GL_ARRAY_BUFFER, vtxcnt * meshes[mi].vsize,
+                 vtxdata, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, meshes[mi].ibuf);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, idxcnt * meshes[mi].isize,
+                 idxdata, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+}
+
+void delete_mesh(kernel_services::MeshID mi)
+{
+    glDeleteVertexArrays(1, &meshes[mi].vao);
+    glDeleteBuffers(1, &meshes[mi].vbuf);
+    glDeleteBuffers(1, &meshes[mi].ibuf);
+}
+
+struct Texture
+{
+    GLuint glid;
+    GLuint width;
+    GLuint height;
+};
+
+// TODO: this runs always up
+uint32 next_texture_idx = 0;
+const uint32 MAXTEXCNT = 10;
+Texture textures[MAXTEXCNT];
+
+kernel_services::TexID create_texture(uint32 w, uint32 h)
+{
+    Texture &tex = textures[next_texture_idx];
+    tex.width = w;
+    tex.height = h;
+    glGenTextures(1, &tex.glid);
+
+    glBindTexture(GL_TEXTURE_2D, tex.glid);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, w, h, 0,
+                 GL_RED, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    ++next_texture_idx;
+
+    return next_texture_idx - 1;
+}
+
+// TODO: this is alpha only
+void update_texture(kernel_services::TexID ti, const uint8 *pixels)
+{
+    glBindTexture(GL_TEXTURE_2D, textures[ti].glid);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                    textures[ti].width, textures[ti].height,
+                    GL_RED, GL_UNSIGNED_BYTE, pixels);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void delete_texture(kernel_services::TexID ti)
+{
+    glDeleteTextures(1, &textures[ti].glid);
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -516,6 +696,9 @@ int main(int argc, char *argv[])
 
         MeshPresenter render;
         render.setup();
+
+        UIPresenter uirender;
+        uirender.setup();
         
         input_data input;
         input.nFrames = 0;
@@ -548,7 +731,15 @@ int main(int argc, char *argv[])
 
         uint32 nTimePoints = 0;
 
-        (*setup)();
+        kernel_services services;
+        services.create_mesh = create_mesh;
+        services.update_mesh = update_mesh;
+        services.delete_mesh = delete_mesh;
+        services.create_texture = create_texture;
+        services.update_texture = update_texture;
+        services.delete_texture = delete_texture;
+
+        (*setup)(&services);
 
         bool reload_client = false;
         bool f9_was_up = true;
@@ -567,7 +758,7 @@ int main(int argc, char *argv[])
                 setup = (SETUP_FUNC)::dlsym(lib_handle, "setup");
                 cleanup = (CLEANUP_FUNC)::dlsym(lib_handle, "cleanup");
 
-                (*setup)();
+                (*setup)(&services);
                 reload_client = false;
                 input.nFrames = 0;
             }
@@ -710,6 +901,15 @@ int main(int argc, char *argv[])
                       static_cast<float>(input.vpWidthPt) / swWidthPx,
                       static_cast<float>(input.vpHeightPt) / swHeightPx);
 
+            for (uint32 i = 0; i < output.ui_drawcall_cnt; ++i)
+            {
+                uirender.draw(output.ui_drawcalls[i].texture_id,
+                              output.ui_drawcalls[i].mesh_id,
+                              output.ui_drawcalls[i].offset,
+                              output.ui_drawcalls[i].count,
+                              input.swWidthPx, input.swHeightPx);
+            }
+
             TIME; // finish ---------------------------------------------------------
             
             glFinish();
@@ -729,6 +929,7 @@ int main(int argc, char *argv[])
 
         (*cleanup)();
 
+        uirender.cleanup();
         render.cleanup();
         bgmesh.cleanup();
         fgmesh.cleanup();
@@ -1277,3 +1478,75 @@ void MeshPresenter::draw(GLuint vao, uint32 vtxCnt,
     glDisable(GL_BLEND);
     glDisable(GL_DEPTH_TEST);
 }
+
+
+// TODO: make this more generic by introducing scale translate
+// TODO: then it will be a reusable piece, refactor
+void UIPresenter::setup()
+{
+    const char *vertex_src =
+        "  #version 330 core                               \n"
+        "  layout (location = 0) in vec2 i_ssPosition;     \n"
+        "  layout (location = 1) in vec2 i_uv;             \n"
+        "  layout (location = 2) in vec4 i_color;          \n"
+        "  uniform vec2 u_vpSize;                          \n"
+        "  out vec2 l_uv;                                  \n"
+        "  out vec4 l_color;                               \n"
+        "  void main()                                     \n"
+        "  {                                               \n"
+        "      gl_Position.xy = i_ssPosition.xy / u_vpSize;\n"
+        "      gl_Position.xy -= vec2(0.5, 0.5);           \n"
+        "      gl_Position.xy *= vec2(2.0, -2.0);          \n"
+        "      gl_Position.z = 0.0f;                       \n"
+        "      gl_Position.w = 1.0f;                       \n"
+        "      l_uv = i_uv;                                \n"
+        "      l_color = i_color;                          \n"
+        "  }                                               \n";
+
+    const char *fragment_src =
+        "  #version 330 core                                        \n"
+        "  layout (location = 0) out vec4 o_color;                  \n"
+        "  uniform sampler2D sampler;                               \n"
+        "  in vec2 l_uv;                                            \n"
+        "  in vec4 l_color;                                         \n"
+        "  void main()                                              \n"
+        "  {                                                        \n"
+        "      float alpha = texture(sampler, l_uv).r;              \n"
+        "      o_color = l_color * alpha;                           \n"
+        "  }                                                        \n";
+
+    m_program = ::create_program(vertex_src, nullptr, fragment_src);
+
+    m_vpSizeLoc = glGetUniformLocation(m_program, "u_vpSize");
+}
+
+void UIPresenter::cleanup()
+{
+    glDeleteProgram(m_program);
+}
+
+void UIPresenter::draw(kernel_services::TexID ti, kernel_services::MeshID mi,
+                       GLuint offset, GLuint count,
+                       GLfloat vpWidth, GLfloat vpHeight)
+{
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glUseProgram(m_program);
+    glUniform2f(m_vpSizeLoc, vpWidth, vpHeight);
+    glBindTexture(GL_TEXTURE_2D, textures[ti].glid);
+
+    glBindVertexArray(meshes[mi].vao);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, meshes[mi].ibuf);
+    glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_SHORT,
+                   reinterpret_cast<GLvoid*>(offset * meshes[mi].isize));
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+    glBindVertexArray(0);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glUseProgram(0);
+    glDisable(GL_BLEND);
+}
+
+// TODO: samplers are not set up (uniform)

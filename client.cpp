@@ -5,159 +5,24 @@
 
 #include "imgui.h"
 
-offscreen_buffer *current_buffer = 0;
-
-void DrawDot(const ImDrawVert &v)
-{
-    draw_pixel(current_buffer, v.pos.x, v.pos.y, v.col);
-}
-
-void DrawLine(const ImDrawVert &v0, const ImDrawVert &v1)
-{
-    if (v0.pos.x >= 0 && v0.pos.y >= 0 &&
-        v1.pos.x >= 0 && v1.pos.y >= 0 &&
-        v0.pos.x <= current_buffer->width - 1 &&
-        v0.pos.y <= current_buffer->height - 1 &&
-        v1.pos.x <= current_buffer->width - 1 &&
-        v1.pos.y <= current_buffer->height - 1)
-    {
-        draw_line(current_buffer,
-                  v0.pos.x, v0.pos.y,
-                  v1.pos.x, v1.pos.y,
-                  v0.col);
-    }
-}
-
-void DrawTri(const ImDrawVert &v0,
-             const ImDrawVert &v1,
-             const ImDrawVert &v2)
-{
-    //DrawLine(v0, v1);
-    //DrawLine(v1, v2);
-    //DrawLine(v2, v0);
-
-    float v0x = v0.pos.x;  float v0y = v0.pos.y;
-    float v1x = v1.pos.x;  float v1y = v1.pos.y;
-    float v2x = v2.pos.x;  float v2y = v2.pos.y;
-    
-    int32 minx = si_clampf(si_minf(si_minf(v0x, v1x), v2x),
-                           0.0f, current_buffer->width-1);
-    int32 miny = si_clampf(si_minf(si_minf(v0y, v1y), v2y),
-                           0.0f, current_buffer->height-1);
-
-    int32 maxx = si_clampf(si_maxf(si_maxf(v0x, v1x), v2x),
-                           0.0f, current_buffer->width-1);
-    int32 maxy = si_clampf(si_maxf(si_maxf(v0y, v1y), v2y),
-                           0.0f, current_buffer->height-1);
-
-    color col(v0.col);
-    uint32 pcol = pack_color(col);
-
-    float a01 = v0.pos.y - v1.pos.y;
-    float a12 = v1.pos.y - v2.pos.y;
-    float a20 = v2.pos.y - v0.pos.y;
-
-    float b01 = v1.pos.x - v0.pos.x;
-    float b12 = v2.pos.x - v1.pos.x;
-    float b20 = v0.pos.x - v2.pos.x;
-
-    float c01 = v0x * v1y - v0y * v1x;
-    float c12 = v1x * v2y - v1y * v2x;
-    float c20 = v2x * v0y - v2y * v0x;
-    
-    for (int32 y = miny; y <= maxy; ++y)
-    {
-        for (int32 x = minx; x <= maxx; ++x)
-        {
-            float f01 = a01 * x + b01 * y + c01;
-            float f12 = a12 * x + b12 * y + c12;
-            float f20 = a20 * x + b20 * y + c20;
-
-            if (f01 >= 0 && f12 >= 0 && f20 >= 0)
-            {
-                draw_pixel(current_buffer, x, y, pcol);
-            }
-        }
-    }
-}
+kernel_services *current_services = 0;
+output_data *current_output = 0;
 
 
+kernel_services::TexID font_texture_id;
 
-const uint8* fontpixels;
-size_t fontpixelswidth;
-size_t fontpixelsheight;
+const uint32 UIMESHCNT = 5;
+kernel_services::MeshID ui_meshes[UIMESHCNT];
 
+const uint32 UICALLCNT = 10;
+output_data::drawcall ui_drawcalls[UICALLCNT];
 
-void DrawRect(const ImDrawVert &c0, const ImDrawVert &c1)
-{
-    float xmin = si_minf(c0.pos.x, c1.pos.x); 
-    float xmax = si_maxf(c0.pos.x, c1.pos.x); 
-
-    float ymin = si_minf(c0.pos.y, c1.pos.y); 
-    float ymax = si_maxf(c0.pos.y, c1.pos.y);
-
-    xmin = si_clampf(xmin, 0.0f, current_buffer->width - 1);
-    xmax = si_clampf(xmax, 0.0f, current_buffer->width - 1);
-
-    ymin = si_clampf(ymin, 0.0f, current_buffer->height - 1);
-    ymax = si_clampf(ymax, 0.0f, current_buffer->height - 1);
-
-    if (c0.uv.x == c1.uv.x && c0.uv.y == c1.uv.y && c0.col == c1.col)
-    {
-        float u = c0.uv.x;
-        float v = c0.uv.y;
-        float lum = sample_grayscale_texture(fontpixels,
-                                             fontpixelswidth,
-                                             fontpixelsheight,
-                                             u, v);
-        color col = c0.col;
-        col = modulate(col, lum);
-
-        draw_solid_rect(current_buffer,
-                        xmin, xmax+1,
-                        ymin, ymax+1,
-                        pack_color(col));
-    }
-    else
-    for (uint32 r = ymin; r < ymax; ++r)
-        for (uint32 c = xmin; c < xmax; ++c)
-        {
-            float s = invlerp(c0.pos.x, c1.pos.x, c);
-            float t = invlerp(c0.pos.y, c1.pos.y, r);
-
-            float u = lerp(c0.uv.x, c1.uv.x, s);
-            float v = lerp(c0.uv.y, c1.uv.y, t);
-            color col = lerp_color(color(c0.col), color(c1.col), s);
-
-            float lum = sample_grayscale_texture(fontpixels,
-                                                 fontpixelswidth,
-                                                 fontpixelsheight,
-                                                 u, v);
-            col = modulate(col, lum);
-
-            draw_pixel(current_buffer, c, r, pack_color(col));
-        }
-}
-
-void DrawRectDbg(const ImDrawVert &c0, const ImDrawVert &c1, const color &col)
-{
-    uint32 x0 = c0.pos.x;
-    uint32 x1 = c1.pos.x;
-    uint32 y0 = c0.pos.y;
-    uint32 y1 = c1.pos.y;
-    uint32 c = pack_color(col);
-    
-    draw_line(current_buffer, x0, y0, x1, y0, c);
-    draw_line(current_buffer, x0, y0, x0, y1, c);
-
-    draw_line(current_buffer, x1, y0, x1, y1, c);
-    draw_line(current_buffer, x0, y1, x1, y1, c);
-
-    draw_line(current_buffer, x0, y0, x1, y1, c);
-}
 
 void RenderImGuiDrawLists(ImDrawData *drawData)
 {
+    uint32 current_mesh_idx = 0;
+    uint32 current_drawcall_idx = 0;
+
     for (size_t li = 0; li < drawData->CmdListsCount; ++li)
     {
         const ImDrawList *drawList = drawData->CmdLists[li];
@@ -165,8 +30,10 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
         const ImDrawIdx *indexBuffer = &drawList->IdxBuffer.front();
         const ImDrawVert *vertexBuffer = &drawList->VtxBuffer.front();
 
-        size_t vtxCnt = drawList->VtxBuffer.size();
-        size_t idxCnt = drawList->IdxBuffer.size();
+        // TODO: there could be more meshes needed than allocated
+        current_services->update_mesh(ui_meshes[current_mesh_idx],
+                                      vertexBuffer, drawList->VtxBuffer.size(),
+                                      indexBuffer, drawList->IdxBuffer.size());
 
         size_t cmdCnt = drawList->CmdBuffer.size();
 
@@ -183,95 +50,30 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
             }
             else
             {
-                const uint8* texId =
-                    static_cast<const uint8*>(cmd.TextureId);
+                output_data::drawcall &drawcall = ui_drawcalls[current_drawcall_idx];
+                drawcall.texture_id = *reinterpret_cast<const uint32*>(&cmd.TextureId);
+                drawcall.mesh_id = ui_meshes[current_mesh_idx];
+                drawcall.offset = idxOffs;
+                drawcall.count = idxCnt;
 
+                ++current_drawcall_idx;
+
+                /*
                 float xmin = cmd.ClipRect.x;
                 float ymin = cmd.ClipRect.y;
                 float xmax = cmd.ClipRect.z;
                 float ymax = cmd.ClipRect.w;
-
-                for (size_t ti = idxOffs; ti < idxOffs + idxCnt;)
-                {
-                    const ImDrawIdx &i0 = indexBuffer[ti + 0];
-                    const ImDrawVert &v0 = vertexBuffer[i0];
-
-                    const ImDrawIdx &i1 = indexBuffer[ti + 1];
-                    const ImDrawVert &v1 = vertexBuffer[i1];
-
-                    const ImDrawIdx &i2 = indexBuffer[ti + 2];
-                    const ImDrawVert &v2 = vertexBuffer[i2];
-
-                    // this is last, there is no next
-                    if (ti + 3 == idxOffs + idxCnt)
-                    {
-                        DrawTri(v0, v1, v2);
-                        ti += 3;
-                    }
-                    else
-                    {
-                        const ImDrawIdx &i3 = indexBuffer[ti + 3];
-                        const ImDrawVert &v3 = vertexBuffer[i3];
-
-                        const ImDrawIdx &i4 = indexBuffer[ti + 4];
-                        const ImDrawVert &v4 = vertexBuffer[i4];
-
-                        const ImDrawIdx &i5 = indexBuffer[ti + 5];
-                        const ImDrawVert &v5 = vertexBuffer[i5];
-
-                        // a)  1 -2:4  b) 2:4- 5
-                        //     | / |       | \ | 
-                        //    0:3- 5       1 -0:3
-                        /*
-                        if (i0 == i3 && i2 == i4)
-                        {
-                            // a)
-                            if (v5.pos.x == v4.pos.x && v5.pos.y == v3.pos.y &&
-                                v1.pos.x == v0.pos.x && v1.pos.y == v2.pos.y &&
-                                v5.uv.x == v4.uv.x && v5.uv.y == v3.uv.y &&
-                                v1.uv.x == v0.uv.x && v1.uv.y == v2.uv.y)
-                            {
-                                DrawRectDbg(v1, v5, COLOR_YELLOW);
-                                ti += 6;
-                                continue;
-                            }
-                            // b)
-                            if (v5.pos.y == v4.pos.y && v5.pos.x == v3.pos.x &&
-                                v1.pos.y == v0.pos.y && v1.pos.x == v2.pos.x &&
-                                v5.uv.y == v4.uv.y && v5.uv.x == v3.uv.x &&
-                                v1.uv.y == v0.uv.y && v1.uv.x == v2.uv.x)
-                            {
-                                // NOTE: this case is used for text quads
-                                DrawRectDbg(v1, v5, COLOR_CYAN);
-                                ti += 6;
-                                continue;
-                            }
-                            // non-rectangle
-                            DrawRectDbg(v1, v5, COLOR_MAGENTA);
-                            ti += 6;
-                        }
-                        */
-                        if (i0 == i3 && i2 == i4 &&
-                            v5.pos.y == v4.pos.y && v5.pos.x == v3.pos.x &&
-                            v1.pos.y == v0.pos.y && v1.pos.x == v2.pos.x &&
-                            v5.uv.y == v4.uv.y && v5.uv.x == v3.uv.x &&
-                            v1.uv.y == v0.uv.y && v1.uv.x == v2.uv.x)
-                        {
-                            DrawRect(v1, v5);
-                            ti += 6;
-                        }
-                        else
-                        {
-                            DrawTri(v0, v1, v2);
-                            ti += 3;
-                        }
-                    }
-                }
+                */
             }
 
             idxOffs += idxCnt;
         }
+
+        ++current_mesh_idx;
     }
+
+    current_output->ui_drawcalls = ui_drawcalls;
+    current_output->ui_drawcall_cnt = current_drawcall_idx;
 }
 
 #include "vandalism.cpp"
@@ -295,7 +97,7 @@ const int32 cfg_max_brush_diameter_units = 64;
 const int32 cfg_def_brush_diameter_units = 4;
 const float cfg_brush_diameter_inches_per_unit = 1.0f / 64.0f;
 
-extern "C" void setup()
+extern "C" void setup(kernel_services *services)
 {
     ImGuiIO& io = ImGui::GetIO();
     io.RenderDrawListsFn = RenderImGuiDrawLists;
@@ -304,12 +106,16 @@ extern "C" void setup()
     int32 width, height;
     io.Fonts->GetTexDataAsAlpha8(&pixels, &width, &height);
 
-    fontpixels = new uint8[width * height];
-    fontpixelswidth = width;
-    fontpixelsheight = height;
-    ::memcpy((void*)fontpixels, pixels, width * height);
+    font_texture_id = services->create_texture(width, height);
+    services->update_texture(font_texture_id, pixels);
+    io.Fonts->TexID = reinterpret_cast<void *>(font_texture_id);
 
-    io.Fonts->TexID = const_cast<uint8*>(fontpixels);
+    for (uint32 i = 0; i < UIMESHCNT; ++i)
+    {
+        ui_meshes[i] = services->create_mesh();
+    }
+
+    current_services = services;
 
     io.Fonts->ClearInputData();
     io.Fonts->ClearTexData();
@@ -350,7 +156,13 @@ extern "C" void cleanup()
 {
     ism->cleanup();
     delete ism;
-    delete [] fontpixels;
+
+    for (uint32 i = 0; i < UIMESHCNT; ++i)
+    {
+        current_services->delete_mesh(ui_meshes[i]);
+    }
+    current_services->delete_texture(font_texture_id);
+
     ImGui::Shutdown();
 }
 
@@ -842,7 +654,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     }
 #endif
 
-    current_buffer = buffer;
+    current_output = output;
 
     // Draw ImGui --------------------------------------------------------------
 
