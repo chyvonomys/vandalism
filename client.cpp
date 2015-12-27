@@ -622,9 +622,6 @@ extern "C" void update_and_render(input_data *input, output_data *output)
         clear_buffer(buffer, COLOR_GRAY);
     }
 
-    //draw_grayscale_image(buffer, 0, 200,
-    //                     fontpixels, fontpixelswidth, fontpixelsheight);
-
     draw_timing(buffer, input->nFrames,
                 input->pTimeIntervals, input->nTimeIntervals);
 
@@ -642,14 +639,14 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     {
         seg_cnt = DrawTestAll(buffer,
                               0, 400, 0, 400,
-                              output->bufferWidthIn, output->bufferHeightIn,
+                              input->rtWidthIn, input->rtHeightIn,
                               debug_data);
     }
     else
     {
         seg_cnt = DrawTestPin(buffer,
                               0, 400, 0, 400,
-                              output->bufferWidthIn, output->bufferHeightIn,
+                              input->rtWidthIn, input->rtHeightIn,
                               debug_data, gui_viewIdx);
     }
 #endif
