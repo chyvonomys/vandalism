@@ -13,7 +13,7 @@ namespace GLFWNative
 #include <cstring>
 #include <mach/mach_time.h>
 #include <dlfcn.h>
-
+#include <vector>
 #include "client.h"
 #include "math.h"
 
@@ -344,17 +344,43 @@ struct RenderTarget
     uint32 m_height;
 };
 
+struct LocSpec
+{
+    const char *name;
+    GLenum type;
+    unsigned int dimension;
+    unsigned int size;
+    bool normalized;
+};
+
+struct VertexLayout
+{
+    const LocSpec *slots;
+    uint32 slotCnt;
+    uint32 totalSize;
+
+    void init()
+    {
+        totalSize = 0;
+        for (uint32 i = 0; i < slotCnt; ++i)
+        {
+            totalSize += slots[i].dimension * slots[i].size;
+        }
+    }
+};
+
 struct Mesh
 {
-    void setup();
+    void setup(const VertexLayout &layout);
     void cleanup();
 
-    void update(const float *xy, uint32 vtxCnt);
+    void update(const output_data::Vertex *data, uint32 vtxCnt);
 
     GLuint m_vao;
     GLuint m_vbo;
 
     uint32 m_vtxCnt;
+    uint32 m_vertexSize;
 };
 
 struct IndexedMesh
@@ -546,6 +572,12 @@ void delete_texture(kernel_services::TexID ti)
     glDeleteTextures(1, &textures[ti].glid);
 }
 
+const LocSpec strokesMeshLayout[3] =
+{
+    {"msPosition", GL_FLOAT, 3, sizeof(float), false},
+    {"uve",        GL_FLOAT, 3, sizeof(float), false},
+    {"color",      GL_FLOAT, 4, sizeof(float), false}
+};
 
 int main(int argc, char *argv[])
 {
@@ -664,9 +696,14 @@ int main(int argc, char *argv[])
 
         check_gl_errors("after setup");
 
+        VertexLayout meshLayout;
+        meshLayout.slots = strokesMeshLayout;
+        meshLayout.slotCnt = 3;
+        meshLayout.init();
+
         Mesh bgmesh, fgmesh;
-        bgmesh.setup();
-        fgmesh.setup();
+        bgmesh.setup(meshLayout);
+        fgmesh.setup(meshLayout);
 
         GLubyte *pixels = new GLubyte[swWidthPx * swHeightPx * 4];
 
@@ -675,24 +712,14 @@ int main(int argc, char *argv[])
         buffer.width = swWidthPx;
         buffer.height = swHeightPx;
 
-        const uint32 VERTS_PER_TRI = 3;
-        const uint32 VERT_DIM = 10; // xy and zindex and uv and e and color
-
         const uint32 BAKE_TRIS_CNT = 5000;
         const uint32 CURR_TRIS_CNT = 500;
 
-        GLfloat *bake_xys = new GLfloat[BAKE_TRIS_CNT * VERTS_PER_TRI * VERT_DIM];
-        GLfloat *curr_xys = new GLfloat[CURR_TRIS_CNT * VERTS_PER_TRI * VERT_DIM];
+        std::vector<output_data::Vertex> bake_tris;
+        std::vector<output_data::Vertex> curr_tris;
 
-        triangles bake_tris;
-        bake_tris.data = bake_xys;
-        bake_tris.size = 0;
-        bake_tris.capacity = BAKE_TRIS_CNT * VERTS_PER_TRI;
-
-        triangles curr_tris;
-        curr_tris.data = curr_xys;
-        curr_tris.size = 0;
-        curr_tris.capacity = CURR_TRIS_CNT * VERTS_PER_TRI;
+        bake_tris.reserve(BAKE_TRIS_CNT * 3);
+        curr_tris.reserve(CURR_TRIS_CNT * 3);
 
         MeshPresenter render;
         render.setup();
@@ -853,11 +880,11 @@ int main(int argc, char *argv[])
 
             (*upd_and_rnd)(&input, &output);
 
-            fgmesh.update(output.curr_tris->data, output.curr_tris->size);
+            fgmesh.update(output.curr_tris->data(), output.curr_tris->size());
 
             if (output.bake_flag)
             {
-                bgmesh.update(output.bake_tris->data, output.bake_tris->size);
+                bgmesh.update(output.bake_tris->data(), output.bake_tris->size());
                 // flag processed
                 // TODO: ??
                 output.bake_flag = false;
@@ -939,8 +966,6 @@ int main(int argc, char *argv[])
         //grid.cleanup();
         quad.cleanup();
 
-        delete [] bake_xys;
-        delete [] curr_xys;
         delete [] pixels;
 
         ::dlclose(lib_handle);
@@ -1359,44 +1384,39 @@ void FSGrid::cleanup()
     glDeleteProgram(m_fullscreenProgram);
 }
 
-void Mesh::setup()
+void Mesh::setup(const VertexLayout &layout)
 {
-    const GLuint POS_LOC = 0;
-    const GLuint UV_LOC = 1;
-    const GLuint COL_LOC = 2;
-
-    const GLuint POS_DIM = 3; // x, y, zindex
-    const GLuint UV_DIM = 3; // u, v, e
-    const GLuint COL_DIM = 4; // rgba
-
-    const GLsizei vertexSize = (POS_DIM + UV_DIM + COL_DIM) * sizeof(float);
+    m_vertexSize = layout.totalSize;
 
     glGenVertexArrays(1, &m_vao);
 
-    // vao setup
     glBindVertexArray(m_vao);
 
     glGenBuffers(1, &m_vbo);
     glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-    glBufferData(GL_ARRAY_BUFFER, 1500 * vertexSize,
+    glBufferData(GL_ARRAY_BUFFER, 1500 * m_vertexSize,
                  0, GL_DYNAMIC_DRAW);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-    glVertexAttribPointer(POS_LOC, POS_DIM, GL_FLOAT, GL_FALSE, vertexSize, 0);
-    glVertexAttribPointer(UV_LOC, UV_DIM, GL_FLOAT, GL_FALSE, vertexSize,
-                          reinterpret_cast<GLvoid*>(POS_DIM * sizeof(float)));
-    glVertexAttribPointer(COL_LOC, COL_DIM, GL_FLOAT, GL_FALSE, vertexSize,
-                          reinterpret_cast<GLvoid*>((POS_DIM + UV_DIM) * sizeof(float)));
+
+    uint32 offset = 0;
+    for (uint32 i = 0; i < layout.slotCnt; ++i)
+    {
+        glVertexAttribPointer(i,
+                              layout.slots[i].dimension,
+                              layout.slots[i].type,
+                              (layout.slots[i].normalized ? GL_TRUE : GL_FALSE),
+                              m_vertexSize,
+                              reinterpret_cast<GLvoid*>(offset));
+        offset += layout.slots[i].dimension * layout.slots[i].size;
+
+        glEnableVertexAttribArray(i);
+    }
+
     glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    glEnableVertexAttribArray(POS_LOC);
-    glEnableVertexAttribArray(UV_LOC);
-    glEnableVertexAttribArray(COL_LOC);
-
     glBindVertexArray(0);
-    // end vao setup
 }
 
 void Mesh::cleanup()
@@ -1405,11 +1425,11 @@ void Mesh::cleanup()
     glDeleteBuffers(1, &m_vbo);
 }
 
-void Mesh::update(const float *xyzuvc, uint32 vtxCnt)
+void Mesh::update(const output_data::Vertex *data, uint32 vtxCnt)
 {
     glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-    glBufferData(GL_ARRAY_BUFFER, vtxCnt * (3 + 3 + 4) * sizeof(float),
-                 xyzuvc, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, vtxCnt * m_vertexSize,
+                 data, GL_DYNAMIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     m_vtxCnt = vtxCnt;

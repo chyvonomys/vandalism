@@ -10,13 +10,6 @@ struct offscreen_buffer
     uint32 height;
 };
 
-struct triangles
-{
-    float *data;
-    uint32 size;
-    uint32 capacity;
-};
-
 struct kernel_services
 {
     typedef uint32 TexID;
@@ -68,8 +61,17 @@ struct input_data
 struct output_data
 {
     offscreen_buffer *buffer;
-    triangles *bake_tris;
-    triangles *curr_tris;
+
+    // TODO: should be somehow generated from layout
+    struct Vertex
+    {
+        float x, y, z;
+        float u, v, e;
+        float r, g, b, a;
+    };
+
+    std::vector<Vertex> *bake_tris;
+    std::vector<Vertex> *curr_tris;
     bool bake_flag;
 
     // baked texture quad manipulations

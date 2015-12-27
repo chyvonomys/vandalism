@@ -1,3 +1,4 @@
+#include <vector>
 #include "client.h"
 #include "math.h"
 #include "swcolor.h"
@@ -166,66 +167,39 @@ extern "C" void cleanup()
     ImGui::Shutdown();
 }
 
-// TODO: this currently should be in sync with VAO and shaders, improve
-const size_t FLOATS_PER_VERTEX = 10; //xyzuvergba
-const size_t VERTS_PER_QUAD = 6; // two separate triangles
 // TODO: optimize with triangle fans/strips maybe?
 
-void add_quad_tex(triangles *tris,
+void add_quad_tex(std::vector<output_data::Vertex> *tris,
                   test_point a, test_point b, test_point c, test_point d,
                   float zindex, float ec,
                   float rc, float gc, float bc, float ac)
 {
-    if (tris->size + VERTS_PER_QUAD <= tris->capacity)
-    {
-        float *p = tris->data + tris->size * FLOATS_PER_VERTEX;
+    output_data::Vertex v;
 
-        *p++ = a.x; *p++ = a.y; *p++ = zindex; *p++ = 0.0f, *p++ = 0.0f;
-        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
-        *p++ = b.x; *p++ = b.y; *p++ = zindex; *p++ = 0.0f, *p++ = 1.0f;
-        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
-        *p++ = c.x; *p++ = c.y; *p++ = zindex; *p++ = 1.0f, *p++ = 1.0f;
-        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
-
-        *p++ = c.x; *p++ = c.y; *p++ = zindex; *p++ = 1.0f, *p++ = 1.0f;
-        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
-        *p++ = d.x; *p++ = d.y; *p++ = zindex; *p++ = 1.0f, *p++ = 0.0f;
-        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
-        *p++ = a.x; *p++ = a.y; *p++ = zindex; *p++ = 0.0f, *p++ = 0.0f;
-        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
-
-        tris->size += VERTS_PER_QUAD;
-    }
+    v.x = a.x; v.y = a.y; v.z = zindex; v.u = 0.0f, v.v = 0.0f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
+    v.x = b.x; v.y = b.y; v.z = zindex; v.u = 0.0f, v.v = 1.0f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
+    v.x = c.x; v.y = c.y; v.z = zindex; v.u = 1.0f, v.v = 1.0f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
+    v.x = c.x; v.y = c.y; v.z = zindex; v.u = 1.0f, v.v = 1.0f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
+    v.x = d.x; v.y = d.y; v.z = zindex; v.u = 1.0f, v.v = 0.0f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
+    v.x = a.x; v.y = a.y; v.z = zindex; v.u = 0.0f, v.v = 0.0f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
 }
 
-void add_quad_const(triangles *tris,
+void add_quad_const(std::vector<output_data::Vertex> *tris,
                     test_point a, test_point b, test_point c, test_point d,
                     float zindex, float ec,
                     float rc, float gc, float bc, float ac)
 {
-    if (tris->size + VERTS_PER_QUAD <= tris->capacity)
-    {
-        float *p = tris->data + tris->size * FLOATS_PER_VERTEX;
+    output_data::Vertex v;
 
-        *p++ = a.x; *p++ = a.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
-        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
-        *p++ = b.x; *p++ = b.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
-        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
-        *p++ = c.x; *p++ = c.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
-        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
-
-        *p++ = c.x; *p++ = c.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
-        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
-        *p++ = d.x; *p++ = d.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
-        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
-        *p++ = a.x; *p++ = a.y; *p++ = zindex; *p++ = 0.5f, *p++ = 0.5f;
-        *p++ = ec; *p++ = rc; *p++ = gc; *p++ = bc; *p++ = ac;
-
-        tris->size += VERTS_PER_QUAD;
-    }
+    v.x = a.x; v.y = a.y; v.z = zindex; v.u = 0.5f, v.v = 0.5f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
+    v.x = b.x; v.y = b.y; v.z = zindex; v.u = 0.5f, v.v = 0.5f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
+    v.x = c.x; v.y = c.y; v.z = zindex; v.u = 0.5f, v.v = 0.5f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
+    v.x = c.x; v.y = c.y; v.z = zindex; v.u = 0.5f, v.v = 0.5f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
+    v.x = d.x; v.y = d.y; v.z = zindex; v.u = 0.5f, v.v = 0.5f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
+    v.x = a.x; v.y = a.y; v.z = zindex; v.u = 0.5f, v.v = 0.5f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
 }
 
-void fill_quads(triangles *tris,
+void fill_quads(std::vector<output_data::Vertex> *tris,
                 const test_point *points,
                 size_t pi0, size_t pi1, size_t si,
                 const test_transform& tform,
@@ -558,7 +532,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     if (ism->visiblesChanged)
     {
-        output->bake_tris->size = 0;
+        output->bake_tris->clear();
         std::vector<test_visible> visibles;
         std::vector<test_transform> transforms;
         test_box viewbox = {-0.5f * input->rtWidthIn,
@@ -606,7 +580,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     size_t currStart, currEnd;
     size_t currId = ism->get_current_stroke(currStart, currEnd);
 
-    output->curr_tris->size = 0;
+    output->curr_tris->clear();
 
     Vandalism::Brush currBrush;
     if (ism->get_current_brush(currBrush))
@@ -703,14 +677,14 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ImGui::Text("ism strokes: %lu", ism->strokes.size());
     ImGui::Text("ism points: %lu", ism->points.size());
 
-    ImGui::Text("bake_tris (%d/%d) %d",
-                output->bake_tris->size,
-                output->bake_tris->capacity,
+    ImGui::Text("bake_tris (%lu/%lu) %d",
+                output->bake_tris->size(),
+                output->bake_tris->capacity(),
                 output->bake_flag);
 
-    ImGui::Text("curr_tris (%d/%d)",
-                output->curr_tris->size,
-                output->curr_tris->capacity);
+    ImGui::Text("curr_tris (%lu/%lu)",
+                output->curr_tris->size(),
+                output->curr_tris->capacity());
 
     ImGui::Text("mode: %d", ism->currentMode);
 
