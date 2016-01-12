@@ -654,6 +654,18 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ImGui::RadioButton("zoom", &gui_tool, static_cast<int>(Vandalism::ZOOM));
     ImGui::RadioButton("rot", &gui_tool, static_cast<int>(Vandalism::ROTATE));
 
+    if (ism->currentMode == Vandalism::IDLE)
+    {
+        if (ImGui::Button("Save"))
+        {
+            ism->save_data("debug.ism");
+        }
+        if (ImGui::Button("Load"))
+        {
+            ism->load_data("debug.ism");
+        }
+    }
+
     ImGui::End();
 
     ImGui::SetNextWindowSize(ImVec2(200, 300), ImGuiSetCond_FirstUseEver);

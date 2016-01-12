@@ -1,4 +1,6 @@
 #include <vector>
+#include <fstream>
+#include <sstream>
 #include "cascade.cpp"
 
 struct Vandalism
@@ -320,5 +322,159 @@ struct Vandalism
         };
 
         return result;
+    }
+
+    void save_data(const char *filename)
+    {
+        std::ofstream os(filename);
+
+        for (size_t i = 0; i < points.size(); ++i)
+        {
+            os << "p " << points[i].x << ' ' << points[i].y << '\n';
+        }
+        for (size_t i = 0; i < strokes.size(); ++i)
+        {
+            os << "s " << strokes[i].pi0 << ' ' << strokes[i].pi1 << ' ' << strokes[i].brush_id << ' ' << '\n';
+        }
+        for (size_t i = 0; i < views.size(); ++i)
+        {
+            os << "v " << (views[i].tr.type == TZOOM ? "zoom" :
+                          (views[i].tr.type == TPAN ? "pan" :
+                           (views[i].tr.type == TROTATE ? "rotate" : "error")))
+               << ' ' << views[i].tr.a << ' ' << views[i].tr.b << ' ' << views[i].si0 << ' ' << views[i].si1 << '\n';
+        }
+        for (size_t i = 0; i < brushes.size(); ++i)
+        {
+            os << "b " << brushes[i].e << ' ' << brushes[i].diameter << ' '
+               << brushes[i].r << ' ' << brushes[i].g << ' ' << brushes[i].b << ' ' << brushes[i].a << '\n';
+        }
+    }
+
+    void load_data(const char *filename)
+    {
+        std::ifstream is(filename);
+        std::string line;
+        std::vector<test_point> newPoints;
+        std::vector<test_stroke> newStrokes;
+        std::vector<test_view> newViews;
+        std::vector<Brush> newBrushes;
+
+        bool ok = true;
+        size_t lineNum = 0;
+
+        while (ok && std::getline(is, line))
+        {
+            ++lineNum;
+            if (!line.empty())
+            {
+                if (line.empty())
+                {
+                    ok = false;
+                }
+                else if (*line.c_str() == 'p')
+                {
+                    std::istringstream ss(line);
+                    ss.seekg(2);
+                    test_point pt;
+                    ok = !(ss >> pt.x >> pt.y).fail();
+                    if (ok)
+                    {
+                        newPoints.push_back(pt);
+                    }
+                }
+                else if (*line.c_str() == 's')
+                {
+                    std::istringstream ss(line);
+                    ss.seekg(2);
+                    test_stroke st;
+                    ok = !(ss >> st.pi0 >> st.pi1 >> st.brush_id).fail();
+                    if (ok)
+                    {
+                        newStrokes.push_back(st);
+                    }
+                }
+                else if (*line.c_str() == 'v')
+                {
+                    std::istringstream ss(line);
+                    ss.seekg(2);
+                    test_view vi;
+                    std::string ttype;
+                    ok = !(ss >> ttype >> vi.tr.a >> vi.tr.b
+                           >> vi.si0 >> vi.si1).fail();
+                    if (ok)
+                    {
+                        if (ttype == "pan")
+                        {
+                            vi.tr.type = TPAN;
+                        }
+                        else if (ttype == "zoom")
+                        {
+                            vi.tr.type = TZOOM;
+                        }
+                        else if (ttype == "rotate")
+                        {
+                            vi.tr.type = TROTATE;
+                        }
+                        else
+                        {
+                            ok = false;
+                            break;
+                        }
+                        newViews.push_back(vi);
+                    }
+                }
+                else if (*line.c_str() == 'b')
+                {
+                    std::istringstream ss(line);
+                    ss.seekg(2);
+                    Brush br;
+                    ok = !(ss >> br.e >> br.diameter
+                           >> br.r >> br.g >> br.b >> br.a).fail();
+                    if (ok)
+                    {
+                        newBrushes.push_back(br);
+                    }
+                }
+                else if (*line.c_str() == '#')
+                {
+                    // skip
+                }
+                else
+                {
+                    ok = false;
+                }
+            }
+        }
+
+        // TODO: validation
+
+        // calculate bboxes of strokes
+        for (size_t si = 0; si < newStrokes.size(); ++si)
+        {
+            for (size_t pi = newStrokes[si].pi0; pi < newStrokes[si].pi1; ++pi)
+            {
+                newStrokes[si].bbox.add(newPoints[pi]);
+            }
+            newStrokes[si].bbox.grow(0.5f * newBrushes[newStrokes[si].brush_id].diameter);
+        }
+
+        // calculate bboxes of views
+        for (size_t vi = 0; vi < newViews.size(); ++vi)
+        {
+            for (size_t si = newViews[vi].si0; si < newViews[vi].si1; ++si)
+            {
+                newViews[vi].bbox.add_box(newStrokes[si].bbox);
+            }
+        }
+
+        if (ok)
+        {
+            brushes = newBrushes;
+            views = newViews;
+            strokes = newStrokes;
+            points = newPoints;
+
+            visiblesChanged = true;
+        }
     }
 };
