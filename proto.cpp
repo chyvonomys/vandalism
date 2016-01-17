@@ -301,14 +301,17 @@ struct FSTexturePresenter
 {
     void setup(FSQuad *quad);
     void draw(GLuint tex, bool specialRT,
-              GLfloat x, GLfloat y, GLfloat s, GLfloat a,
+              GLfloat x, GLfloat y,
+              GLfloat x_, GLfloat y_,
+              GLfloat s, GLfloat a,
               GLfloat vpW, GLfloat vpH,
               GLfloat rtW, GLfloat rtH);
     void cleanup();
 
     FSQuad *m_quad;
     GLuint m_fullscreenProgram;
-    GLint m_translationLoc;
+    GLint m_preTranslationLoc;
+    GLint m_postTranslationLoc;
     GLint m_scaleLoc;
     GLint m_rotationLoc;
     GLint m_vpSizeLoc;
@@ -916,7 +919,8 @@ int main(int argc, char *argv[])
             //           output.grid_translation, output.grid_zoom);
 
             fs.draw(rt.m_tex, true,
-                    output.translateX, output.translateY,
+                    output.preTranslateX, output.preTranslateY,
+                    output.postTranslateX, output.postTranslateY,
                     output.scale, output.rotate,
                     input.vpWidthIn, input.vpHeightIn,
                     input.rtWidthIn, input.rtHeightIn);
@@ -1205,7 +1209,8 @@ void FSTexturePresenter::setup(FSQuad *quad)
         "  layout (location = 0) in vec2 i_msPosition;        \n"
         "  layout (location = 1) in vec2 i_textureUV;         \n"
         "  out vec2 l_textureUV;                              \n"
-        "  uniform vec2 u_translation;                        \n"
+        "  uniform vec2 u_preTranslation;                     \n"
+        "  uniform vec2 u_postTranslation;                    \n"
         "  uniform float u_scale;                             \n"
         "  uniform float u_rotation;                          \n"
         "  uniform vec2 u_rtSize;                             \n"
@@ -1213,12 +1218,13 @@ void FSTexturePresenter::setup(FSQuad *quad)
         "  void main()                                        \n"
         "  {                                                  \n"
         "      vec2 xy_i = i_msPosition * u_rtSize / 2;       \n"
-        "      xy_i += u_translation;                         \n"
+        "      xy_i += u_preTranslation;                      \n"
         "      float s = sin(u_rotation);                     \n"
         "      float c = cos(u_rotation);                     \n"
         "      vec2 X = u_scale * vec2(c, s);                 \n"
         "      vec2 Y = u_scale * vec2(-s, c);                \n"
         "      xy_i = xy_i.x * X + xy_i.y * Y;                \n"
+        "      xy_i += u_postTranslation;                     \n"
         "      gl_Position.xy = 2 * xy_i / u_vpSize;          \n"
         "      gl_Position.z = 0.0f;                          \n"
         "      gl_Position.w = 1.0f;                          \n"
@@ -1236,7 +1242,9 @@ void FSTexturePresenter::setup(FSQuad *quad)
         "  }                                                 \n";
 
     m_fullscreenProgram = ::create_program(vertex_src, nullptr, fragment_src);
-    m_translationLoc = glGetUniformLocation(m_fullscreenProgram, "u_translation");
+    m_preTranslationLoc = glGetUniformLocation(m_fullscreenProgram, "u_preTranslation");
+    m_postTranslationLoc = glGetUniformLocation(m_fullscreenProgram, "u_postTranslation");
+
     m_scaleLoc = glGetUniformLocation(m_fullscreenProgram, "u_scale");
     m_rotationLoc = glGetUniformLocation(m_fullscreenProgram, "u_rotation");
 
@@ -1250,7 +1258,9 @@ void FSTexturePresenter::cleanup()
 }
 
 void FSTexturePresenter::draw(GLuint tex, bool specialRT,
-                              GLfloat x, GLfloat y, GLfloat s, GLfloat a,
+                              GLfloat x, GLfloat y,
+                              GLfloat x_, GLfloat y_,
+                              GLfloat s, GLfloat a,
                               GLfloat vpW, GLfloat vpH,
                               GLfloat rtW, GLfloat rtH)
 {
@@ -1264,7 +1274,8 @@ void FSTexturePresenter::draw(GLuint tex, bool specialRT,
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }
     glUseProgram(m_fullscreenProgram);
-    glUniform2f(m_translationLoc, x, y);
+    glUniform2f(m_preTranslationLoc, x, y);
+    glUniform2f(m_postTranslationLoc, x_, y_);
     glUniform1f(m_scaleLoc, s);
     glUniform1f(m_rotationLoc, a);
     glUniform2f(m_rtSizeLoc, rtW, rtH);

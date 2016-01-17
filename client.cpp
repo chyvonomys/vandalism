@@ -560,8 +560,10 @@ extern "C" void update_and_render(input_data *input, output_data *output)
         ::printf("update mesh: %lu visibles\n", visibles.size());
     }
 
-    output->translateX = ism->shiftX;
-    output->translateY = ism->shiftY;
+    output->preTranslateX = ism->preShiftX;
+    output->preTranslateY = ism->preShiftY;
+    output->postTranslateX = ism->postShiftX;
+    output->postTranslateY = ism->postShiftY;
     output->scale      = ism->zoomCoeff;
     output->rotate     = ism->rotateAngle;
 
@@ -605,6 +607,12 @@ extern "C" void update_and_render(input_data *input, output_data *output)
                    input->swMouseXPx, input->swMouseYPx,
                    pack_color(COLOR_YELLOW));
     }
+
+    int fXPx = (ism->firstX / input->vpWidthIn + 0.5f) * input->swWidthPx;
+    int fYPx = (0.5f - ism->firstY / input->vpHeightIn) * input->swHeightPx;
+
+    draw_line(buffer, fXPx-2, fYPx, fXPx+2, fYPx, pack_color(COLOR_RED));
+    draw_line(buffer, fXPx, fYPx-2, fXPx, fYPx+2, pack_color(COLOR_RED));
 
 #ifdef DEBUG_CASCADE
     uint32 seg_cnt = 0;
@@ -653,6 +661,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ImGui::RadioButton("pan", &gui_tool, static_cast<int>(Vandalism::PAN));
     ImGui::RadioButton("zoom", &gui_tool, static_cast<int>(Vandalism::ZOOM));
     ImGui::RadioButton("rot", &gui_tool, static_cast<int>(Vandalism::ROTATE));
+    ImGui::RadioButton("first", &gui_tool, static_cast<int>(Vandalism::FIRST));
+    ImGui::RadioButton("second", &gui_tool, static_cast<int>(Vandalism::SECOND));
 
     if (ism->currentMode == Vandalism::IDLE)
     {
@@ -680,7 +690,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     ImGui::Separator();
 
-    ImGui::Text("shift-inch: (%g, %g)", ism->shiftX, ism->shiftY);
+    ImGui::Text("shift-inch: (%g, %g)", ism->postShiftX, ism->postShiftY);
     ImGui::Text("zoom-coeff: %g", ism->zoomCoeff);
     ImGui::Text("rotate-angle: %g", ism->rotateAngle);
 

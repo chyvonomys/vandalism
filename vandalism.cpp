@@ -32,8 +32,10 @@ struct Vandalism
 
     float panStartX;
     float panStartY;
-    float shiftX;
-    float shiftY;
+    float preShiftX;
+    float preShiftY;
+    float postShiftX;
+    float postShiftY;
 
     // ZOOM related
 
@@ -44,6 +46,16 @@ struct Vandalism
 
     float rotateStartX;
     float rotateAngle;
+
+    // FIRST/SECOND related
+
+    float firstX;
+    float firstY;
+
+    float secondX0;
+    float secondY0;
+    float secondX1;
+    float secondY1;
 
     struct Pan
     {
@@ -58,7 +70,9 @@ struct Vandalism
         PANNING  = 2,
         ZOOMING  = 3,
         ROTATING = 4,
-        MODECNT  = 5
+        PLACING1 = 5,
+        MOVING2  = 6,
+        MODECNT  = 7
     };
 
     enum Tool
@@ -67,7 +81,9 @@ struct Vandalism
         ERASE  = 1,
         PAN    = 2,
         ZOOM   = 3,
-        ROTATE = 4
+        ROTATE = 4,
+        FIRST  = 5,
+        SECOND = 6
     };
 
     struct Input
@@ -84,6 +100,17 @@ struct Vandalism
 
     typedef void (Vandalism::*MC_FN)(const Input *);
 
+
+    void remove_alterations()
+    {
+        preShiftX = 0.0f;
+        preShiftY = 0.0f;
+        postShiftX = 0.0f;
+        postShiftY = 0.0f;
+
+        zoomCoeff = 1.0f;
+        rotateAngle = 0.0f;
+    }
 
     void idle(const Input *) {}
     void illegal(const Input *) {}
@@ -102,7 +129,8 @@ struct Vandalism
         views.push_back({TROTATE,
                 -angle, 0.0f,
                 strokes.size(), strokes.size()});
-        rotateAngle = 0.0f;
+
+        remove_alterations();
 
         visiblesChanged = true; // TODO: really? depends on boundary shape
     }
@@ -129,7 +157,8 @@ struct Vandalism
         views.push_back({TZOOM,
                 input->mousex, zoomStartX,
                 strokes.size(), strokes.size()});
-        zoomCoeff = 1.0f;
+
+        remove_alterations();
 
         visiblesChanged = true;
     }
@@ -142,8 +171,8 @@ struct Vandalism
 
     void do_pan(const Input *input)
     {
-        shiftX = input->mousex - panStartX;
-        shiftY = input->mousey - panStartY;
+        postShiftX = input->mousex - panStartX;
+        postShiftY = input->mousey - panStartY;
     }
 
     void done_pan(const Input *input)
@@ -154,8 +183,7 @@ struct Vandalism
                 -(input->mousey - panStartY),
                 strokes.size(), strokes.size()});
 
-        shiftX = 0.0f;
-        shiftY = 0.0f;
+        remove_alterations();
 
         visiblesChanged = true;
     }
@@ -211,23 +239,113 @@ struct Vandalism
         visiblesChanged = true;
     }
 
-    MC_FN mode_change_handlers[MODECNT][MODECNT] =
+    void place1(const Input *input)
     {
-        // to ->      IDLE                     DRAW                    PAN                    ZOOM                    ROTATE
-        /* IDLE */   {&Vandalism::idle,        &Vandalism::start_draw, &Vandalism::start_pan, &Vandalism::start_zoom, &Vandalism::start_rotate},
-        /* DRAW */   {&Vandalism::done_draw,   &Vandalism::do_draw,    &Vandalism::illegal,   &Vandalism::illegal,    &Vandalism::illegal},
-        /* PAN */    {&Vandalism::done_pan,    &Vandalism::illegal,    &Vandalism::do_pan,    &Vandalism::illegal,    &Vandalism::illegal},
-        /* ZOOM */   {&Vandalism::done_zoom,   &Vandalism::illegal,    &Vandalism::illegal,   &Vandalism::do_zoom,    &Vandalism::illegal},
-        /* ROTATE */ {&Vandalism::done_rotate, &Vandalism::illegal,    &Vandalism::illegal,   &Vandalism::illegal,    &Vandalism::do_rotate}
-    };
+        firstX = input->mousex;
+        firstY = input->mousey;
+    }
+
+    void start_move2(const Input *input)
+    {
+        secondX0 = input->mousex;
+        secondY0 = input->mousey;
+    }
+
+    void do_move2(const Input *input)
+    {
+        secondX1 = input->mousex;
+        secondY1 = input->mousey;
+
+        float2 f = {firstX, firstY};
+        float2 s0 = {secondX0, secondY0};
+        float2 s1 = {secondX1, secondY1};
+
+        float2 d0 = s0 - f;
+        float2 d1 = s1 - f;
+
+        float a0 = atan2(d0.y, d0.x);
+        float a1 = atan2(d1.y, d1.x);
+
+        preShiftX = -f.x;
+        preShiftY = -f.y;
+        postShiftX = f.x;
+        postShiftY = f.y;
+
+        zoomCoeff = len(d1) / len(d0);
+        rotateAngle = a1 - a0;
+    }
+
+    void done_move2(const Input *input)
+    {
+        secondX1 = input->mousex;
+        secondY1 = input->mousey;
+
+        float2 f = {firstX, firstY};
+        float2 s0 = {secondX0, secondY0};
+        float2 s1 = {secondX1, secondY1};
+
+        float2 d0 = s0 - f;
+        float2 d1 = s1 - f;
+
+        pin = views.size();
+        views.push_back({TPAN,
+                f.x, f.y,
+                strokes.size(), strokes.size()});
+
+        pin = views.size();
+        float a0 = atan2(d0.y, d0.x);
+        float a1 = atan2(d1.y, d1.x);
+
+        views.push_back({TROTATE,
+                a0 - a1, 0.0f,
+                strokes.size(), strokes.size()});
+
+        pin = views.size();
+        views.push_back({TZOOM,
+                len(d1), len(d0),
+                strokes.size(), strokes.size()});
+
+        pin = views.size();
+        views.push_back({TPAN,
+                -f.x, -f.y,
+                strokes.size(), strokes.size()});
+
+        remove_alterations();
+
+        visiblesChanged = true;
+    }
+
+    MC_FN from_idle_handlers[MODECNT] =
+    {&Vandalism::idle, &Vandalism::start_draw, &Vandalism::start_pan, &Vandalism::start_zoom,
+     &Vandalism::start_rotate, &Vandalism::place1, &Vandalism::start_move2};
+
+    MC_FN to_idle_handlers[MODECNT] =
+    {&Vandalism::idle, &Vandalism::done_draw, &Vandalism::done_pan, &Vandalism::done_zoom,
+     &Vandalism::done_rotate, &Vandalism::place1, &Vandalism::done_move2};
+
+    MC_FN same_mode_handlers[MODECNT] =
+    {&Vandalism::idle, &Vandalism::do_draw, &Vandalism::do_pan, &Vandalism::do_zoom,
+     &Vandalism::do_rotate, &Vandalism::place1, &Vandalism::do_move2};
+
+    MC_FN mode_change_handlers(Mode from, Mode to)
+    {
+        if (from == IDLE)
+            return from_idle_handlers[to];
+        if (to == IDLE)
+            return to_idle_handlers[from];
+        if (from == to)
+            return same_mode_handlers[from];
+
+        return &Vandalism::illegal;
+    }
 
     void handle_mode_change(Mode prevMode, Mode currMode, Input *input)
     {
-        MC_FN fn = mode_change_handlers[prevMode][currMode];
+        MC_FN fn = mode_change_handlers(prevMode, currMode);
         if (fn == &Vandalism::illegal)
         {
-            MC_FN toIdle = mode_change_handlers[prevMode][IDLE];
-            MC_FN fromIdle = mode_change_handlers[IDLE][currMode];
+            MC_FN toIdle = mode_change_handlers(prevMode, IDLE);
+            MC_FN fromIdle = mode_change_handlers(IDLE, currMode);
 
             (this->*toIdle)(input);
             (this->*fromIdle)(input);
@@ -253,6 +371,10 @@ struct Vandalism
                 return ZOOMING;
             case ROTATE:
                 return ROTATING;
+            case FIRST:
+                return PLACING1;
+            case SECOND:
+                return MOVING2;
             }
         }
         return IDLE;
@@ -276,10 +398,10 @@ struct Vandalism
 
         pin = 0;
 
-        shiftX = 0.0f;
-        shiftY = 0.0f;
-        zoomCoeff = 1.0f;
-        rotateAngle = 0.0f;
+        firstX = 0.0f;
+        firstY = 0.0f;
+
+        remove_alterations();
     }
 
     void cleanup()

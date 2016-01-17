@@ -75,8 +75,10 @@ struct output_data
     bool bake_flag;
 
     // baked texture quad manipulations
-    float translateX;
-    float translateY;
+    float preTranslateX;
+    float preTranslateY;
+    float postTranslateX;
+    float postTranslateY;
     float scale;
     float rotate;
 
