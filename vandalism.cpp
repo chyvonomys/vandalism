@@ -595,6 +595,7 @@ struct Vandalism
             views = newViews;
             strokes = newStrokes;
             points = newPoints;
+            pin = views.size() - 1;
 
             visiblesChanged = true;
         }
