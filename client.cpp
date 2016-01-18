@@ -12,17 +12,17 @@ output_data *current_output = 0;
 
 kernel_services::TexID font_texture_id;
 
-const uint32 UIMESHCNT = 5;
-kernel_services::MeshID ui_meshes[UIMESHCNT];
-
-const uint32 UICALLCNT = 10;
-output_data::drawcall ui_drawcalls[UICALLCNT];
-
+std::vector<kernel_services::MeshID> ui_meshes;
+std::vector<output_data::drawcall> ui_drawcalls;
 
 void RenderImGuiDrawLists(ImDrawData *drawData)
 {
-    uint32 current_mesh_idx = 0;
-    uint32 current_drawcall_idx = 0;
+    while (drawData->CmdListsCount > ui_meshes.size())
+    {
+        ui_meshes.push_back(current_services->create_mesh());
+    }
+
+    ui_drawcalls.clear();
 
     for (size_t li = 0; li < drawData->CmdListsCount; ++li)
     {
@@ -31,8 +31,7 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
         const ImDrawIdx *indexBuffer = &drawList->IdxBuffer.front();
         const ImDrawVert *vertexBuffer = &drawList->VtxBuffer.front();
 
-        // TODO: there could be more meshes needed than allocated
-        current_services->update_mesh(ui_meshes[current_mesh_idx],
+        current_services->update_mesh(ui_meshes[li],
                                       vertexBuffer, drawList->VtxBuffer.size(),
                                       indexBuffer, drawList->IdxBuffer.size());
 
@@ -51,13 +50,13 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
             }
             else
             {
-                output_data::drawcall &drawcall = ui_drawcalls[current_drawcall_idx];
+                output_data::drawcall drawcall;
                 drawcall.texture_id = *reinterpret_cast<const uint32*>(&cmd.TextureId);
-                drawcall.mesh_id = ui_meshes[current_mesh_idx];
+                drawcall.mesh_id = ui_meshes[li];
                 drawcall.offset = idxOffs;
                 drawcall.count = idxCnt;
 
-                ++current_drawcall_idx;
+                ui_drawcalls.push_back(drawcall);
 
                 /*
                 float xmin = cmd.ClipRect.x;
@@ -69,12 +68,10 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
 
             idxOffs += idxCnt;
         }
-
-        ++current_mesh_idx;
     }
 
-    current_output->ui_drawcalls = ui_drawcalls;
-    current_output->ui_drawcall_cnt = current_drawcall_idx;
+    current_output->ui_drawcalls = ui_drawcalls.data();
+    current_output->ui_drawcall_cnt = ui_drawcalls.size();
 }
 
 #include "vandalism.cpp"
@@ -98,10 +95,15 @@ const int32 cfg_max_brush_diameter_units = 64;
 const int32 cfg_def_brush_diameter_units = 4;
 const float cfg_brush_diameter_inches_per_unit = 1.0f / 64.0f;
 
+uint32 timingX;
+
+ImGuiTextBuffer *viewsBuf;
+
 extern "C" void setup(kernel_services *services)
 {
     ImGuiIO& io = ImGui::GetIO();
     io.RenderDrawListsFn = RenderImGuiDrawLists;
+    viewsBuf = new ImGuiTextBuffer;
 
     uint8 *pixels;
     int32 width, height;
@@ -110,11 +112,6 @@ extern "C" void setup(kernel_services *services)
     font_texture_id = services->create_texture(width, height);
     services->update_texture(font_texture_id, pixels);
     io.Fonts->TexID = reinterpret_cast<void *>(font_texture_id);
-
-    for (uint32 i = 0; i < UIMESHCNT; ++i)
-    {
-        ui_meshes[i] = services->create_mesh();
-    }
 
     current_services = services;
 
@@ -151,6 +148,8 @@ extern "C" void setup(kernel_services *services)
 
     gui_mouse_occupied = false;
     gui_mouse_hover = false;
+
+    timingX = 0;
 }
 
 extern "C" void cleanup()
@@ -158,11 +157,17 @@ extern "C" void cleanup()
     ism->cleanup();
     delete ism;
 
-    for (uint32 i = 0; i < UIMESHCNT; ++i)
+    for (uint32 i = 0; i < ui_meshes.size(); ++i)
     {
         current_services->delete_mesh(ui_meshes[i]);
     }
+
+    ui_meshes.clear();
+    ui_drawcalls.clear();
+
     current_services->delete_texture(font_texture_id);
+
+    delete viewsBuf;
 
     ImGui::Shutdown();
 }
@@ -254,10 +259,9 @@ void fill_quads(std::vector<output_data::Vertex> *tris,
     }
 }
 
-void draw_timing(offscreen_buffer *buffer, uint32 frame,
+uint32 draw_timing(offscreen_buffer *buffer, uint32 framex,
                  double *intervals, uint32 intervalCnt)
 {
-    uint32 framex = 2 * frame % buffer->width;
     uint32 maxy = buffer->height - 1;
     double maxti = 200; // ms
     double sum = 0.0;
@@ -303,6 +307,8 @@ void draw_timing(offscreen_buffer *buffer, uint32 frame,
         draw_line(buffer, 0, targetmsy, buffer->width - 1, targetmsy,
                   pack_color(COLOR_CYAN));
     }
+
+    return framex + 2;
 }
 
 void DrawTestSegment(offscreen_buffer *buffer,
@@ -530,6 +536,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     const test_data &debug_data = ism->get_debug_data();
 
+    bool scrollViewsDown = false;
+
     if (ism->visiblesChanged)
     {
         output->bake_tris->clear();
@@ -558,6 +566,19 @@ extern "C" void update_and_render(input_data *input, output_data *output)
         // TODO: make this better
         ism->visiblesChanged = false;
         ::printf("update mesh: %lu visibles\n", visibles.size());
+
+        viewsBuf->clear();
+        for (uint32 vi = 0; vi < debug_data.nviews; ++vi)
+        {
+            const auto &view = debug_data.views[vi];
+            auto t = view.tr.type;
+            const char *typestr = (t == TZOOM ? "ZOOM" :
+                                   (t == TPAN ? "PAN" :
+                                    (t == TROTATE ? "ROTATE" : "ERROR")));
+            viewsBuf->append("%d: %s  %f/%f  (%ld..%ld)\n",
+                            vi, typestr, view.tr.a, view.tr.b, view.si0, view.si1);
+        }
+        scrollViewsDown = true;
     }
 
     output->preTranslateX = ism->preShiftX;
@@ -596,10 +617,13 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     if (input->nFrames == 1)
     {
         clear_buffer(buffer, COLOR_GRAY);
+        timingX = 0;
     }
 
-    draw_timing(buffer, input->nFrames,
+    timingX = draw_timing(buffer, timingX,
                 input->pTimeIntervals, input->nTimeIntervals);
+
+    timingX = timingX % input->swWidthPx;
 
     if (!mouse_in_ui)
     {
@@ -676,6 +700,15 @@ extern "C" void update_and_render(input_data *input, output_data *output)
         }
     }
 
+    ImGui::End();
+
+    ImGui::SetNextWindowSize(ImVec2(200, 300), ImGuiSetCond_FirstUseEver);
+    ImGui::Begin("views");
+    ImGui::TextUnformatted(viewsBuf->begin());
+    if (scrollViewsDown)
+    {
+        ImGui::SetScrollHere(1.0f);
+    }
     ImGui::End();
 
     ImGui::SetNextWindowSize(ImVec2(200, 300), ImGuiSetCond_FirstUseEver);
