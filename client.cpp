@@ -694,9 +694,15 @@ extern "C" void update_and_render(input_data *input, output_data *output)
         {
             ism->save_data("debug.ism");
         }
+        ImGui::SameLine();
         if (ImGui::Button("Load"))
         {
             ism->load_data("debug.ism");
+        }
+        ImGui::SameLine();
+        if (ism->undoable() && ImGui::Button("Undo"))
+        {
+            ism->undo();
         }
     }
 

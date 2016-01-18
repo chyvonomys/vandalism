@@ -446,6 +446,54 @@ struct Vandalism
         return result;
     }
 
+    bool undoable()
+    {
+        return check_undo(false);
+    }
+
+    void undo()
+    {
+        if (check_undo(true))
+        {
+            visiblesChanged = true;
+        }
+    }
+
+    bool check_undo(bool really)
+    {
+        if (pin != views.size() - 1)
+        {
+            return false;
+        }
+        else if (views.back().si1 == views.back().si0)
+        {
+            if (views.size() > 1)
+            {
+                if (really)
+                {
+                    views.pop_back();
+                    --pin;
+                }
+                return true;
+            }
+        }
+        else if (views.back().si1 > views.back().si0)
+        {
+            if (really)
+            {
+                uint32 deleteCnt = strokes.back().pi1 - strokes.back().pi0;
+                for (uint32 i = 0; i < deleteCnt; ++i)
+                {
+                    points.pop_back();
+                }
+                strokes.pop_back();
+                --views.back().si1;
+            }
+            return true;
+        }
+        return false;
+    }
+
     void save_data(const char *filename)
     {
         std::ofstream os(filename);
