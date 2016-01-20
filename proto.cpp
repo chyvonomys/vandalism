@@ -24,7 +24,7 @@ typedef bool (*gl_func_initr)();
 gl_func_initr g_initrs[GL_FUNCTIONS_CAPACITY];
 size_t g_size = 0;
 
-#define ASSERT(cond) if (!(cond)) *(volatile int *)0 = 1;
+#define ASSERT(cond) if (!(cond)) *reinterpret_cast<volatile i32 *>(0) = 1;
 
 #define DECL(t, n)                                                  \
 bool initr_for_##n();                                               \
@@ -39,7 +39,7 @@ t delay_for_##n()                                                   \
 t n = delay_for_##n();                                              \
 bool initr_for_##n()                                                \
 {                                                                   \
-    n = (t)glfwGetProcAddress(#n);                                  \
+    n = reinterpret_cast<t>(glfwGetProcAddress(#n));                \
     return n != nullptr;                                            \
 }                                                                   \
 
@@ -116,9 +116,10 @@ LOAD(GLFINISH, glFinish)
 LOAD(GLGETERROR, glGetError)
 LOAD(GLGETSTRING, glGetString)
 
+
 bool g_printShaders = false;
 bool g_printGLDiagnostics = false;
-size_t g_quitFrame = -1;
+size_t g_quitFrame = 0;
 
 bool load_gl_functions()
 {
@@ -236,7 +237,7 @@ GLuint create_program(const char *vert_src, const char *geom_src, const char *fr
 
         GLuint shader = glCreateShader(shader_types[i]);
 
-        GLsizei length = ::strlen(shader_sources[i]);
+        GLsizei length = static_cast<GLsizei>(::strlen(shader_sources[i]));
         glShaderSource(shader, 1, &shader_sources[i], &length);
         glCompileShader(shader);
 
@@ -281,8 +282,8 @@ struct FSQuad
 
 struct BufferPresenter
 {
-    void setup(FSQuad *quad, uint32 width, uint32 height);
-    void draw(const uint8 *pixels, GLfloat pX, GLfloat pY);
+    void setup(FSQuad *quad, u32 width, u32 height);
+    void draw(const u8 *pixels, float pX, float pY);
     void cleanup();
 
     GLuint m_pbo[2];
@@ -291,21 +292,21 @@ struct BufferPresenter
     GLuint m_fullscreenProgram;
     GLint m_scaleLoc;
 
-    uint32 m_width;
-    uint32 m_height;
+    u32 m_width;
+    u32 m_height;
 
-    uint32 m_writeIdx;
+    u32 m_writeIdx;
 };
 
 struct FSTexturePresenter
 {
     void setup(FSQuad *quad);
     void draw(GLuint tex, bool specialRT,
-              GLfloat x, GLfloat y,
-              GLfloat x_, GLfloat y_,
-              GLfloat s, GLfloat a,
-              GLfloat vpW, GLfloat vpH,
-              GLfloat rtW, GLfloat rtH);
+              float x, float y,
+              float x_, float y_,
+              float s, float a,
+              float vpW, float vpH,
+              float rtW, float rtH);
     void cleanup();
 
     FSQuad *m_quad;
@@ -320,20 +321,19 @@ struct FSTexturePresenter
 
 struct FSGrid
 {
-    void setup(FSQuad *quad, uint32 width, uint32 height);
-    void draw(const GLfloat *bgcolor, const GLfloat *fgcolor,
-              const GLfloat *translation, GLfloat zoom);
+    void setup(FSQuad *quad);
+    void draw(const float *bgcolor, const float *fgcolor);
     void cleanup();
 
     GLuint m_fullscreenProgram;
-    GLuint m_bgColorLoc;
-    GLuint m_fgColorLoc;
+    GLint m_bgColorLoc;
+    GLint m_fgColorLoc;
     FSQuad *m_quad;
 };
 
 struct RenderTarget
 {
-    void setup(uint32 width, uint32 height);
+    void setup(u32 width, u32 height);
     void cleanup();
 
     void before(bool clear);
@@ -343,29 +343,29 @@ struct RenderTarget
     GLuint m_depth_rbo;
     GLuint m_tex;
 
-    uint32 m_width;
-    uint32 m_height;
+    u32 m_width;
+    u32 m_height;
 };
 
 struct LocSpec
 {
     const char *name;
     GLenum type;
-    unsigned int dimension;
-    unsigned int size;
+    u32 dimension;
+    u32 size;
     bool normalized;
 };
 
 struct VertexLayout
 {
     const LocSpec *slots;
-    uint32 slotCnt;
-    uint32 totalSize;
+    u32 slotCnt;
+    u32 totalSize;
 
     void init()
     {
         totalSize = 0;
-        for (uint32 i = 0; i < slotCnt; ++i)
+        for (u32 i = 0; i < slotCnt; ++i)
         {
             totalSize += slots[i].dimension * slots[i].size;
         }
@@ -377,13 +377,13 @@ struct Mesh
     void setup(const VertexLayout &layout);
     void cleanup();
 
-    void update(const output_data::Vertex *data, uint32 vtxCnt);
+    void update(const output_data::Vertex *data, u32 vtxCnt);
 
     GLuint m_vao;
     GLuint m_vbo;
 
-    uint32 m_vtxCnt;
-    uint32 m_vertexSize;
+    u32 m_vtxCnt;
+    u32 m_vertexSize;
 };
 
 struct IndexedMesh
@@ -391,16 +391,16 @@ struct IndexedMesh
     void setup();
     void cleanup();
 
-    void update(const float *xy, uint32 vtxCnt,
-                const uint32 *ids, uint32 elemCnt);
+    void update(const float *xy, u32 vtxCnt,
+                const u32 *ids, u32 elemCnt);
 
     GLuint m_vao;
 
     GLuint m_ebo;
     GLuint m_vbo;
 
-    uint32 m_vtxCnt;
-    uint32 m_elemCnt;
+    u32 m_vtxCnt;
+    u32 m_elemCnt;
 };
 
 struct MeshPresenter
@@ -408,7 +408,7 @@ struct MeshPresenter
     void setup();
     void cleanup();
 
-    void draw(GLuint vao, uint32 vtxCnt, GLfloat scaleX, GLfloat scaleY);
+    void draw(GLuint vao, u32 vtxCnt, float scaleX, float scaleY);
 
     GLuint m_program;
     GLint m_scaleLoc;
@@ -420,7 +420,7 @@ struct UIPresenter
     void cleanup();
 
     void draw(kernel_services::TexID ti, kernel_services::MeshID mi,
-              GLuint offset, GLuint count, GLfloat vpW, GLfloat vpH);
+              u32 offset, u32 count, float vpW, float vpH);
 
     GLuint m_program;
     GLint m_vpSizeLoc;
@@ -431,13 +431,13 @@ struct Mesh2
     GLuint vao;
     GLuint ibuf;
     GLuint vbuf;
-    uint32 vsize;
-    uint32 isize;
+    u32 vsize;
+    u32 isize;
 };
 
 // TODO: this runs always up
-uint32 next_mesh_idx = 0;
-const uint32 MAXMESHCNT = 20;
+u32 next_mesh_idx = 0;
+const u32 MAXMESHCNT = 20;
 Mesh2 meshes[MAXMESHCNT];
 
 // TODO: implement vertex LAYOUT and use it in all places
@@ -455,9 +455,9 @@ kernel_services::MeshID create_mesh()
     const GLint UV_DIM = 2;
     const GLint COL_DIM = 4;
 
-    const GLuint POS_SZ = sizeof(float);
-    const GLuint UV_SZ = sizeof(float);
-    const GLuint COL_SZ = sizeof(uint8);
+    const GLuint POS_SZ = 4;
+    const GLuint UV_SZ = 4;
+    const GLuint COL_SZ = 1;
 
     const GLenum POS_TYPE = GL_FLOAT;
     const GLenum UV_TYPE = GL_FLOAT;
@@ -466,7 +466,7 @@ kernel_services::MeshID create_mesh()
     const GLsizei vertexSize = POS_DIM * POS_SZ + UV_DIM * UV_SZ + COL_DIM * COL_SZ;
 
     mesh.vsize = vertexSize;
-    mesh.isize = sizeof(unsigned short);
+    mesh.isize = 2;
 
     glGenVertexArrays(1, &mesh.vao);
 
@@ -508,8 +508,8 @@ kernel_services::MeshID create_mesh()
 }
 
 void update_mesh(kernel_services::MeshID mi,
-                 const void *vtxdata, uint32 vtxcnt,
-                 const unsigned short *idxdata, uint32 idxcnt)
+                 const void *vtxdata, u32 vtxcnt,
+                 const u16 *idxdata, u32 idxcnt)
 {
     glBindBuffer(GL_ARRAY_BUFFER, meshes[mi].vbuf);
     glBufferData(GL_ARRAY_BUFFER, vtxcnt * meshes[mi].vsize,
@@ -537,11 +537,11 @@ struct Texture
 };
 
 // TODO: this runs always up
-uint32 next_texture_idx = 0;
-const uint32 MAXTEXCNT = 10;
+u32 next_texture_idx = 0;
+const u32 MAXTEXCNT = 10;
 Texture textures[MAXTEXCNT];
 
-kernel_services::TexID create_texture(uint32 w, uint32 h)
+kernel_services::TexID create_texture(u32 w, u32 h)
 {
     Texture &tex = textures[next_texture_idx];
     tex.width = w;
@@ -549,7 +549,8 @@ kernel_services::TexID create_texture(uint32 w, uint32 h)
     glGenTextures(1, &tex.glid);
 
     glBindTexture(GL_TEXTURE_2D, tex.glid);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, w, h, 0,
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED,
+                 static_cast<GLsizei>(w), static_cast<GLsizei>(h), 0,
                  GL_RED, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -561,11 +562,12 @@ kernel_services::TexID create_texture(uint32 w, uint32 h)
 }
 
 // TODO: this is alpha only
-void update_texture(kernel_services::TexID ti, const uint8 *pixels)
+void update_texture(kernel_services::TexID ti, const u8 *pixels)
 {
     glBindTexture(GL_TEXTURE_2D, textures[ti].glid);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
-                    textures[ti].width, textures[ti].height,
+                    static_cast<GLsizei>(textures[ti].width),
+                    static_cast<GLsizei>(textures[ti].height),
                     GL_RED, GL_UNSIGNED_BYTE, pixels);
     glBindTexture(GL_TEXTURE_2D, 0);
 }
@@ -584,7 +586,7 @@ const LocSpec strokesMeshLayout[3] =
 
 int main(int argc, char *argv[])
 {
-    for (size_t i = 1; i < argc; ++i)
+    for (int i = 1; i < argc; ++i)
     {
         if (strcmp(argv[i], "--gldiag") == 0)
         {
@@ -608,12 +610,12 @@ int main(int argc, char *argv[])
 
     GLFWmonitor* pMonitor = glfwGetPrimaryMonitor();
 
-    int32 monitorWidthPt, monitorHeightPt;
+    u32 monitorWidthPt, monitorHeightPt;
     const GLFWvidmode* pVideomode = glfwGetVideoMode(pMonitor);
-    monitorWidthPt = pVideomode->width;
-    monitorHeightPt = pVideomode->height;
+    monitorWidthPt = static_cast<u32>(pVideomode->width);
+    monitorHeightPt = static_cast<u32>(pVideomode->height);
 
-    int32 monitorWidthMm, monitorHeightMm;
+    i32 monitorWidthMm, monitorHeightMm;
     glfwGetMonitorPhysicalSize(pMonitor, &monitorWidthMm, &monitorHeightMm);
 
     const float MM_PER_IN = 25.4f;
@@ -628,29 +630,29 @@ int main(int argc, char *argv[])
     ::printf("monitor: %f x %f in\n", monitorWidthIn, monitorHeightIn);
     ::printf("monitor: %f x %f dpi\n", monitorHorDPI, monitorVerDPI);
 
-    int32 initialVpWidthPt = monitorWidthPt / 2;
-    int32 initialVpHeightPt = monitorHeightPt / 2;
+    i32 initialVpWidthPt = monitorWidthPt / 2;
+    i32 initialVpHeightPt = monitorHeightPt / 2;
 
-    int32 vpPaddingPt = 64;
+    i32 vpPaddingPt = 64;
 
-    int32 windowWidthPt = vpPaddingPt + initialVpWidthPt + vpPaddingPt;
-    int32 windowHeightPt = vpPaddingPt + initialVpHeightPt + vpPaddingPt;
+    i32 windowWidthPt = vpPaddingPt + initialVpWidthPt + vpPaddingPt;
+    i32 windowHeightPt = vpPaddingPt + initialVpHeightPt + vpPaddingPt;
 
-    GLsizei swWidthPx = monitorWidthPt;
-    GLsizei swHeightPx = monitorHeightPt;
+    u32 swWidthPx = monitorWidthPt;
+    u32 swHeightPx = monitorHeightPt;
 
     GLFWwindow* pWindow;
     pWindow = glfwCreateWindow(windowWidthPt, windowHeightPt,
                                "proto", nullptr, nullptr);
 
-    int32 windowWidthPx, windowHeightPx;
+    i32 windowWidthPx, windowHeightPx;
     glfwGetFramebufferSize(pWindow, &windowWidthPx, &windowHeightPx);
 
     float pxPerPtHor = windowWidthPx / windowWidthPt;
     float pxPerPtVer = windowHeightPx / windowHeightPt;
 
-    int32 rtWidthPx = monitorWidthPt * pxPerPtHor;
-    int32 rtHeightPx = monitorHeightPt * pxPerPtVer;
+    u32 rtWidthPx = static_cast<u32>(monitorWidthPt * pxPerPtHor);
+    u32 rtHeightPx = static_cast<u32>(monitorHeightPt * pxPerPtVer);
 
     // TODO: this doesn't seem to work, no matter what is set, frame takes ~16ms
     glfwMakeContextCurrent(pWindow);
@@ -694,9 +696,6 @@ int main(int argc, char *argv[])
         BufferPresenter blit;
         blit.setup(&quad, swWidthPx, swHeightPx);
 
-        // FSGrid grid;
-        // grid.setup(&quad, 2048, 2048);
-
         check_gl_errors("after setup");
 
         VertexLayout meshLayout;
@@ -715,8 +714,8 @@ int main(int argc, char *argv[])
         buffer.width = swWidthPx;
         buffer.height = swHeightPx;
 
-        const uint32 BAKE_TRIS_CNT = 5000;
-        const uint32 CURR_TRIS_CNT = 500;
+        const u32 BAKE_TRIS_CNT = 5000;
+        const u32 CURR_TRIS_CNT = 500;
 
         std::vector<output_data::Vertex> bake_tris;
         std::vector<output_data::Vertex> curr_tris;
@@ -739,27 +738,23 @@ int main(int argc, char *argv[])
 
         void *lib_handle = ::dlopen("client.dylib", RTLD_LAZY);
 
-        UPDATE_AND_RENDER_FUNC upd_and_rnd = (UPDATE_AND_RENDER_FUNC)
-            ::dlsym(lib_handle, "update_and_render");
+        UPDATE_AND_RENDER_FUNC upd_and_rnd = reinterpret_cast<UPDATE_AND_RENDER_FUNC>(::dlsym(lib_handle, "update_and_render"));
 
-        SETUP_FUNC setup = (SETUP_FUNC)::dlsym(lib_handle, "setup");
-        CLEANUP_FUNC cleanup = (CLEANUP_FUNC)::dlsym(lib_handle, "cleanup");
+        SETUP_FUNC setup = reinterpret_cast<SETUP_FUNC>(::dlsym(lib_handle, "setup"));
+        CLEANUP_FUNC cleanup = reinterpret_cast<CLEANUP_FUNC>(::dlsym(lib_handle, "cleanup"));
         
         mach_timebase_info_data_t time_info;
         mach_timebase_info(&time_info);
 
-        uint64_t frame_counter = 0;
-
-
-        const uint32 TIMEPOINTS = 10;
-        const uint32 INTERVALS = TIMEPOINTS-1;
+        const u32 TIMEPOINTS = 10;
+        const u32 INTERVALS = TIMEPOINTS-1;
         uint64_t timestamps[TIMEPOINTS] = {0};
 
         double intervals[INTERVALS];
 
 #define TIME timestamps[nTimePoints++] = mach_absolute_time();
 
-        uint32 nTimePoints = 0;
+        u32 nTimePoints = 0;
 
         kernel_services services;
         services.create_mesh = create_mesh;
@@ -782,18 +777,16 @@ int main(int argc, char *argv[])
                 ::dlclose(lib_handle);
                 lib_handle = ::dlopen("client.dylib", RTLD_LAZY);
 
-                upd_and_rnd = (UPDATE_AND_RENDER_FUNC)
-                    ::dlsym(lib_handle, "update_and_render");
-
-                setup = (SETUP_FUNC)::dlsym(lib_handle, "setup");
-                cleanup = (CLEANUP_FUNC)::dlsym(lib_handle, "cleanup");
+                upd_and_rnd = reinterpret_cast<UPDATE_AND_RENDER_FUNC>(::dlsym(lib_handle, "update_and_render"));
+                setup = reinterpret_cast<SETUP_FUNC>(::dlsym(lib_handle, "setup"));
+                cleanup = reinterpret_cast<CLEANUP_FUNC>(::dlsym(lib_handle, "cleanup"));
 
                 (*setup)(&services);
                 reload_client = false;
                 input.nFrames = 0;
             }
             
-            for (uint8 i = 1; i < nTimePoints; ++i)
+            for (u8 i = 1; i < nTimePoints; ++i)
             {
                 intervals[i-1] = 1e-6 *
                     static_cast<double>(timestamps[i] - timestamps[i-1]) *
@@ -842,8 +835,8 @@ int main(int argc, char *argv[])
             input.rtHeightIn = rtHeightPx / pxPerPtVer / monitorVerDPI;
 
             // viewport is centered in window
-            int32 viewportLeftPx = (input.windowWidthPx - input.vpWidthPx) / 2;
-            int32 viewportBottomPx = (input.windowHeightPx - input.vpHeightPx) / 2;
+            i32 viewportLeftPx = (input.windowWidthPx - input.vpWidthPx) / 2;
+            i32 viewportBottomPx = (input.windowHeightPx - input.vpHeightPx) / 2;
 
             // viewport is centered in window
             double viewportLeftPt = 0.5 * (input.windowWidthPt - input.vpWidthPt);
@@ -869,8 +862,8 @@ int main(int argc, char *argv[])
             double swMousePxX = mousePtX / input.vpWidthPt * input.swWidthPx;
             double swMousePxY = mousePtY / input.vpHeightPt * input.swHeightPx;
 
-            input.swMouseXPx = swMousePxX;
-            input.swMouseYPx = swMousePxY;
+            input.swMouseXPx = static_cast<i32>(swMousePxX);
+            input.swMouseYPx = static_cast<i32>(swMousePxY);
 
             // NOTE: all mouse coords have Y axis pointing down.
 
@@ -883,11 +876,13 @@ int main(int argc, char *argv[])
 
             (*upd_and_rnd)(&input, &output);
 
-            fgmesh.update(output.curr_tris->data(), output.curr_tris->size());
+            fgmesh.update(output.curr_tris->data(),
+                          static_cast<u32>(output.curr_tris->size()));
 
             if (output.bake_flag)
             {
-                bgmesh.update(output.bake_tris->data(), output.bake_tris->size());
+                bgmesh.update(output.bake_tris->data(),
+                              static_cast<u32>(output.bake_tris->size()));
                 // flag processed
                 // TODO: ??
                 output.bake_flag = false;
@@ -932,7 +927,7 @@ int main(int argc, char *argv[])
                       static_cast<float>(input.vpWidthPt) / swWidthPx,
                       static_cast<float>(input.vpHeightPt) / swHeightPx);
 
-            for (uint32 i = 0; i < output.ui_drawcall_cnt; ++i)
+            for (u32 i = 0; i < output.ui_drawcall_cnt; ++i)
             {
                 uirender.draw(output.ui_drawcalls[i].texture_id,
                               output.ui_drawcalls[i].mesh_id,
@@ -984,7 +979,7 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-void BufferPresenter::setup(FSQuad *quad, uint32 width, uint32 height)
+void BufferPresenter::setup(FSQuad *quad, u32 width, u32 height)
 {
     m_width = width;
     m_height = height;
@@ -1021,7 +1016,7 @@ void BufferPresenter::setup(FSQuad *quad, uint32 width, uint32 height)
 
     
     glGenBuffers(2, m_pbo);
-    for (uint32 i = 0; i < 2; ++i)
+    for (u32 i = 0; i < 2; ++i)
     {
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo[i]);
         glBufferData(GL_PIXEL_UNPACK_BUFFER, 4 * m_width * m_height,
@@ -1032,8 +1027,10 @@ void BufferPresenter::setup(FSQuad *quad, uint32 width, uint32 height)
 
     glGenTextures(1, &m_tex);
     glBindTexture(GL_TEXTURE_2D, m_tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_width, m_height, 0,
-                 GL_BGRA, GL_UNSIGNED_BYTE, nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+                 static_cast<GLsizei>(m_width),
+                 static_cast<GLsizei>(m_height),
+                 0, GL_BGRA, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -1048,7 +1045,7 @@ void BufferPresenter::cleanup()
     glDeleteProgram(m_fullscreenProgram);
 }
 
-void BufferPresenter::draw(const uint8* pixels, GLfloat portionX, GLfloat portionY)
+void BufferPresenter::draw(const u8* pixels, float portionX, float portionY)
 {
     // PBO -dma-> texture --------------------------------------------------
 
@@ -1057,7 +1054,9 @@ void BufferPresenter::draw(const uint8* pixels, GLfloat portionX, GLfloat portio
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo[(m_writeIdx + 1) % 2]);
 
     glBindTexture(GL_TEXTURE_2D, m_tex);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_width, m_height,
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                    static_cast<GLsizei>(m_width),
+                    static_cast<GLsizei>(m_height),
                     GL_BGRA, GL_UNSIGNED_BYTE, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
@@ -1066,7 +1065,7 @@ void BufferPresenter::draw(const uint8* pixels, GLfloat portionX, GLfloat portio
 
     // update `write` pixel buffer
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo[m_writeIdx]);
-    uint8 *mappedPixels = static_cast<uint8*>(glMapBuffer(GL_PIXEL_UNPACK_BUFFER,
+    u8 *mappedPixels = static_cast<u8*>(glMapBuffer(GL_PIXEL_UNPACK_BUFFER,
                                                           GL_WRITE_ONLY));
     if (mappedPixels)
     {
@@ -1091,12 +1090,12 @@ void BufferPresenter::draw(const uint8* pixels, GLfloat portionX, GLfloat portio
 }
 
 /*
-void BufferPresenter::draw(const uint8* pixels)
+void BufferPresenter::draw(const u8* pixels)
 {
     // PBO update ----------------------------------------------------------
     // update pixel buffer
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo[0]);
-    uint8 *mappedPixels = static_cast<uint8*>(glMapBuffer(GL_PIXEL_UNPACK_BUFFER,
+    u8 *mappedPixels = static_cast<u8*>(glMapBuffer(GL_PIXEL_UNPACK_BUFFER,
                                                           GL_WRITE_ONLY));
     if (mappedPixels)
     {
@@ -1132,7 +1131,7 @@ void BufferPresenter::draw(const uint8* pixels)
 }
 */
 
-void RenderTarget::setup(uint32 width, uint32 height)
+void RenderTarget::setup(u32 width, u32 height)
 {
     m_width = width;
     m_height = height;
@@ -1142,7 +1141,9 @@ void RenderTarget::setup(uint32 width, uint32 height)
     glBindTexture(GL_TEXTURE_2D, m_tex);
     {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-                     width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+                     static_cast<GLsizei>(m_width),
+                     static_cast<GLsizei>(m_height),
+                     0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
 
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -1151,7 +1152,10 @@ void RenderTarget::setup(uint32 width, uint32 height)
 
     glGenRenderbuffers(1, &m_depth_rbo);
     glBindRenderbuffer(GL_RENDERBUFFER, m_depth_rbo);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, m_width, m_height);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24,
+                          static_cast<GLsizei>(m_width),
+                          static_cast<GLsizei>(m_height));
+
     glBindRenderbuffer(GL_RENDERBUFFER, 0);
     
     glGenFramebuffers(1, &m_fbo);
@@ -1175,7 +1179,9 @@ void RenderTarget::setup(uint32 width, uint32 height)
 void RenderTarget::before(bool clear)
 {
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_fbo);
-    glViewport(0, 0, m_width, m_height);
+    glViewport(0, 0,
+               static_cast<GLsizei>(m_width),
+               static_cast<GLsizei>(m_height));
 
     if (clear)
     {
@@ -1258,11 +1264,11 @@ void FSTexturePresenter::cleanup()
 }
 
 void FSTexturePresenter::draw(GLuint tex, bool specialRT,
-                              GLfloat x, GLfloat y,
-                              GLfloat x_, GLfloat y_,
-                              GLfloat s, GLfloat a,
-                              GLfloat vpW, GLfloat vpH,
-                              GLfloat rtW, GLfloat rtH)
+                              float x, float y,
+                              float x_, float y_,
+                              float s, float a,
+                              float vpW, float vpH,
+                              float rtW, float rtH)
 {
     glEnable(GL_BLEND);
     if (specialRT)
@@ -1343,7 +1349,7 @@ void FSQuad::cleanup()
     glDeleteBuffers(1, &m_vbo);
 }
 
-void FSGrid::setup(FSQuad *quad, uint32 width, uint32 height)
+void FSGrid::setup(FSQuad *quad)
 {
     m_quad = quad;
 
@@ -1380,8 +1386,7 @@ void FSGrid::setup(FSQuad *quad, uint32 width, uint32 height)
     m_fgColorLoc = glGetUniformLocation(m_fullscreenProgram, "u_fgColor");
 }
 
-void FSGrid::draw(const GLfloat *bgcolor, const GLfloat *fgcolor,
-                  const GLfloat *translation, GLfloat zoom)
+void FSGrid::draw(const float *bgcolor, const float *fgcolor)
 {
     glUseProgram(m_fullscreenProgram);
     glUniform3f(m_bgColorLoc, bgcolor[0], bgcolor[1], bgcolor[2]);
@@ -1412,14 +1417,14 @@ void Mesh::setup(const VertexLayout &layout)
 
     glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
 
-    uint32 offset = 0;
-    for (uint32 i = 0; i < layout.slotCnt; ++i)
+    u32 offset = 0;
+    for (u32 i = 0; i < layout.slotCnt; ++i)
     {
         glVertexAttribPointer(i,
-                              layout.slots[i].dimension,
+                              static_cast<GLint>(layout.slots[i].dimension),
                               layout.slots[i].type,
                               (layout.slots[i].normalized ? GL_TRUE : GL_FALSE),
-                              m_vertexSize,
+                              static_cast<GLsizei>(m_vertexSize),
                               reinterpret_cast<GLvoid*>(offset));
         offset += layout.slots[i].dimension * layout.slots[i].size;
 
@@ -1436,7 +1441,7 @@ void Mesh::cleanup()
     glDeleteBuffers(1, &m_vbo);
 }
 
-void Mesh::update(const output_data::Vertex *data, uint32 vtxCnt)
+void Mesh::update(const output_data::Vertex *data, u32 vtxCnt)
 {
     glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
     glBufferData(GL_ARRAY_BUFFER, vtxCnt * m_vertexSize,
@@ -1493,8 +1498,8 @@ void MeshPresenter::cleanup()
     glDeleteProgram(m_program);
 }
 
-void MeshPresenter::draw(GLuint vao, uint32 vtxCnt,
-                         GLfloat scaleX, GLfloat scaleY)
+void MeshPresenter::draw(GLuint vao, u32 vtxCnt,
+                         float scaleX, float scaleY)
 {
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_GREATER);
@@ -1503,7 +1508,7 @@ void MeshPresenter::draw(GLuint vao, uint32 vtxCnt,
     glUseProgram(m_program);
     glUniform2f(m_scaleLoc, scaleX, scaleY);
     glBindVertexArray(vao);
-    glDrawArrays(GL_TRIANGLES, 0, vtxCnt);
+    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vtxCnt));
     glBindVertexArray(0);
     glUseProgram(0);
     glDisable(GL_BLEND);
@@ -1557,8 +1562,8 @@ void UIPresenter::cleanup()
 }
 
 void UIPresenter::draw(kernel_services::TexID ti, kernel_services::MeshID mi,
-                       GLuint offset, GLuint count,
-                       GLfloat vpWidth, GLfloat vpHeight)
+                       u32 offset, u32 count,
+                       float vpWidth, float vpHeight)
 {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -1569,7 +1574,7 @@ void UIPresenter::draw(kernel_services::TexID ti, kernel_services::MeshID mi,
     glBindVertexArray(meshes[mi].vao);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, meshes[mi].ibuf);
-    glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_SHORT,
+    glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(count), GL_UNSIGNED_SHORT,
                    reinterpret_cast<GLvoid*>(offset * meshes[mi].isize));
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 

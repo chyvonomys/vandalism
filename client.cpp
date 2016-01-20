@@ -4,7 +4,11 @@
 #include "swcolor.h"
 #include "swrender.h"
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wold-style-cast"
+#pragma clang diagnostic ignored "-Wfloat-equal"
 #include "imgui.h"
+#pragma clang diagnostic pop
 
 kernel_services *current_services = 0;
 output_data *current_output = 0;
@@ -17,14 +21,14 @@ std::vector<output_data::drawcall> ui_drawcalls;
 
 void RenderImGuiDrawLists(ImDrawData *drawData)
 {
-    while (drawData->CmdListsCount > ui_meshes.size())
+    while (static_cast<size_t>(drawData->CmdListsCount) > ui_meshes.size())
     {
         ui_meshes.push_back(current_services->create_mesh());
     }
 
     ui_drawcalls.clear();
 
-    for (size_t li = 0; li < drawData->CmdListsCount; ++li)
+    for (size_t li = 0; li < static_cast<size_t>(drawData->CmdListsCount); ++li)
     {
         const ImDrawList *drawList = drawData->CmdLists[li];
 
@@ -32,17 +36,19 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
         const ImDrawVert *vertexBuffer = &drawList->VtxBuffer.front();
 
         current_services->update_mesh(ui_meshes[li],
-                                      vertexBuffer, drawList->VtxBuffer.size(),
-                                      indexBuffer, drawList->IdxBuffer.size());
+                                      vertexBuffer,
+                                      static_cast<u32>(drawList->VtxBuffer.size()),
+                                      indexBuffer,
+                                      static_cast<u32>(drawList->IdxBuffer.size()));
 
-        size_t cmdCnt = drawList->CmdBuffer.size();
+        i32 cmdCnt = drawList->CmdBuffer.size();
 
-        size_t idxOffs = 0;
+        u32 idxOffs = 0;
 
-        for (size_t ci = 0; ci < cmdCnt; ++ci)
+        for (i32 ci = 0; ci < cmdCnt; ++ci)
         {
             const ImDrawCmd &cmd = drawList->CmdBuffer[ci];
-            size_t idxCnt = cmd.ElemCount;
+            u32 idxCnt = cmd.ElemCount;
 
             if (cmd.UserCallback)
             {
@@ -51,7 +57,8 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
             else
             {
                 output_data::drawcall drawcall;
-                drawcall.texture_id = *reinterpret_cast<const uint32*>(&cmd.TextureId);
+                size_t texId = reinterpret_cast<size_t>(cmd.TextureId);
+                drawcall.texture_id = static_cast<kernel_services::TexID>(texId);
                 drawcall.mesh_id = ui_meshes[li];
                 drawcall.offset = idxOffs;
                 drawcall.count = idxCnt;
@@ -71,7 +78,7 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
     }
 
     current_output->ui_drawcalls = ui_drawcalls.data();
-    current_output->ui_drawcall_cnt = ui_drawcalls.size();
+    current_output->ui_drawcall_cnt = static_cast<u32>(ui_drawcalls.size());
 }
 
 #include "vandalism.cpp"
@@ -79,10 +86,10 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
 Vandalism *ism = nullptr;
 
 bool gui_showAllViews;
-int32 gui_viewIdx;
-int32 gui_tool;
+i32 gui_viewIdx;
+i32 gui_tool;
 float gui_brush_color[4];
-int32 gui_brush_diameter_units;
+i32 gui_brush_diameter_units;
 bool gui_mouse_occupied;
 bool gui_mouse_hover;
 float gui_background_color[3];
@@ -90,12 +97,12 @@ float gui_grid_bg_color[3];
 float gui_grid_fg_color[3];
 float gui_eraser_alpha;
 
-const int32 cfg_min_brush_diameter_units = 1;
-const int32 cfg_max_brush_diameter_units = 64;
-const int32 cfg_def_brush_diameter_units = 4;
+const i32 cfg_min_brush_diameter_units = 1;
+const i32 cfg_max_brush_diameter_units = 64;
+const i32 cfg_def_brush_diameter_units = 4;
 const float cfg_brush_diameter_inches_per_unit = 1.0f / 64.0f;
 
-uint32 timingX;
+u32 timingX;
 
 ImGuiTextBuffer *viewsBuf;
 
@@ -105,11 +112,12 @@ extern "C" void setup(kernel_services *services)
     io.RenderDrawListsFn = RenderImGuiDrawLists;
     viewsBuf = new ImGuiTextBuffer;
 
-    uint8 *pixels;
-    int32 width, height;
+    u8 *pixels;
+    i32 width, height;
     io.Fonts->GetTexDataAsAlpha8(&pixels, &width, &height);
 
-    font_texture_id = services->create_texture(width, height);
+    font_texture_id = services->create_texture(static_cast<u32>(width),
+                                               static_cast<u32>(height));
     services->update_texture(font_texture_id, pixels);
     io.Fonts->TexID = reinterpret_cast<void *>(font_texture_id);
 
@@ -123,7 +131,7 @@ extern "C" void setup(kernel_services *services)
 
     gui_showAllViews = true;
     gui_viewIdx = 0;
-    gui_tool = static_cast<int>(Vandalism::DRAW);
+    gui_tool = static_cast<i32>(Vandalism::DRAW);
 
     gui_brush_color[0] = 1.0f;
     gui_brush_color[1] = 1.0f;
@@ -157,7 +165,7 @@ extern "C" void cleanup()
     ism->cleanup();
     delete ism;
 
-    for (uint32 i = 0; i < ui_meshes.size(); ++i)
+    for (size_t i = 0; i < ui_meshes.size(); ++i)
     {
         current_services->delete_mesh(ui_meshes[i]);
     }
@@ -259,14 +267,14 @@ void fill_quads(std::vector<output_data::Vertex> *tris,
     }
 }
 
-uint32 draw_timing(offscreen_buffer *buffer, uint32 framex,
-                 double *intervals, uint32 intervalCnt)
+u32 draw_timing(offscreen_buffer *buffer, u32 framex,
+                 double *intervals, u32 intervalCnt)
 {
-    uint32 maxy = buffer->height - 1;
+    u32 maxy = buffer->height - 1;
     double maxti = 200; // ms
     double sum = 0.0;
     double total = 0.0;
-    for (uint32 ti = 0; ti < intervalCnt; ++ti)
+    for (u32 ti = 0; ti < intervalCnt; ++ti)
         total += intervals[ti];
 
     draw_line(buffer,
@@ -285,14 +293,14 @@ uint32 draw_timing(offscreen_buffer *buffer, uint32 framex,
     }
     else
     {
-        for (uint32 ti = 0; ti < intervalCnt; ++ti)
+        for (u32 ti = 0; ti < intervalCnt; ++ti)
         {
-            uint32 yfrom = (sum / maxti) * maxy;
+            u32 yfrom = static_cast<u32>((sum / maxti) * maxy);
             sum += intervals[ti];
-            uint32 yto = (sum / maxti) * maxy;
-            uint32 tii = ti + 1;
+            u32 yto = static_cast<u32>((sum / maxti) * maxy);
+            u32 tii = ti + 1;
             color col = uint32_to_color(tii);
-            uint32 pcol = pack_color(col);
+            u32 pcol = pack_color(col);
             draw_line(buffer, framex, yfrom, framex, yto, pcol);
             draw_line(buffer, framex+1, yfrom, framex+1, yto, pcol);
 
@@ -301,9 +309,9 @@ uint32 draw_timing(offscreen_buffer *buffer, uint32 framex,
             draw_line(buffer, 30 * ti, maxy-2, 30 * (ti + 1), maxy-2, pcol);
         }
     }
-    for (uint32 h = 1; h < 4; ++h)
+    for (u32 h = 1; h < 4; ++h)
     {
-        uint32 targetmsy = h * 16.666666 / maxti * maxy;
+        u32 targetmsy = static_cast<u32>(h * 16.666666 / maxti * maxy);
         draw_line(buffer, 0, targetmsy, buffer->width - 1, targetmsy,
                   pack_color(COLOR_CYAN));
     }
@@ -315,12 +323,12 @@ void DrawTestSegment(offscreen_buffer *buffer,
                      const test_box &dst_box,
                      const test_box &src_box,
                      test_segment &seg,
-                     uint32 color)
+                     u32 color)
 {
-    uint32 x0 = lerp(dst_box.x0, dst_box.x1, invlerp(src_box.x0, src_box.x1, seg.a.x));
-    uint32 x1 = lerp(dst_box.x0, dst_box.x1, invlerp(src_box.x0, src_box.x1, seg.b.x));
-    uint32 y0 = lerp(dst_box.y0, dst_box.y1, invlerp(src_box.y0, src_box.y1, seg.a.y));
-    uint32 y1 = lerp(dst_box.y0, dst_box.y1, invlerp(src_box.y0, src_box.y1, seg.b.y));
+    u32 x0 = static_cast<u32>(lerp(dst_box.x0, dst_box.x1, invlerp(src_box.x0, src_box.x1, seg.a.x)));
+    u32 x1 = static_cast<u32>(lerp(dst_box.x0, dst_box.x1, invlerp(src_box.x0, src_box.x1, seg.b.x)));
+    u32 y0 = static_cast<u32>(lerp(dst_box.y0, dst_box.y1, invlerp(src_box.y0, src_box.y1, seg.a.y)));
+    u32 y1 = static_cast<u32>(lerp(dst_box.y0, dst_box.y1, invlerp(src_box.y0, src_box.y1, seg.b.y)));
     draw_line(buffer, x0, y0, x1, y1, color);
 }
 
@@ -328,12 +336,12 @@ void DrawTestBox(offscreen_buffer *buffer,
                  const test_box &dst_box,
                  const test_box &src_box,
                  test_box &box,
-                 uint32 color)
+                 u32 color)
 {
-    uint32 L = lerp(dst_box.x0, dst_box.x1, invlerp(src_box.x0, src_box.x1, box.x0));
-    uint32 R = lerp(dst_box.x0, dst_box.x1, invlerp(src_box.x0, src_box.x1, box.x1));
-    uint32 B = lerp(dst_box.y0, dst_box.y1, invlerp(src_box.y0, src_box.y1, box.y0));
-    uint32 T = lerp(dst_box.y0, dst_box.y1, invlerp(src_box.y0, src_box.y1, box.y1));
+    u32 L = static_cast<u32>(lerp(dst_box.x0, dst_box.x1, invlerp(src_box.x0, src_box.x1, box.x0)));
+    u32 R = static_cast<u32>(lerp(dst_box.x0, dst_box.x1, invlerp(src_box.x0, src_box.x1, box.x1)));
+    u32 B = static_cast<u32>(lerp(dst_box.y0, dst_box.y1, invlerp(src_box.y0, src_box.y1, box.y0)));
+    u32 T = static_cast<u32>(lerp(dst_box.y0, dst_box.y1, invlerp(src_box.y0, src_box.y1, box.y1)));
     draw_frame_rect(buffer, L, R, B, T, color);
 }
 
@@ -364,8 +372,8 @@ test_box box_add_seg(const test_box &box, const test_segment &seg)
     return result;
 }
 
-uint32 DrawTestAll(offscreen_buffer *buffer,
-                   uint32 x0, uint32 x1, uint32 y0, uint32 y1,
+u32 DrawTestAll(offscreen_buffer *buffer,
+                   u32 x0, u32 x1, u32 y0, u32 y1,
                    float viewportW, float viewportH,
                    const test_data &data)
 {
@@ -458,11 +466,11 @@ uint32 DrawTestAll(offscreen_buffer *buffer,
 
     DrawTestBox(buffer, content_box, ds_bbox, ds_bbox, 0xFF0000EE);
 
-    return ds_seg_stack.size();
+    return static_cast<u32>(ds_seg_stack.size());
 }
 
-uint32 DrawTestPin(offscreen_buffer *buffer,
-                   uint32 x0, uint32 x1, uint32 y0, uint32 y1,
+u32 DrawTestPin(offscreen_buffer *buffer,
+                   u32 x0, u32 x1, u32 y0, u32 y1,
                    float viewportW, float viewportH,
                    const test_data &data, size_t pin)
 {
@@ -486,8 +494,8 @@ uint32 DrawTestPin(offscreen_buffer *buffer,
     for (size_t i = 0; i < visibles.size(); ++i)
     {
         const test_visible &vis = visibles[i];
-        uint32 pi0 = data.strokes[vis.si].pi0;
-        uint32 pi1 = data.strokes[vis.si].pi1;
+        size_t pi0 = data.strokes[vis.si].pi0;
+        size_t pi1 = data.strokes[vis.si].pi1;
         if (pi1 > pi0)
         {
             test_segment ls_seg = {data.points[pi0], data.points[pi1 - 1]};
@@ -497,7 +505,7 @@ uint32 DrawTestPin(offscreen_buffer *buffer,
         }
     }
 
-    return visibles.size();
+    return static_cast<u32>(visibles.size());
 }
 
 extern "C" void update_and_render(input_data *input, output_data *output)
@@ -551,7 +559,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
         query(debug_data, debug_data.nviews - 1,
               viewbox, visibles, transforms,
               pixel_height_in);
-        for (uint32 visIdx = 0; visIdx < visibles.size(); ++visIdx)
+        for (u32 visIdx = 0; visIdx < visibles.size(); ++visIdx)
         {
             const test_visible& vis = visibles[visIdx];
             const test_transform& tform = transforms[vis.ti];
@@ -568,7 +576,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
         ::printf("update mesh: %lu visibles\n", visibles.size());
 
         viewsBuf->clear();
-        for (uint32 vi = 0; vi < debug_data.nviews; ++vi)
+        for (u32 vi = 0; vi < debug_data.nviews; ++vi)
         {
             const auto &view = debug_data.views[vi];
             auto t = view.tr.type;
@@ -623,23 +631,24 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     timingX = draw_timing(buffer, timingX,
                 input->pTimeIntervals, input->nTimeIntervals);
 
-    timingX = timingX % input->swWidthPx;
+    timingX = timingX % static_cast<u32>(input->swWidthPx);
 
     if (!mouse_in_ui)
     {
         draw_pixel(buffer,
-                   input->swMouseXPx, input->swMouseYPx,
+                   static_cast<u32>(input->swMouseXPx),
+                   static_cast<u32>(input->swMouseYPx),
                    pack_color(COLOR_YELLOW));
     }
 
-    int fXPx = (ism->firstX / input->vpWidthIn + 0.5f) * input->swWidthPx;
-    int fYPx = (0.5f - ism->firstY / input->vpHeightIn) * input->swHeightPx;
+    u32 fXPx = static_cast<u32>((ism->firstX / input->vpWidthIn + 0.5f) * input->swWidthPx);
+    u32 fYPx = static_cast<u32>((0.5f - ism->firstY / input->vpHeightIn) * input->swHeightPx);
 
     draw_line(buffer, fXPx-2, fYPx, fXPx+2, fYPx, pack_color(COLOR_RED));
     draw_line(buffer, fXPx, fYPx-2, fXPx, fYPx+2, pack_color(COLOR_RED));
 
 #ifdef DEBUG_CASCADE
-    uint32 seg_cnt = 0;
+    u32 seg_cnt = 0;
 
     if (gui_showAllViews)
     {
@@ -680,13 +689,13 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ImGui::ColorEdit3("grid bg", gui_grid_bg_color);
     ImGui::ColorEdit3("grid fg", gui_grid_fg_color);
     ImGui::Separator();
-    ImGui::RadioButton("draw", &gui_tool, static_cast<int>(Vandalism::DRAW));
-    ImGui::RadioButton("erase", &gui_tool, static_cast<int>(Vandalism::ERASE));
-    ImGui::RadioButton("pan", &gui_tool, static_cast<int>(Vandalism::PAN));
-    ImGui::RadioButton("zoom", &gui_tool, static_cast<int>(Vandalism::ZOOM));
-    ImGui::RadioButton("rot", &gui_tool, static_cast<int>(Vandalism::ROTATE));
-    ImGui::RadioButton("first", &gui_tool, static_cast<int>(Vandalism::FIRST));
-    ImGui::RadioButton("second", &gui_tool, static_cast<int>(Vandalism::SECOND));
+    ImGui::RadioButton("draw", &gui_tool, static_cast<i32>(Vandalism::DRAW));
+    ImGui::RadioButton("erase", &gui_tool, static_cast<i32>(Vandalism::ERASE));
+    ImGui::RadioButton("pan", &gui_tool, static_cast<i32>(Vandalism::PAN));
+    ImGui::RadioButton("zoom", &gui_tool, static_cast<i32>(Vandalism::ZOOM));
+    ImGui::RadioButton("rot", &gui_tool, static_cast<i32>(Vandalism::ROTATE));
+    ImGui::RadioButton("first", &gui_tool, static_cast<i32>(Vandalism::FIRST));
+    ImGui::RadioButton("second", &gui_tool, static_cast<i32>(Vandalism::SECOND));
 
     if (ism->currentMode == Vandalism::IDLE)
     {
@@ -725,7 +734,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
                 static_cast<double>(input->swMouseXPx),
                 static_cast<double>(input->swMouseYPx));
 
-    ImGui::Text("tool active: %d", static_cast<int>(ism_input.mousedown));
+    ImGui::Text("tool active: %d", static_cast<i32>(ism_input.mousedown));
 
     ImGui::Separator();
 
@@ -756,8 +765,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ImGui::SliderInt("view", &gui_viewIdx, 0, debug_data.nviews - 1);
 #endif
 
-    ImGui::Text("mouse occupied: %d", static_cast<int>(gui_mouse_occupied));
-    ImGui::Text("mouse hover: %d", static_cast<int>(gui_mouse_hover));
+    ImGui::Text("mouse occupied: %d", static_cast<i32>(gui_mouse_occupied));
+    ImGui::Text("mouse hover: %d", static_cast<i32>(gui_mouse_hover));
 
     ImGui::Separator();
     ImGui::Text("vp size %d x %d pt", input->vpWidthPt, input->vpHeightPt);

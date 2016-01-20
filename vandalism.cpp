@@ -125,10 +125,9 @@ struct Vandalism
     {
         pin = views.size();
         float dx = input->mousex - rotateStartX;
-        float angle = M_PI * dx;
-        views.push_back({TROTATE,
-                -angle, 0.0f,
-                strokes.size(), strokes.size()});
+        float angle = si_pi * dx;
+        test_transition trot = {TROTATE, -angle, 0.0f};
+        views.push_back({trot, strokes.size(), strokes.size(), test_box()});
 
         remove_alterations();
 
@@ -138,7 +137,7 @@ struct Vandalism
     void do_rotate(const Input *input)
     {
         float dx = input->mousex - rotateStartX;
-        rotateAngle = M_PI * dx;
+        rotateAngle = si_pi * dx;
     }
 
     void start_zoom(const Input *input)
@@ -154,9 +153,8 @@ struct Vandalism
     void done_zoom(const Input *input)
     {
         pin = views.size();
-        views.push_back({TZOOM,
-                input->mousex, zoomStartX,
-                strokes.size(), strokes.size()});
+        test_transition tzoom = {TZOOM, input->mousex, zoomStartX};
+        views.push_back({tzoom, strokes.size(), strokes.size(), test_box()});
 
         remove_alterations();
 
@@ -178,10 +176,10 @@ struct Vandalism
     void done_pan(const Input *input)
     {
         pin = views.size();
-        views.push_back({TPAN,
-                -(input->mousex - panStartX),
-                -(input->mousey - panStartY),
-                strokes.size(), strokes.size()});
+        test_transition t = {TPAN,
+                             panStartX - input->mousex,
+                             panStartY - input->mousey};
+        views.push_back({t, strokes.size(), strokes.size(), test_box()});
 
         remove_alterations();
 
@@ -263,8 +261,8 @@ struct Vandalism
         float2 d0 = s0 - f;
         float2 d1 = s1 - f;
 
-        float a0 = atan2(d0.y, d0.x);
-        float a1 = atan2(d1.y, d1.x);
+        float a0 = static_cast<float>(::atan2(d0.y, d0.x));
+        float a1 = static_cast<float>(::atan2(d1.y, d1.x));
 
         preShiftX = -f.x;
         preShiftY = -f.y;
@@ -287,28 +285,24 @@ struct Vandalism
         float2 d0 = s0 - f;
         float2 d1 = s1 - f;
 
-        pin = views.size();
-        views.push_back({TPAN,
-                f.x, f.y,
-                strokes.size(), strokes.size()});
+        float a0 = static_cast<float>(::atan2(d0.y, d0.x));
+        float a1 = static_cast<float>(::atan2(d1.y, d1.x));
 
         pin = views.size();
-        float a0 = atan2(d0.y, d0.x);
-        float a1 = atan2(d1.y, d1.x);
-
-        views.push_back({TROTATE,
-                a0 - a1, 0.0f,
-                strokes.size(), strokes.size()});
+        test_transition tpre = {TPAN, f.x, f.y};
+        views.push_back({tpre, strokes.size(), strokes.size(), test_box()});
 
         pin = views.size();
-        views.push_back({TZOOM,
-                len(d1), len(d0),
-                strokes.size(), strokes.size()});
+        test_transition trot = {TROTATE, a0 - a1, 0.0f};
+        views.push_back({trot, strokes.size(), strokes.size(), test_box()});
 
         pin = views.size();
-        views.push_back({TPAN,
-                -f.x, -f.y,
-                strokes.size(), strokes.size()});
+        test_transition tzoom = {TZOOM, len(d1), len(d0)};
+        views.push_back({tzoom, strokes.size(), strokes.size(), test_box()});
+
+        pin = views.size();
+        test_transition tpost = {TPAN, -f.x, -f.y};
+        views.push_back({tpost, strokes.size(), strokes.size(), test_box()});
 
         remove_alterations();
 
@@ -394,7 +388,8 @@ struct Vandalism
         currentMode = IDLE;
         visiblesChanged = true;
 
-        views.push_back({TPAN, 0.0f, 0.0f, 0, 0});
+        test_transition none = {TPAN, 0.0f, 0.0f};
+        views.push_back({none, 0, 0, test_box()});
 
         pin = 0;
 
@@ -481,8 +476,8 @@ struct Vandalism
         {
             if (really)
             {
-                uint32 deleteCnt = strokes.back().pi1 - strokes.back().pi0;
-                for (uint32 i = 0; i < deleteCnt; ++i)
+                size_t deleteCnt = strokes.back().pi1 - strokes.back().pi0;
+                for (size_t i = 0; i < deleteCnt; ++i)
                 {
                     points.pop_back();
                 }

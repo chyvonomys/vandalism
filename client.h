@@ -1,31 +1,38 @@
-typedef unsigned int uint32;
-typedef unsigned char uint8;
-typedef unsigned long long uint64;
-typedef int int32;
+#include <cstddef>
+
+typedef uint64_t u64;
+typedef uint32_t u32;
+typedef uint16_t u16;
+typedef uint8_t u8;
+
+typedef int64_t i64;
+typedef int32_t i32;
+typedef int16_t i16;
+typedef int8_t i8;
 
 struct offscreen_buffer
 {
-    uint8 *data;
-    uint32 width;
-    uint32 height;
+    u8 *data;
+    u32 width;
+    u32 height;
 };
 
 struct kernel_services
 {
-    typedef uint32 TexID;
+    typedef u32 TexID;
 
-    typedef TexID (*CREATE_TEXTURE)(uint32, uint32);
-    typedef void (*UPDATE_TEXTURE)(TexID, const uint8*);
+    typedef TexID (*CREATE_TEXTURE)(u32, u32);
+    typedef void (*UPDATE_TEXTURE)(TexID, const u8*);
     typedef void (*DELETE_TEXTURE)(TexID);
 
     CREATE_TEXTURE create_texture;
     UPDATE_TEXTURE update_texture;
     DELETE_TEXTURE delete_texture;
 
-    typedef uint32 MeshID;
+    typedef u32 MeshID;
 
     typedef MeshID (*CREATE_MESH)();
-    typedef void (*UPDATE_MESH)(MeshID, const void*, uint32, const unsigned short*, uint32);
+    typedef void (*UPDATE_MESH)(MeshID, const void*, u32, const u16*, u32);
     typedef void (*DELETE_MESH)(MeshID);
 
     CREATE_MESH create_mesh;
@@ -36,25 +43,25 @@ struct kernel_services
 struct input_data
 {
     double *pTimeIntervals;
-    uint32 nTimeIntervals;
+    u32 nTimeIntervals;
 
-    uint64 nFrames;
+    u32 nFrames;
 
-    int32 swMouseXPx;
-    int32 swMouseYPx;
+    i32 swMouseXPx;
+    i32 swMouseYPx;
     bool mouseleft;
 
-    int32 windowWidthPx, windowHeightPx;
-    int32 windowWidthPt, windowHeightPt;
-    int32 windowPosXPt, windowPosYPt;
+    i32 windowWidthPx, windowHeightPx;
+    i32 windowWidthPt, windowHeightPt;
+    i32 windowPosXPt, windowPosYPt;
 
-    int32 vpWidthPx, vpHeightPx;
-    int32 vpWidthPt, vpHeightPt;
+    i32 vpWidthPx, vpHeightPx;
+    i32 vpWidthPt, vpHeightPt;
     float vpWidthIn, vpHeightIn;
 
     float rtWidthIn, rtHeightIn;
 
-    int32 swWidthPx, swHeightPx;
+    i32 swWidthPx, swHeightPx;
     kernel_services services;
 };
 
@@ -95,12 +102,12 @@ struct output_data
     {
         kernel_services::TexID texture_id;
         kernel_services::MeshID mesh_id;
-        uint32 offset;
-        uint32 count;
+        u32 offset;
+        u32 count;
     };
 
     drawcall *ui_drawcalls;
-    uint32 ui_drawcall_cnt;
+    u32 ui_drawcall_cnt;
 };
 
 typedef void (*UPDATE_AND_RENDER_FUNC)(input_data *input, output_data *output);

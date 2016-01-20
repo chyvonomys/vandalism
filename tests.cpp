@@ -45,8 +45,8 @@ bool transforms_test()
 {
     test_point p = {-6, 2};
 
-    test_transform t1 = {0.5f, 2.0f, 2.0f};
-    test_transform t2 = {4.0f, -1.0f, -5.0f};
+    test_transform t1 = {0.5f, 2.0f, 2.0f, 0.0f};
+    test_transform t2 = {4.0f, -1.0f, -5.0f, 0.0f};
 
     test_transform id = id_transform();
 
@@ -82,14 +82,14 @@ test_point t_points1[] =
 
 test_stroke t_strokes1[] =
 {
-    {0, 2},
-    {2, 4}
+    {0, 2,   0,   test_box()},
+    {2, 4,   0,   test_box()}
 };
 
 test_view t_views1[] =
 {
-    {{TPAN, 0.0f, 0.0f}, 0, 1},
-    {{TPAN, 1.0f, 0.0f}, 1, 2}
+    {{TPAN, 0.0f, 0.0f}, 0, 1,   test_box()},
+    {{TPAN, 1.0f, 0.0f}, 1, 2,   test_box()}
 };
 const size_t NVIEWS1 = 2;
 const size_t PIN1 = 1;
@@ -110,25 +110,25 @@ test_point t_points2[] =
 
 test_stroke t_strokes2[] =
 {
-    { 0,  2},
-    { 2,  4},
-    { 4,  6},
-    { 6,  8},
-    { 8, 10},
-    {10, 12},
-    {12, 14},
-    {14, 16}
+    { 0,  2,   0,   test_box()},
+    { 2,  4,   0,   test_box()},
+    { 4,  6,   0,   test_box()},
+    { 6,  8,   0,   test_box()},
+    { 8, 10,   0,   test_box()},
+    {10, 12,   0,   test_box()},
+    {12, 14,   0,   test_box()},
+    {14, 16,   0,   test_box()}
 };
 
 test_view t_views2[] =
 {
-    {{TPAN,  0.0f, 0.0f}, 0, 2},
-    {{TPAN,  5.0f, 0.0f}, 2, 4},
-    {{TPAN,  5.0f, 0.0f}, 4, 6},
-    {{TPAN, -5.0f, 0.0f}, 6, 6},
-    {{TZOOM, 1.0f, 5.0f}, 6, 8},
-    {{TPAN, -1.0f, 0.0f}, 8, 8},
-    {{TZOOM, 5.0f, 3.0f}, 8, 8}
+    {{TPAN,  0.0f, 0.0f}, 0, 2,   test_box()},
+    {{TPAN,  5.0f, 0.0f}, 2, 4,   test_box()},
+    {{TPAN,  5.0f, 0.0f}, 4, 6,   test_box()},
+    {{TPAN, -5.0f, 0.0f}, 6, 6,   test_box()},
+    {{TZOOM, 1.0f, 5.0f}, 6, 8,   test_box()},
+    {{TPAN, -1.0f, 0.0f}, 8, 8,   test_box()},
+    {{TZOOM, 5.0f, 3.0f}, 8, 8,   test_box()}
 };
 const size_t NVIEWS2 = 7;
 const size_t PIN2 = 6;
@@ -143,13 +143,13 @@ test_point t_points3[] =
 
 test_stroke t_strokes3[] =
 {
-    {0, 2}
+    {0, 2,   0,   test_box()}
 };
 
 test_view t_views3[] =
 {
-    {{TPAN, 0.0f, 0.0f}, 0, 1},
-    {{TZOOM, 2.0f, 1.0f}, 1, 1}
+    {{TPAN, 0.0f, 0.0f}, 0, 1,   test_box()},
+    {{TZOOM, 2.0f, 1.0f}, 1, 1,  test_box()}
 };
 const size_t NVIEWS3 = 2;
 const size_t PIN3 = 1;
@@ -164,6 +164,7 @@ bool run_tests()
     {
         bool lb_test_result = liang_barsky_test();
         bool t_test_result = transforms_test();
+        return lb_test_result && t_test_result;
     }
     return true;
 }

@@ -165,7 +165,9 @@ inline float si_clampf(float x, float x0, float x1)
     return si_minf(si_maxf(x, x0), x1);
 }
 
-inline float si_clampd(double x, double x0, double x1)
+inline double si_clampd(double x, double x0, double x1)
 {
     return si_mind(si_maxd(x, x0), x1);
 }
+
+const float si_pi = 3.1415926535f;

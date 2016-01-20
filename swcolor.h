@@ -1,59 +1,66 @@
-const uint32 RO = 2;
-const uint32 GO = 1;
-const uint32 BO = 0;
-const uint32 AO = 3;
+const u32 RO = 2;
+const u32 GO = 1;
+const u32 BO = 0;
+const u32 AO = 3;
 
 struct color
 {
-    uint8 r;
-    uint8 g;
-    uint8 b;
-    uint8 a;
-    color(uint32 c) :
-        a(c >> 24),
-        b((c >> 16) & 0xFF),
+    u8 r;
+    u8 g;
+    u8 b;
+    u8 a;
+    color(u32 c) :
+        r(c & 0xFF),
         g((c >> 8) & 0xFF),
-        r(c & 0xFF)
+        b((c >> 16) & 0xFF),
+        a(c >> 24)
     {
         b = (b * a) / 255;
         g = (g * a) / 255;
         r = (r * a) / 255;
         a = 255;
     }
-    color(uint8 rr, uint8 gg, uint8 bb, uint8 aa)
+    color(u8 rr, u8 gg, u8 bb, u8 aa)
         : r(rr), g(gg), b(bb), a(aa) {}
 };
 
-uint32 pack_color(const color &c)
+u32 pack_color(const color &c)
 {
-    return (((((c.a << 8) | c.r) << 8) | c.g) << 8) | c.b;
+    u32 res = static_cast<u32>(c.a);
+    res <<= 8;
+    res |= static_cast<u32>(c.r);
+    res <<= 8;
+    res |= static_cast<u32>(c.g);
+    res <<= 8;
+    res |= static_cast<u32>(c.b);
+    return res;
 }
 
 color lerp_color(const color &a, const color &b, float t)
 {
     return color(
-        static_cast<uint8>(lerp(a.r, b.r, t)),
-        static_cast<uint8>(lerp(a.g, b.g, t)),
-        static_cast<uint8>(lerp(a.b, b.b, t)),
-        static_cast<uint8>(lerp(a.a, b.a, t)));
+        static_cast<u8>(lerp(a.r, b.r, t)),
+        static_cast<u8>(lerp(a.g, b.g, t)),
+        static_cast<u8>(lerp(a.b, b.b, t)),
+        static_cast<u8>(lerp(a.a, b.a, t)));
 }
 
 color modulate(const color &a, float k)
 {
     return color(
-        static_cast<uint8>(a.r * k),
-        static_cast<uint8>(a.g * k),
-        static_cast<uint8>(a.b * k),
+        static_cast<u8>(a.r * k),
+        static_cast<u8>(a.g * k),
+        static_cast<u8>(a.b * k),
         a.a);
 }
 
-color uint32_to_color(uint32 i)
+color uint32_to_color(u32 i)
 {
     return color(
-        static_cast<uint8>(127 * ((i >> 0) & 1) + 255 * ((i >> 3) & 1)),
-        static_cast<uint8>(127 * ((i >> 1) & 1) + 255 * ((i >> 3) & 1)),
-        static_cast<uint8>(127 * ((i >> 2) & 1) + 255 * ((i >> 3) & 1)),
-        static_cast<uint8>(255));
+        static_cast<u8>(127 * ((i >> 0) & 1) + 255 * ((i >> 3) & 1)),
+        static_cast<u8>(127 * ((i >> 1) & 1) + 255 * ((i >> 3) & 1)),
+        static_cast<u8>(127 * ((i >> 2) & 1) + 255 * ((i >> 3) & 1)),
+        static_cast<u8>(255));
 }
 
 const color COLOR_BLACK  (0xFF000000);
