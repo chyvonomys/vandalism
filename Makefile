@@ -1,6 +1,6 @@
 CFLAGS=`/usr/local/bin/pkg-config --cflags glfw3`
 LDFLAGS=`/usr/local/bin/pkg-config --libs glfw3`
-EXCEPTIONS=-Wno-documentation -Wno-reserved-id-macro -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-missing-variable-declarations -Wno-missing-prototypes -Wno-global-constructors -Wno-padded -Wno-exit-time-destructors
+EXCEPTIONS=-Wno-documentation -Wno-reserved-id-macro -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-missing-variable-declarations -Wno-missing-prototypes -Wno-global-constructors -Wno-padded -Wno-exit-time-destructors -Wno-weak-vtables
 WARNINGS=-Weverything $(EXCEPTIONS)
 COMPILER=clang++ --std=c++11 -Werror $(WARNINGS)
 

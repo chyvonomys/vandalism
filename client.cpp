@@ -19,13 +19,11 @@ kernel_services::TexID font_texture_id;
 std::vector<kernel_services::MeshID> ui_meshes;
 std::vector<output_data::drawcall> ui_drawcalls;
 
+kernel_services::MeshID bake_mesh;
+kernel_services::MeshID curr_mesh;
+
 void RenderImGuiDrawLists(ImDrawData *drawData)
 {
-    while (static_cast<size_t>(drawData->CmdListsCount) > ui_meshes.size())
-    {
-        ui_meshes.push_back(current_services->create_mesh());
-    }
-
     ui_drawcalls.clear();
 
     for (size_t li = 0; li < static_cast<size_t>(drawData->CmdListsCount); ++li)
@@ -35,11 +33,18 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
         const ImDrawIdx *indexBuffer = &drawList->IdxBuffer.front();
         const ImDrawVert *vertexBuffer = &drawList->VtxBuffer.front();
 
+        u32 vtxCount = static_cast<u32>(drawList->VtxBuffer.size());
+        u32 idxCount = static_cast<u32>(drawList->IdxBuffer.size());
+
+        if (ui_meshes.size() <= li)
+        {
+            ui_meshes.push_back(current_services->create_mesh(*current_services->ui_vertex_layout,
+                                                              vtxCount, idxCount));
+        }
+
         current_services->update_mesh(ui_meshes[li],
-                                      vertexBuffer,
-                                      static_cast<u32>(drawList->VtxBuffer.size()),
-                                      indexBuffer,
-                                      static_cast<u32>(drawList->IdxBuffer.size()));
+                                      vertexBuffer, vtxCount,
+                                      indexBuffer, idxCount);
 
         i32 cmdCnt = drawList->CmdBuffer.size();
 
@@ -123,6 +128,11 @@ extern "C" void setup(kernel_services *services)
 
     current_services = services;
 
+    bake_mesh = current_services->create_mesh(*current_services->stroke_vertex_layout,
+                                              10000, 10000);
+    curr_mesh = current_services->create_mesh(*current_services->stroke_vertex_layout,
+                                              1000, 1000);
+
     io.Fonts->ClearInputData();
     io.Fonts->ClearTexData();
 
@@ -170,6 +180,9 @@ extern "C" void cleanup()
         current_services->delete_mesh(ui_meshes[i]);
     }
 
+    current_services->delete_mesh(bake_mesh);
+    current_services->delete_mesh(curr_mesh);
+
     ui_meshes.clear();
     ui_drawcalls.clear();
 
@@ -189,12 +202,16 @@ void add_quad_tex(std::vector<output_data::Vertex> *tris,
 {
     output_data::Vertex v;
 
-    v.x = a.x; v.y = a.y; v.z = zindex; v.u = 0.0f, v.v = 0.0f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
-    v.x = b.x; v.y = b.y; v.z = zindex; v.u = 0.0f, v.v = 1.0f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
-    v.x = c.x; v.y = c.y; v.z = zindex; v.u = 1.0f, v.v = 1.0f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
-    v.x = c.x; v.y = c.y; v.z = zindex; v.u = 1.0f, v.v = 1.0f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
-    v.x = d.x; v.y = d.y; v.z = zindex; v.u = 1.0f, v.v = 0.0f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
-    v.x = a.x; v.y = a.y; v.z = zindex; v.u = 0.0f, v.v = 0.0f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
+    v.z = zindex;
+    v.e = ec;
+    v.r = rc; v.g = gc; v.b = bc; v.a = ac;
+
+    v.x = a.x; v.y = a.y; v.u = 0.0f; v.v = 0.0f; tris->push_back(v);
+    v.x = b.x; v.y = b.y; v.u = 0.0f; v.v = 1.0f; tris->push_back(v);
+    v.x = c.x; v.y = c.y; v.u = 1.0f; v.v = 1.0f; tris->push_back(v);
+    v.x = c.x; v.y = c.y; v.u = 1.0f; v.v = 1.0f; tris->push_back(v);
+    v.x = d.x; v.y = d.y; v.u = 1.0f; v.v = 0.0f; tris->push_back(v);
+    v.x = a.x; v.y = a.y; v.u = 0.0f; v.v = 0.0f; tris->push_back(v);
 }
 
 void add_quad_const(std::vector<output_data::Vertex> *tris,
@@ -204,12 +221,17 @@ void add_quad_const(std::vector<output_data::Vertex> *tris,
 {
     output_data::Vertex v;
 
-    v.x = a.x; v.y = a.y; v.z = zindex; v.u = 0.5f, v.v = 0.5f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
-    v.x = b.x; v.y = b.y; v.z = zindex; v.u = 0.5f, v.v = 0.5f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
-    v.x = c.x; v.y = c.y; v.z = zindex; v.u = 0.5f, v.v = 0.5f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
-    v.x = c.x; v.y = c.y; v.z = zindex; v.u = 0.5f, v.v = 0.5f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
-    v.x = d.x; v.y = d.y; v.z = zindex; v.u = 0.5f, v.v = 0.5f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
-    v.x = a.x; v.y = a.y; v.z = zindex; v.u = 0.5f, v.v = 0.5f; v.e = ec; v.r = rc; v.g = gc; v.b = bc; v.a = ac; tris->push_back(v);
+    v.z = zindex;
+    v.u = 0.5f; v.v = 0.5f;
+    v.e = ec;
+    v.r = rc; v.g = gc; v.b = bc; v.a = ac;
+
+    v.x = a.x; v.y = a.y; tris->push_back(v);
+    v.x = b.x; v.y = b.y; tris->push_back(v);
+    v.x = c.x; v.y = c.y; tris->push_back(v);
+    v.x = c.x; v.y = c.y; tris->push_back(v);
+    v.x = d.x; v.y = d.y; tris->push_back(v);
+    v.x = a.x; v.y = a.y; tris->push_back(v);
 }
 
 void fill_quads(std::vector<output_data::Vertex> *tris,

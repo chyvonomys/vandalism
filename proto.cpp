@@ -442,29 +442,79 @@ Mesh2 meshes[MAXMESHCNT];
 
 // TODO: implement vertex LAYOUT and use it in all places
 
-// TODO: this is actually "create dynamic mesh of one particular layout (ui)"
-kernel_services::MeshID create_mesh()
+struct Slot
+{
+    const char *name;
+    GLuint loc;
+    GLuint dim;
+    GLuint size;
+    GLenum type;
+    GLboolean norm;
+};
+
+struct VertexLayout_
+{
+    virtual ~VertexLayout_() {}
+
+    virtual size_t count() const = 0;
+    virtual GLsizei offset_(size_t) const = 0;
+    virtual const Slot& slot(size_t) const = 0;
+
+    GLsizei total_size() const
+    { return offset_(count()); }
+
+    GLvoid* offset(size_t si) const
+    { return reinterpret_cast<GLvoid*>(offset_(si)); }
+};
+
+template <size_t N>
+struct VertexLayoutN : public VertexLayout_
+{
+    Slot slots[N];
+
+    VertexLayoutN(std::initializer_list<Slot> in)
+    {
+        std::copy(in.begin(), in.end(), slots);
+    }
+
+    const Slot& slot(size_t i) const override
+    { return slots[i]; }
+
+    size_t count() const override
+    { return N; }
+
+    GLsizei offset_(size_t si) const override
+    {
+        GLsizei result = 0;
+        for (size_t i = 0; i < si; ++i)
+        {
+            result += slots[i].dim * slots[i].size;
+        }
+        return result;
+    }
+};
+
+VertexLayoutN<3> ui_vertex_layout =
+{
+    {"msPos", 0, 2, 4, GL_FLOAT,         false},
+    {"uv",    1, 2, 4, GL_FLOAT,         false},
+    {"color", 2, 4, 1, GL_UNSIGNED_BYTE, true}
+};
+
+VertexLayoutN<3> stroke_vertex_layout =
+{
+    {"msPosition", 0, 3, 4, GL_FLOAT, false},
+    {"uve",        1, 3, 4, GL_FLOAT, false},
+    {"color",      2, 4, 4, GL_FLOAT, false}
+};
+
+kernel_services::MeshID create_mesh(const VertexLayout_& layout,
+                                    u32 initialVCount,
+                                    u32 initialICount)
 {
     Mesh2 &mesh = meshes[next_mesh_idx];
 
-    const GLuint POS_LOC = 0;
-    const GLuint UV_LOC = 1;
-    const GLuint COL_LOC = 2;
-
-    const GLint POS_DIM = 2;
-    const GLint UV_DIM = 2;
-    const GLint COL_DIM = 4;
-
-    const GLuint POS_SZ = 4;
-    const GLuint UV_SZ = 4;
-    const GLuint COL_SZ = 1;
-
-    const GLenum POS_TYPE = GL_FLOAT;
-    const GLenum UV_TYPE = GL_FLOAT;
-    const GLenum COL_TYPE = GL_UNSIGNED_BYTE;
-
-    const GLsizei vertexSize = POS_DIM * POS_SZ + UV_DIM * UV_SZ + COL_DIM * COL_SZ;
-
+    u32 vertexSize = static_cast<u32>(layout.total_size());
     mesh.vsize = vertexSize;
     mesh.isize = 2;
 
@@ -475,30 +525,37 @@ kernel_services::MeshID create_mesh()
 
     glGenBuffers(1, &mesh.vbuf);
     glBindBuffer(GL_ARRAY_BUFFER, mesh.vbuf);
-    // TODO: initial size?
-    glBufferData(GL_ARRAY_BUFFER, 1000 * vertexSize,
+    glBufferData(GL_ARRAY_BUFFER,
+                 static_cast<GLsizeiptr>(initialVCount * vertexSize),
                  nullptr, GL_DYNAMIC_DRAW);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     glBindBuffer(GL_ARRAY_BUFFER, mesh.vbuf);
-    glVertexAttribPointer(POS_LOC, POS_DIM, POS_TYPE, GL_FALSE, vertexSize, 0);
-    glVertexAttribPointer(UV_LOC, UV_DIM, UV_TYPE, GL_FALSE, vertexSize,
-                          reinterpret_cast<GLvoid*>(POS_DIM * POS_SZ));
-    // NOTE: normalize=true
-    glVertexAttribPointer(COL_LOC, COL_DIM, COL_TYPE, GL_TRUE, vertexSize,
-                          reinterpret_cast<GLvoid*>(POS_DIM * POS_SZ + UV_DIM * UV_SZ));
+
+    for (size_t i = 0; i < layout.count(); ++i)
+    {
+        glVertexAttribPointer(layout.slot(i).loc,
+                              static_cast<GLint>(layout.slot(i).dim),
+                              layout.slot(i).type,
+                              layout.slot(i).norm,
+                              layout.total_size(),
+                              layout.offset(i));
+    }
+
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    glEnableVertexAttribArray(POS_LOC);
-    glEnableVertexAttribArray(UV_LOC);
-    glEnableVertexAttribArray(COL_LOC);
+    for (size_t i = 0; i < layout.count(); ++i)
+    {
+        glEnableVertexAttribArray(layout.slot(i).loc);
+    }
 
     glBindVertexArray(0);
 
     glGenBuffers(1, &mesh.ibuf);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.ibuf);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, 1000 * mesh.isize,
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                 static_cast<GLsizeiptr>(initialICount * mesh.isize),
                  nullptr, GL_DYNAMIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
@@ -763,6 +820,8 @@ int main(int argc, char *argv[])
         services.create_texture = create_texture;
         services.update_texture = update_texture;
         services.delete_texture = delete_texture;
+        services.ui_vertex_layout = &ui_vertex_layout;
+        services.stroke_vertex_layout = &stroke_vertex_layout;
 
         (*setup)(&services);
 
