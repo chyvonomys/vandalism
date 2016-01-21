@@ -372,7 +372,7 @@ struct UIPresenter
     GLint m_vpSizeLoc;
 };
 
-struct Mesh2
+struct Mesh
 {
     GLuint vao;
     GLuint ibuf;
@@ -384,9 +384,7 @@ struct Mesh2
 // TODO: this runs always up
 u32 next_mesh_idx = 0;
 const u32 MAXMESHCNT = 20;
-Mesh2 meshes[MAXMESHCNT];
-
-// TODO: implement vertex LAYOUT and use it in all places
+Mesh meshes[MAXMESHCNT];
 
 struct Slot
 {
@@ -398,9 +396,9 @@ struct Slot
     GLboolean norm;
 };
 
-struct VertexLayout_
+struct VertexLayout
 {
-    virtual ~VertexLayout_() {}
+    virtual ~VertexLayout() {}
 
     virtual size_t count() const = 0;
     virtual GLsizei offset_(size_t) const = 0;
@@ -414,7 +412,7 @@ struct VertexLayout_
 };
 
 template <size_t N>
-struct VertexLayoutN : public VertexLayout_
+struct VertexLayoutN : public VertexLayout
 {
     Slot slots[N];
 
@@ -454,11 +452,11 @@ VertexLayoutN<3> stroke_vertex_layout =
     {"color",      2, 4, 4, GL_FLOAT, false}
 };
 
-kernel_services::MeshID create_mesh(const VertexLayout_& layout,
+kernel_services::MeshID create_mesh(const VertexLayout& layout,
                                     u32 initialVCount,
                                     u32 initialICount)
 {
-    Mesh2 &mesh = meshes[next_mesh_idx];
+    Mesh &mesh = meshes[next_mesh_idx];
 
     u32 vertexSize = static_cast<u32>(layout.total_size());
     mesh.vsize = vertexSize;

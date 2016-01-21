@@ -686,16 +686,16 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     {
         fill_quads(curr_quads, curr_idxs, debug_data.points,
                    currStart, currEnd, currId, id_transform(), currBrush);
-
-        u32 vtxCnt = static_cast<u32>(curr_quads.size());
-        u32 idxCnt = static_cast<u32>(curr_idxs.size());
-
-        current_services->update_mesh(curr_mesh,
-                                      curr_quads.data(), vtxCnt,
-                                      curr_idxs.data(), idxCnt);
-        output->fgmesh = curr_mesh;
-        output->fgmeshCnt = idxCnt;
     }
+
+    u32 vtxCnt = static_cast<u32>(curr_quads.size());
+    u32 idxCnt = static_cast<u32>(curr_idxs.size());
+
+    current_services->update_mesh(curr_mesh,
+                                  curr_quads.data(), vtxCnt,
+                                  curr_idxs.data(), idxCnt);
+    output->fgmesh = curr_mesh;
+    output->fgmeshCnt = idxCnt;
 
     // Draw SW -----------------------------------------------------------------
 

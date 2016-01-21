@@ -17,7 +17,7 @@ struct offscreen_buffer
     u32 height;
 };
 
-struct VertexLayout_;
+struct VertexLayout;
 
 struct kernel_services
 {
@@ -31,12 +31,12 @@ struct kernel_services
     UPDATE_TEXTURE update_texture;
     DELETE_TEXTURE delete_texture;
 
-    const VertexLayout_ *ui_vertex_layout;
-    const VertexLayout_ *stroke_vertex_layout;
+    const VertexLayout *ui_vertex_layout;
+    const VertexLayout *stroke_vertex_layout;
 
     typedef u32 MeshID;
 
-    typedef MeshID (*CREATE_MESH)(const VertexLayout_&, u32, u32);
+    typedef MeshID (*CREATE_MESH)(const VertexLayout&, u32, u32);
     typedef void (*UPDATE_MESH)(MeshID, const void*, u32, const u16*, u32);
     typedef void (*DELETE_MESH)(MeshID);
 
