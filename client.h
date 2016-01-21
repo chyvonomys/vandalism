@@ -82,9 +82,12 @@ struct output_data
         float r, g, b, a;
     };
 
-    std::vector<Vertex> *bake_tris;
-    std::vector<Vertex> *curr_tris;
     bool bake_flag;
+
+    kernel_services::MeshID fgmesh;
+    kernel_services::MeshID bgmesh;
+    u32 fgmeshCnt;
+    u32 bgmeshCnt;
 
     // baked texture quad manipulations
     float preTranslateX;

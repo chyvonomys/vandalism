@@ -111,6 +111,12 @@ u32 timingX;
 
 ImGuiTextBuffer *viewsBuf;
 
+std::vector<output_data::Vertex> bake_quads;
+std::vector<output_data::Vertex> curr_quads;
+
+std::vector<u16> bake_idxs;
+std::vector<u16> curr_idxs;
+
 extern "C" void setup(kernel_services *services)
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -128,10 +134,19 @@ extern "C" void setup(kernel_services *services)
 
     current_services = services;
 
+    const u32 BAKE_QUADS_CNT = 5000;
+    const u32 CURR_QUADS_CNT = 500;
+
+    bake_quads.reserve(BAKE_QUADS_CNT * 4);
+    curr_quads.reserve(CURR_QUADS_CNT * 4);
+
+    bake_idxs.reserve(BAKE_QUADS_CNT * 6);
+    curr_idxs.reserve(CURR_QUADS_CNT * 6);
+
     bake_mesh = current_services->create_mesh(*current_services->stroke_vertex_layout,
-                                              10000, 10000);
+                                              BAKE_QUADS_CNT * 4, BAKE_QUADS_CNT * 6);
     curr_mesh = current_services->create_mesh(*current_services->stroke_vertex_layout,
-                                              1000, 1000);
+                                              CURR_QUADS_CNT * 4, CURR_QUADS_CNT * 6);
 
     io.Fonts->ClearInputData();
     io.Fonts->ClearTexData();
@@ -195,7 +210,8 @@ extern "C" void cleanup()
 
 // TODO: optimize with triangle fans/strips maybe?
 
-void add_quad_tex(std::vector<output_data::Vertex> *tris,
+void add_quad_tex(std::vector<output_data::Vertex> &quads,
+                  std::vector<u16> &idxs,
                   test_point a, test_point b, test_point c, test_point d,
                   float zindex, float ec,
                   float rc, float gc, float bc, float ac)
@@ -206,15 +222,24 @@ void add_quad_tex(std::vector<output_data::Vertex> *tris,
     v.e = ec;
     v.r = rc; v.g = gc; v.b = bc; v.a = ac;
 
-    v.x = a.x; v.y = a.y; v.u = 0.0f; v.v = 0.0f; tris->push_back(v);
-    v.x = b.x; v.y = b.y; v.u = 0.0f; v.v = 1.0f; tris->push_back(v);
-    v.x = c.x; v.y = c.y; v.u = 1.0f; v.v = 1.0f; tris->push_back(v);
-    v.x = c.x; v.y = c.y; v.u = 1.0f; v.v = 1.0f; tris->push_back(v);
-    v.x = d.x; v.y = d.y; v.u = 1.0f; v.v = 0.0f; tris->push_back(v);
-    v.x = a.x; v.y = a.y; v.u = 0.0f; v.v = 0.0f; tris->push_back(v);
+    u16 qs = static_cast<u16>(quads.size());
+
+    v.x = a.x; v.y = a.y; v.u = 0.0f; v.v = 0.0f; quads.push_back(v);
+    v.x = b.x; v.y = b.y; v.u = 0.0f; v.v = 1.0f; quads.push_back(v);
+    v.x = c.x; v.y = c.y; v.u = 1.0f; v.v = 1.0f; quads.push_back(v);
+    v.x = d.x; v.y = d.y; v.u = 1.0f; v.v = 0.0f; quads.push_back(v);
+
+    // TODO: this can be pre-calculated, only count varies
+    idxs.push_back(qs + 0);
+    idxs.push_back(qs + 1);
+    idxs.push_back(qs + 2);
+    idxs.push_back(qs + 2);
+    idxs.push_back(qs + 3);
+    idxs.push_back(qs + 0);
 }
 
-void add_quad_const(std::vector<output_data::Vertex> *tris,
+void add_quad_const(std::vector<output_data::Vertex> &quads,
+                    std::vector<u16> &idxs,
                     test_point a, test_point b, test_point c, test_point d,
                     float zindex, float ec,
                     float rc, float gc, float bc, float ac)
@@ -226,15 +251,24 @@ void add_quad_const(std::vector<output_data::Vertex> *tris,
     v.e = ec;
     v.r = rc; v.g = gc; v.b = bc; v.a = ac;
 
-    v.x = a.x; v.y = a.y; tris->push_back(v);
-    v.x = b.x; v.y = b.y; tris->push_back(v);
-    v.x = c.x; v.y = c.y; tris->push_back(v);
-    v.x = c.x; v.y = c.y; tris->push_back(v);
-    v.x = d.x; v.y = d.y; tris->push_back(v);
-    v.x = a.x; v.y = a.y; tris->push_back(v);
+    u16 qs = static_cast<u16>(quads.size());
+
+    v.x = a.x; v.y = a.y; quads.push_back(v);
+    v.x = b.x; v.y = b.y; quads.push_back(v);
+    v.x = c.x; v.y = c.y; quads.push_back(v);
+    v.x = d.x; v.y = d.y; quads.push_back(v);
+
+    // TODO: this can be pre-calculated, only count varies
+    idxs.push_back(qs + 0);
+    idxs.push_back(qs + 1);
+    idxs.push_back(qs + 2);
+    idxs.push_back(qs + 2);
+    idxs.push_back(qs + 3);
+    idxs.push_back(qs + 0);
 }
 
-void fill_quads(std::vector<output_data::Vertex> *tris,
+void fill_quads(std::vector<output_data::Vertex>& quads,
+                std::vector<u16>& idxs,
                 const test_point *points,
                 size_t pi0, size_t pi1, size_t si,
                 const test_transform& tform,
@@ -263,7 +297,8 @@ void fill_quads(std::vector<output_data::Vertex> *tris,
             test_point d = apply_transform_pt(tform, {p1r.x, p1r.y});
 
             float zindex = 0.00001f * si;
-            add_quad_const(tris, a, b, c, d, zindex, brush.e,
+            add_quad_const(quads, idxs,
+                           a, b, c, d, zindex, brush.e,
                            brush.r, brush.g, brush.b, brush.a);
         }
     }
@@ -284,7 +319,8 @@ void fill_quads(std::vector<output_data::Vertex> *tris,
         test_point d = apply_transform_pt(tform, {br.x, br.y});
 
         float zindex = 0.00001f * si;
-        add_quad_tex(tris, a, b, c, d, zindex, brush.e,
+        add_quad_tex(quads, idxs,
+                     a, b, c, d, zindex, brush.e,
                      brush.r, brush.g, brush.b, brush.a);
     }
 }
@@ -570,7 +606,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     if (ism->visiblesChanged)
     {
-        output->bake_tris->clear();
+        bake_quads.clear();
+        bake_idxs.clear();
         std::vector<test_visible> visibles;
         std::vector<test_transform> transforms;
         test_box viewbox = {-0.5f * input->rtWidthIn,
@@ -587,11 +624,19 @@ extern "C" void update_and_render(input_data *input, output_data *output)
             const test_transform& tform = transforms[vis.ti];
             const test_stroke& stroke = debug_data.strokes[vis.si];
             const Vandalism::Brush& brush = ism->brushes[stroke.brush_id];
-            fill_quads(output->bake_tris, debug_data.points,
+            fill_quads(bake_quads, bake_idxs, debug_data.points,
                        stroke.pi0, stroke.pi1, vis.si, tform, brush);
         }
 
+        u32 vtxCnt = static_cast<u32>(bake_quads.size());
+        u32 idxCnt = static_cast<u32>(bake_idxs.size());
+
+        current_services->update_mesh(bake_mesh,
+                                      bake_quads.data(), vtxCnt,
+                                      bake_idxs.data(), idxCnt);
         output->bake_flag = true;
+        output->bgmesh = bake_mesh;
+        output->bgmeshCnt = idxCnt;
         // flag processed
         // TODO: make this better
         ism->visiblesChanged = false;
@@ -633,13 +678,23 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     size_t currStart, currEnd;
     size_t currId = ism->get_current_stroke(currStart, currEnd);
 
-    output->curr_tris->clear();
+    curr_quads.clear();
+    curr_idxs.clear();
 
     Vandalism::Brush currBrush;
     if (ism->get_current_brush(currBrush))
     {
-        fill_quads(output->curr_tris, debug_data.points,
+        fill_quads(curr_quads, curr_idxs, debug_data.points,
                    currStart, currEnd, currId, id_transform(), currBrush);
+
+        u32 vtxCnt = static_cast<u32>(curr_quads.size());
+        u32 idxCnt = static_cast<u32>(curr_idxs.size());
+
+        current_services->update_mesh(curr_mesh,
+                                      curr_quads.data(), vtxCnt,
+                                      curr_idxs.data(), idxCnt);
+        output->fgmesh = curr_mesh;
+        output->fgmeshCnt = idxCnt;
     }
 
     // Draw SW -----------------------------------------------------------------
@@ -769,14 +824,18 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ImGui::Text("ism strokes: %lu", ism->strokes.size());
     ImGui::Text("ism points: %lu", ism->points.size());
 
-    ImGui::Text("bake_tris (%lu/%lu) %d",
-                output->bake_tris->size(),
-                output->bake_tris->capacity(),
+    ImGui::Text("bake_quads v: (%lu/%lu) i: (%lu/%lu) %d",
+                bake_quads.size(),
+                bake_quads.capacity(),
+                bake_idxs.size(),
+                bake_idxs.capacity(),
                 output->bake_flag);
 
-    ImGui::Text("curr_tris (%lu/%lu)",
-                output->curr_tris->size(),
-                output->curr_tris->capacity());
+    ImGui::Text("curr_quads v: (%lu/%lu) i: (%lu/%lu)",
+                curr_quads.size(),
+                curr_quads.capacity(),
+                curr_idxs.size(),
+                curr_idxs.capacity());
 
     ImGui::Text("mode: %d", ism->currentMode);
 

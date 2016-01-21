@@ -347,68 +347,14 @@ struct RenderTarget
     u32 m_height;
 };
 
-struct LocSpec
-{
-    const char *name;
-    GLenum type;
-    u32 dimension;
-    u32 size;
-    bool normalized;
-};
-
-struct VertexLayout
-{
-    const LocSpec *slots;
-    u32 slotCnt;
-    u32 totalSize;
-
-    void init()
-    {
-        totalSize = 0;
-        for (u32 i = 0; i < slotCnt; ++i)
-        {
-            totalSize += slots[i].dimension * slots[i].size;
-        }
-    }
-};
-
-struct Mesh
-{
-    void setup(const VertexLayout &layout);
-    void cleanup();
-
-    void update(const output_data::Vertex *data, u32 vtxCnt);
-
-    GLuint m_vao;
-    GLuint m_vbo;
-
-    u32 m_vtxCnt;
-    u32 m_vertexSize;
-};
-
-struct IndexedMesh
-{
-    void setup();
-    void cleanup();
-
-    void update(const float *xy, u32 vtxCnt,
-                const u32 *ids, u32 elemCnt);
-
-    GLuint m_vao;
-
-    GLuint m_ebo;
-    GLuint m_vbo;
-
-    u32 m_vtxCnt;
-    u32 m_elemCnt;
-};
-
 struct MeshPresenter
 {
     void setup();
     void cleanup();
 
-    void draw(GLuint vao, u32 vtxCnt, float scaleX, float scaleY);
+    void draw(kernel_services::MeshID mi,
+              u32 offset, u32 count,
+              float scaleX, float scaleY);
 
     GLuint m_program;
     GLint m_scaleLoc;
@@ -634,13 +580,6 @@ void delete_texture(kernel_services::TexID ti)
     glDeleteTextures(1, &textures[ti].glid);
 }
 
-const LocSpec strokesMeshLayout[3] =
-{
-    {"msPosition", GL_FLOAT, 3, sizeof(float), false},
-    {"uve",        GL_FLOAT, 3, sizeof(float), false},
-    {"color",      GL_FLOAT, 4, sizeof(float), false}
-};
-
 int main(int argc, char *argv[])
 {
     for (int i = 1; i < argc; ++i)
@@ -755,30 +694,12 @@ int main(int argc, char *argv[])
 
         check_gl_errors("after setup");
 
-        VertexLayout meshLayout;
-        meshLayout.slots = strokesMeshLayout;
-        meshLayout.slotCnt = 3;
-        meshLayout.init();
-
-        Mesh bgmesh, fgmesh;
-        bgmesh.setup(meshLayout);
-        fgmesh.setup(meshLayout);
-
         GLubyte *pixels = new GLubyte[swWidthPx * swHeightPx * 4];
 
         offscreen_buffer buffer;
         buffer.data = pixels;
         buffer.width = swWidthPx;
         buffer.height = swHeightPx;
-
-        const u32 BAKE_TRIS_CNT = 5000;
-        const u32 CURR_TRIS_CNT = 500;
-
-        std::vector<output_data::Vertex> bake_tris;
-        std::vector<output_data::Vertex> curr_tris;
-
-        bake_tris.reserve(BAKE_TRIS_CNT * 3);
-        curr_tris.reserve(CURR_TRIS_CNT * 3);
 
         MeshPresenter render;
         render.setup();
@@ -789,8 +710,6 @@ int main(int argc, char *argv[])
         input_data input;
         input.nFrames = 0;
         output_data output;
-        output.bake_tris = &bake_tris;
-        output.curr_tris = &curr_tris;
         output.buffer = &buffer;
 
         void *lib_handle = ::dlopen("client.dylib", RTLD_LAZY);
@@ -935,20 +854,15 @@ int main(int argc, char *argv[])
 
             (*upd_and_rnd)(&input, &output);
 
-            fgmesh.update(output.curr_tris->data(),
-                          static_cast<u32>(output.curr_tris->size()));
-
             if (output.bake_flag)
             {
-                bgmesh.update(output.bake_tris->data(),
-                              static_cast<u32>(output.bake_tris->size()));
                 // flag processed
                 // TODO: ??
                 output.bake_flag = false;
                 rt.before(true);
-                render.draw(bgmesh.m_vao, bgmesh.m_vtxCnt,
+                render.draw(output.bgmesh, 0, output.bgmeshCnt,
                             2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
-                render.draw(fgmesh.m_vao, fgmesh.m_vtxCnt,
+                render.draw(output.fgmesh, 0, output.fgmeshCnt,
                             2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
                 rt.after();
             }
@@ -956,7 +870,7 @@ int main(int argc, char *argv[])
             {
                 // append
                 rt.before(false);
-                render.draw(fgmesh.m_vao, fgmesh.m_vtxCnt,
+                render.draw(output.fgmesh, 0, output.fgmeshCnt,
                             2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
                 rt.after();
             }
@@ -1016,8 +930,6 @@ int main(int argc, char *argv[])
 
         uirender.cleanup();
         render.cleanup();
-        bgmesh.cleanup();
-        fgmesh.cleanup();
         blit.cleanup();
         rt.cleanup();
         fs.cleanup();
@@ -1459,58 +1371,6 @@ void FSGrid::cleanup()
     glDeleteProgram(m_fullscreenProgram);
 }
 
-void Mesh::setup(const VertexLayout &layout)
-{
-    m_vertexSize = layout.totalSize;
-
-    glGenVertexArrays(1, &m_vao);
-
-    glBindVertexArray(m_vao);
-
-    glGenBuffers(1, &m_vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-    glBufferData(GL_ARRAY_BUFFER, 1500 * m_vertexSize,
-                 0, GL_DYNAMIC_DRAW);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-
-    u32 offset = 0;
-    for (u32 i = 0; i < layout.slotCnt; ++i)
-    {
-        glVertexAttribPointer(i,
-                              static_cast<GLint>(layout.slots[i].dimension),
-                              layout.slots[i].type,
-                              (layout.slots[i].normalized ? GL_TRUE : GL_FALSE),
-                              static_cast<GLsizei>(m_vertexSize),
-                              reinterpret_cast<GLvoid*>(offset));
-        offset += layout.slots[i].dimension * layout.slots[i].size;
-
-        glEnableVertexAttribArray(i);
-    }
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-}
-
-void Mesh::cleanup()
-{
-    glDeleteVertexArrays(1, &m_vao);
-    glDeleteBuffers(1, &m_vbo);
-}
-
-void Mesh::update(const output_data::Vertex *data, u32 vtxCnt)
-{
-    glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-    glBufferData(GL_ARRAY_BUFFER, vtxCnt * m_vertexSize,
-                 data, GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    m_vtxCnt = vtxCnt;
-}
-
-
 void MeshPresenter::setup()
 {
     const char *vertex_src =
@@ -1557,7 +1417,7 @@ void MeshPresenter::cleanup()
     glDeleteProgram(m_program);
 }
 
-void MeshPresenter::draw(GLuint vao, u32 vtxCnt,
+void MeshPresenter::draw(kernel_services::MeshID mi, u32 offset, u32 count,
                          float scaleX, float scaleY)
 {
     glEnable(GL_DEPTH_TEST);
@@ -1566,9 +1426,16 @@ void MeshPresenter::draw(GLuint vao, u32 vtxCnt,
     glBlendFunc(GL_ONE, GL_SRC1_ALPHA);
     glUseProgram(m_program);
     glUniform2f(m_scaleLoc, scaleX, scaleY);
-    glBindVertexArray(vao);
-    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vtxCnt));
+
+    glBindVertexArray(meshes[mi].vao);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, meshes[mi].ibuf);
+    glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(count), GL_UNSIGNED_SHORT,
+                   reinterpret_cast<GLvoid*>(offset * meshes[mi].isize));
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
     glBindVertexArray(0);
+
     glUseProgram(0);
     glDisable(GL_BLEND);
     glDisable(GL_DEPTH_TEST);
