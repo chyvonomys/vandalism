@@ -277,7 +277,6 @@ struct FSQuad
     void cleanup();
 
     GLuint m_vao;
-    GLuint m_vbo;
 };
 
 struct BufferPresenter
@@ -956,19 +955,17 @@ void BufferPresenter::setup(FSQuad *quad, u32 width, u32 height)
     m_quad = quad;
 
     const char *vertex_src =
-        "  #version 330 core                                       \n"
-        "  layout (location = 0) in vec2 i_msPosition;             \n"
-        "  layout (location = 1) in vec2 i_textureUV;              \n"
-        "  uniform vec2 u_scale;                                   \n"
-        "  out vec2 l_textureUV;                                   \n"
-        "  void main()                                             \n"
-        "  {                                                       \n"
-        "      gl_Position.xy = i_msPosition;                      \n"
-        "      gl_Position.z = 0.0f;                               \n"
-        "      gl_Position.w = 1.0f;                               \n"
-        "      l_textureUV.x = u_scale.x * i_textureUV.x;          \n"
-        "      l_textureUV.y = u_scale.y * (1.0f - i_textureUV.y); \n"
-        "  }                                                       \n";
+        "  #version 330 core                                     \n"
+        "  uniform vec2 u_scale;                                 \n"
+        "  out vec2 l_textureUV;                                 \n"
+        "  void main()                                           \n"
+        "  {                                                     \n"
+        "      vec2 uv = vec2(gl_VertexID % 2, gl_VertexID / 2); \n"
+        "      gl_Position.xy = 2.0f * uv - 1.0f;                \n"
+        "      gl_Position.zw = vec2(0.0f, 1.0f);                \n"
+        "      l_textureUV.x = u_scale.x * uv.x;                 \n"
+        "      l_textureUV.y = u_scale.y * (1.0f - uv.y);        \n"
+        "  }                                                     \n";
 
     const char *fragment_src =
         "  #version 330 core                                 \n"
@@ -1181,8 +1178,6 @@ void FSTexturePresenter::setup(FSQuad *quad)
 
     const char *vertex_src =
         "  #version 330 core                                  \n"
-        "  layout (location = 0) in vec2 i_msPosition;        \n"
-        "  layout (location = 1) in vec2 i_textureUV;         \n"
         "  out vec2 l_textureUV;                              \n"
         "  uniform vec2 u_preTranslation;                     \n"
         "  uniform vec2 u_postTranslation;                    \n"
@@ -1192,7 +1187,10 @@ void FSTexturePresenter::setup(FSQuad *quad)
         "  uniform vec2 u_vpSize;                             \n"
         "  void main()                                        \n"
         "  {                                                  \n"
-        "      vec2 xy_i = i_msPosition * u_rtSize / 2;       \n"
+        "      vec2 uv = vec2(gl_VertexID % 2,                \n"
+        "                     gl_VertexID / 2);               \n"
+        "      vec2 msPos = 2.0f * uv - 1.0f;                 \n"
+        "      vec2 xy_i = msPos * u_rtSize / 2;              \n"
         "      xy_i += u_preTranslation;                      \n"
         "      float s = sin(u_rotation);                     \n"
         "      float c = cos(u_rotation);                     \n"
@@ -1203,7 +1201,7 @@ void FSTexturePresenter::setup(FSQuad *quad)
         "      gl_Position.xy = 2 * xy_i / u_vpSize;          \n"
         "      gl_Position.z = 0.0f;                          \n"
         "      gl_Position.w = 1.0f;                          \n"
-        "      l_textureUV = i_textureUV;                     \n"
+        "      l_textureUV = uv;                              \n"
         "  }                                                  \n";
 
     const char *fragment_src =
@@ -1264,58 +1262,19 @@ void FSTexturePresenter::draw(GLuint tex, bool specialRT,
 
 void FSQuad::setup()
 {
-    const float fullscreenQuadVertices[4*2*2] =
-    {//   X      Y       U     V
-        -1.0f, -1.0f,   0.0f, 0.0f,
-        -1.0f, +1.0f,   0.0f, 1.0f,
-        +1.0f, +1.0f,   1.0f, 1.0f,
-        +1.0f, -1.0f,   1.0f, 0.0f
-    };
-
-    const GLuint POS_LOC = 0;
-    const GLuint UV_LOC = 1;
-
-    const GLint POS_DIM = 2;
-    const GLint UV_DIM = 2;
-
-    const GLsizei vertexSize = (POS_DIM + UV_DIM) * sizeof(float);
-
     glGenVertexArrays(1, &m_vao);
-
-    // vao setup
-    glBindVertexArray(m_vao);
-
-    glGenBuffers(1, &m_vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-    glBufferData(GL_ARRAY_BUFFER, 4 * vertexSize,
-                 fullscreenQuadVertices, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-    glVertexAttribPointer(POS_LOC, POS_DIM, GL_FLOAT, GL_FALSE, vertexSize, 0);
-    glVertexAttribPointer(UV_LOC, UV_DIM, GL_FLOAT, GL_FALSE, vertexSize,
-                          reinterpret_cast<GLvoid*>(POS_DIM * sizeof(float)));
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    glEnableVertexAttribArray(POS_LOC);
-    glEnableVertexAttribArray(UV_LOC);
-
-    glBindVertexArray(0);
-    // end vao setup
 }
 
 void FSQuad::draw()
 {
     glBindVertexArray(m_vao);
-    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     glBindVertexArray(0);
 }
 
 void FSQuad::cleanup()
 {
     glDeleteVertexArrays(1, &m_vao);
-    glDeleteBuffers(1, &m_vbo);
 }
 
 void FSGrid::setup(FSQuad *quad)
@@ -1323,17 +1282,15 @@ void FSGrid::setup(FSQuad *quad)
     m_quad = quad;
 
     const char *vertex_src =
-        "  #version 330 core                                  \n"
-        "  layout (location = 0) in vec2 i_msPosition;        \n"
-        "  layout (location = 1) in vec2 i_textureUV;         \n"
-        "  out vec2 l_textureUV;                              \n"
-        "  void main()                                        \n"
-        "  {                                                  \n"
-        "      gl_Position.xy = i_msPosition;                 \n"
-        "      gl_Position.z = 0.0f;                          \n"
-        "      gl_Position.w = 1.0f;                          \n"
-        "      l_textureUV = i_textureUV;                     \n"
-        "  }                                                  \n";
+        "  #version 330 core                                     \n"
+        "  out vec2 l_textureUV;                                 \n"
+        "  void main()                                           \n"
+        "  {                                                     \n"
+        "      vec2 uv = vec2(gl_VertexID % 2, gl_VertexID / 2); \n"
+        "      gl_Position.xy = 2.0f * uv - 1.0f;                \n"
+        "      gl_Position.zw = vec2(0.0f, 1.0f);                \n"
+        "      l_textureUV = uv;                                 \n"
+        "  }                                                     \n";
 
     const char *fragment_src =
         "  #version 330 core                                    \n"
