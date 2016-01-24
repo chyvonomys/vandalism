@@ -80,12 +80,18 @@ struct test_transition
     float b;
 };
 
+const size_t NPOS = static_cast<size_t>(-1);
+
 struct test_view
 {
     test_transition tr;
     size_t si0;
     size_t si1;
+    size_t pin_index;
     test_box bbox;
+    test_view(const test_transition& t, size_t s0, size_t s1)
+        : tr(t), si0(s0), si1(s1), pin_index(NPOS)
+    {}
 };
 
 struct test_data

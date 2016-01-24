@@ -22,7 +22,9 @@ struct Vandalism
 
     std::vector<test_view> views;
 
-    size_t pin;
+    std::vector<size_t> pins;
+
+    size_t currentViewIdx;
 
     // TODO: change this
     bool visiblesChanged;
@@ -123,11 +125,11 @@ struct Vandalism
     
     void done_rotate(const Input *input)
     {
-        pin = views.size();
+        currentViewIdx = views.size();
         float dx = input->mousex - rotateStartX;
         float angle = si_pi * dx;
         test_transition trot = {TROTATE, -angle, 0.0f};
-        views.push_back({trot, strokes.size(), strokes.size(), test_box()});
+        views.push_back(test_view(trot, strokes.size(), strokes.size()));
 
         remove_alterations();
 
@@ -152,9 +154,9 @@ struct Vandalism
 
     void done_zoom(const Input *input)
     {
-        pin = views.size();
+        currentViewIdx = views.size();
         test_transition tzoom = {TZOOM, input->mousex, zoomStartX};
-        views.push_back({tzoom, strokes.size(), strokes.size(), test_box()});
+        views.push_back(test_view(tzoom, strokes.size(), strokes.size()));
 
         remove_alterations();
 
@@ -175,11 +177,11 @@ struct Vandalism
 
     void done_pan(const Input *input)
     {
-        pin = views.size();
+        currentViewIdx = views.size();
         test_transition t = {TPAN,
                              panStartX - input->mousex,
                              panStartY - input->mousey};
-        views.push_back({t, strokes.size(), strokes.size(), test_box()});
+        views.push_back(test_view(t, strokes.size(), strokes.size()));
 
         remove_alterations();
 
@@ -230,9 +232,9 @@ struct Vandalism
     void done_draw(const Input *)
     {
         strokes.back().bbox.grow(0.5f * brushes.back().diameter);
-        views[pin].bbox.add_box(strokes.back().bbox);
+        views[currentViewIdx].bbox.add_box(strokes.back().bbox);
 
-        views[pin].si1 = strokes.size();
+        views[currentViewIdx].si1 = strokes.size();
 
         visiblesChanged = true;
     }
@@ -288,21 +290,21 @@ struct Vandalism
         float a0 = static_cast<float>(::atan2(d0.y, d0.x));
         float a1 = static_cast<float>(::atan2(d1.y, d1.x));
 
-        pin = views.size();
+        currentViewIdx = views.size();
         test_transition tpre = {TPAN, f.x, f.y};
-        views.push_back({tpre, strokes.size(), strokes.size(), test_box()});
+        views.push_back(test_view(tpre, strokes.size(), strokes.size()));
 
-        pin = views.size();
+        currentViewIdx = views.size();
         test_transition trot = {TROTATE, a0 - a1, 0.0f};
-        views.push_back({trot, strokes.size(), strokes.size(), test_box()});
+        views.push_back(test_view(trot, strokes.size(), strokes.size()));
 
-        pin = views.size();
+        currentViewIdx = views.size();
         test_transition tzoom = {TZOOM, len(d1), len(d0)};
-        views.push_back({tzoom, strokes.size(), strokes.size(), test_box()});
+        views.push_back(test_view(tzoom, strokes.size(), strokes.size()));
 
-        pin = views.size();
+        currentViewIdx = views.size();
         test_transition tpost = {TPAN, -f.x, -f.y};
-        views.push_back({tpost, strokes.size(), strokes.size(), test_box()});
+        views.push_back(test_view(tpost, strokes.size(), strokes.size()));
 
         remove_alterations();
 
@@ -388,10 +390,13 @@ struct Vandalism
         currentMode = IDLE;
         visiblesChanged = true;
 
-        test_transition none = {TPAN, 0.0f, 0.0f};
-        views.push_back({none, 0, 0, test_box()});
+        pins.push_back(0);
 
-        pin = 0;
+        test_transition none = {TPAN, 0.0f, 0.0f};
+        views.push_back(test_view(none, 0, 0));
+        views.back().pin_index = 0;
+
+        currentViewIdx = 0;
 
         firstX = 0.0f;
         firstY = 0.0f;
@@ -456,7 +461,7 @@ struct Vandalism
 
     bool check_undo(bool really)
     {
-        if (pin != views.size() - 1)
+        if (currentViewIdx != views.size() - 1)
         {
             return false;
         }
@@ -467,7 +472,7 @@ struct Vandalism
                 if (really)
                 {
                     views.pop_back();
-                    --pin;
+                    --currentViewIdx;
                 }
                 return true;
             }
@@ -562,7 +567,7 @@ struct Vandalism
                 {
                     std::istringstream ss(line);
                     ss.seekg(2);
-                    test_view vi;
+                    test_view vi({TPAN, 0.0f, 0.0f}, 0, 0);
                     std::string ttype;
                     ok = !(ss >> ttype >> vi.tr.a >> vi.tr.b
                            >> vi.si0 >> vi.si1).fail();
@@ -638,7 +643,7 @@ struct Vandalism
             views = newViews;
             strokes = newStrokes;
             points = newPoints;
-            pin = views.size() - 1;
+            currentViewIdx = views.size() - 1;
 
             visiblesChanged = true;
         }
