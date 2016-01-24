@@ -851,6 +851,11 @@ int main(int argc, char *argv[])
 
             (*upd_and_rnd)(&input, &output);
 
+            if (output.quit_flag)
+            {
+                break;
+            }
+
             if (output.bake_flag)
             {
                 // flag processed

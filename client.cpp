@@ -568,6 +568,8 @@ u32 DrawTestPin(offscreen_buffer *buffer,
 
 extern "C" void update_and_render(input_data *input, output_data *output)
 {
+    output->quit_flag = false;
+
     offscreen_buffer *buffer = output->buffer;
 
     float mxnorm = static_cast<float>(input->swMouseXPx) /
@@ -790,6 +792,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
         {
             ism->undo();
         }
+        ImGui::SameLine();
+        output->quit_flag = ImGui::Button("Quit");
     }
 
     ImGui::End();
