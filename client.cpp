@@ -125,10 +125,16 @@ extern "C" void setup(kernel_services *services)
 
     u8 *pixels;
     i32 width, height;
-    io.Fonts->GetTexDataAsAlpha8(&pixels, &width, &height);
+
+    ImFontConfig config;
+    config.OversampleH = 3;
+    config.OversampleV = 3;
+    io.Fonts->AddFontFromFileTTF("Roboto_Condensed/RobotoCondensed-Regular.ttf", 16.0f, &config);
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
 
     font_texture_id = services->create_texture(static_cast<u32>(width),
-                                               static_cast<u32>(height));
+                                               static_cast<u32>(height),
+                                               4);
     services->update_texture(font_texture_id, pixels);
     io.Fonts->TexID = reinterpret_cast<void *>(font_texture_id);
 

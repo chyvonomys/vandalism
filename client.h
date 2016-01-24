@@ -23,7 +23,7 @@ struct kernel_services
 {
     typedef u32 TexID;
 
-    typedef TexID (*CREATE_TEXTURE)(u32, u32);
+    typedef TexID (*CREATE_TEXTURE)(u32, u32, u32);
     typedef void (*UPDATE_TEXTURE)(TexID, const u8*);
     typedef void (*DELETE_TEXTURE)(TexID);
 

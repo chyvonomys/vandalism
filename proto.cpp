@@ -534,6 +534,7 @@ struct Texture
     GLuint glid;
     GLuint width;
     GLuint height;
+    GLenum format;
 };
 
 // TODO: this runs always up
@@ -541,17 +542,18 @@ u32 next_texture_idx = 0;
 const u32 MAXTEXCNT = 10;
 Texture textures[MAXTEXCNT];
 
-kernel_services::TexID create_texture(u32 w, u32 h)
+kernel_services::TexID create_texture(u32 w, u32 h, u32 comp)
 {
     Texture &tex = textures[next_texture_idx];
     tex.width = w;
     tex.height = h;
+    tex.format = (comp == 1 ? GL_RED : GL_RGBA);
     glGenTextures(1, &tex.glid);
 
     glBindTexture(GL_TEXTURE_2D, tex.glid);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED,
+    glTexImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(tex.format),
                  static_cast<GLsizei>(w), static_cast<GLsizei>(h), 0,
-                 GL_RED, GL_UNSIGNED_BYTE, nullptr);
+                 tex.format, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -568,7 +570,7 @@ void update_texture(kernel_services::TexID ti, const u8 *pixels)
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
                     static_cast<GLsizei>(textures[ti].width),
                     static_cast<GLsizei>(textures[ti].height),
-                    GL_RED, GL_UNSIGNED_BYTE, pixels);
+                    textures[ti].format, GL_UNSIGNED_BYTE, pixels);
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
@@ -1433,8 +1435,7 @@ void UIPresenter::setup()
         "  in vec4 l_color;                                         \n"
         "  void main()                                              \n"
         "  {                                                        \n"
-        "      float alpha = texture(sampler, l_uv).r;              \n"
-        "      o_color = l_color * alpha;                           \n"
+        "      o_color = l_color * texture(sampler, l_uv);          \n"
         "  }                                                        \n";
 
     m_program = ::create_program(vertex_src, nullptr, fragment_src);
