@@ -658,7 +658,10 @@ extern "C" void update_and_render(input_data *input, output_data *output)
             const char *typestr = (t == TZOOM ? "ZOOM" :
                                    (t == TPAN ? "PAN" :
                                     (t == TROTATE ? "ROTATE" : "ERROR")));
-            viewsBuf->append("%d: %s  %f/%f  (%ld..%ld)\n",
+
+            bool isPinned = (view.pin_index != NPOS);
+            bool isCurrent = (vi == ism->currentViewIdx);
+            viewsBuf->append("%c %c %d: %s  %f/%f  (%ld..%ld)\n", (isCurrent ? '>' : ' '), (isPinned ? '*' : ' '),
                             vi, typestr, view.tr.a, view.tr.b, view.si0, view.si1);
         }
         scrollViewsDown = true;
