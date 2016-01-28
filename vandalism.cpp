@@ -446,6 +446,73 @@ struct Vandalism
         return result;
     }
 
+    test_transition combine_transitions(float lefta, float leftb,
+                                        float righta, float rightb,
+                                        transition_type ty)
+    {
+        test_transition result;
+        result.type = ty;
+        if (ty == TPAN)
+        {
+            result.a = lefta + righta;
+            result.b = leftb + rightb;
+        }
+        else if (ty == TZOOM)
+        {
+            result.a = lefta * righta;
+            result.b = leftb * rightb;
+        }
+        else if (ty == TROTATE)
+        {
+            result.a = lefta + righta;
+            result.b = 0.0f;
+        }
+        return result;
+    }
+
+    void optimize_views()
+    {
+        if (views.size() > 1)
+        {
+            std::vector<test_view> optimized;
+            optimized.reserve(views.size());
+
+            optimized.push_back(views[0]);
+
+            for (size_t i = 1; i < views.size(); ++i)
+            {
+                auto& prev = optimized.back();
+                const auto& curr = views[i];
+                if (prev.pin_index == NPOS && prev.si0 == prev.si1 &&
+                    prev.tr.type == curr.tr.type && i != currentViewIdx)
+                {
+                    prev.bbox = curr.bbox;
+                    prev.pin_index = curr.pin_index;
+                    prev.si0 = curr.si0;
+                    prev.si1 = curr.si1;
+                    prev.tr = combine_transitions(prev.tr.a, prev.tr.b,
+                                                  curr.tr.a, curr.tr.b,
+                                                  prev.tr.type);
+                }
+                else
+                {
+                    if (i == currentViewIdx)
+                    {
+                        currentViewIdx = optimized.size();
+                    }
+                    optimized.push_back(curr);
+                }
+                // indexes change while optimizing, update
+                if (curr.pin_index != NPOS)
+                {
+                    pins[curr.pin_index] = optimized.size() - 1;
+                }
+            }
+            views = optimized;
+            visiblesChanged = true;
+        }
+    }
+
     bool undoable()
     {
         return check_undo(false);

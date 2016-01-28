@@ -796,7 +796,10 @@ extern "C" void update_and_render(input_data *input, output_data *output)
         {
             ism->load_data("debug.ism");
         }
-        ImGui::SameLine();
+        if (ImGui::Button("Optimize views"))
+        {
+            ism->optimize_views();
+        }
         if (ism->undoable() && ImGui::Button("Undo"))
         {
             ism->undo();
