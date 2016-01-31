@@ -101,6 +101,7 @@ float gui_background_color[3];
 float gui_grid_bg_color[3];
 float gui_grid_fg_color[3];
 float gui_eraser_alpha;
+i32 gui_goto_idx;
 
 const i32 cfg_min_brush_diameter_units = 1;
 const i32 cfg_max_brush_diameter_units = 64;
@@ -187,6 +188,8 @@ extern "C" void setup(kernel_services *services)
 
     gui_mouse_occupied = false;
     gui_mouse_hover = false;
+
+    gui_goto_idx = 0;
 
     timingX = 0;
 }
@@ -623,9 +626,10 @@ extern "C" void update_and_render(input_data *input, output_data *output)
                             -0.5f * input->rtHeightIn,
                             +0.5f * input->rtHeightIn};
 
-        query(debug_data, debug_data.nviews - 1,
+        query(debug_data, ism->currentViewIdx,
               viewbox, visibles, transforms,
               pixel_height_in);
+
         for (u32 visIdx = 0; visIdx < visibles.size(); ++visIdx)
         {
             const test_visible& vis = visibles[visIdx];
@@ -808,10 +812,20 @@ extern "C" void update_and_render(input_data *input, output_data *output)
         output->quit_flag = ImGui::Button("Quit");
     }
 
+    if (!ism->append_allowed())
+    {
+        ImGui::TextColored(ImColor(1.0f, 0.0f, 0.0f), "read only mode");
+    }
+
     ImGui::End();
 
     ImGui::SetNextWindowSize(ImVec2(200, 300), ImGuiSetCond_FirstUseEver);
     ImGui::Begin("views");
+    ImGui::SliderInt("view", &gui_goto_idx, 0, static_cast<i32>(debug_data.nviews-1));
+    if (ImGui::Button("Goto view"))
+    {
+        ism->set_view(static_cast<size_t>(gui_goto_idx));
+    }
     ImGui::TextUnformatted(viewsBuf->begin());
     if (scrollViewsDown)
     {
