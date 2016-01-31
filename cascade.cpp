@@ -277,36 +277,6 @@ test_transition inverse_transition(const test_transition &transition)
     return result;
 }
 
-/*
-test_box apply_transition_to_viewport(const test_transition &transition,
-                                      const test_box &viewport)
-{
-    test_box result = viewport;
-
-    if (transition.type == TZOOM)
-    {
-        float s = transition.b / transition.a;
-        float w = s * (result.x1 - result.x0);
-        float h = s * (result.y1 - result.y0);
-        float cx = 0.5f * (result.x1 + result.x0);
-        float cy = 0.5f * (result.y1 + result.y0);
-        result.x0 = cx - 0.5f * w;
-        result.x1 = cx + 0.5f * w;
-        result.y0 = cy - 0.5f * h;
-        result.y1 = cy + 0.5f * h;
-    }
-    else if (transition.type == TPAN)
-    {
-        result.x0 += transition.a;
-        result.x1 += transition.a;
-        result.y0 += transition.b;
-        result.y1 += transition.b;
-    }
-
-    return result;
-}
-*/
-
 test_point point_in_basis(const test_basis &b,
                           const test_point &p)
 {
@@ -377,11 +347,6 @@ test_transform combine_transforms(const test_transform &t0,
     test_transform result = transform_from_basis(combined);
 
     return result;
-}
-
-bool points_eq(const test_point &a, const test_point &b)
-{
-    return iszero({a.x - b.x, a.y - b.y});
 }
 
 // get transform which, when applied to points in src_idx view space

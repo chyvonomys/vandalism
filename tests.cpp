@@ -41,6 +41,11 @@ bool liang_barsky_test()
     return true;
 }
 
+bool points_eq(const test_point &a, const test_point &b)
+{
+    return iszero({a.x - b.x, a.y - b.y});
+}
+
 bool transforms_test()
 {
     test_point p = {-6, 2};
