@@ -853,6 +853,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     ImGui::Text("ism strokes: %lu", ism->strokes.size());
     ImGui::Text("ism points: %lu", ism->points.size());
+    ImGui::Text("ism brushes: %lu", ism->brushes.size());
 
     ImGui::Text("bake_quads v: (%lu/%lu) i: (%lu/%lu) %d",
                 bake_quads.size(),

@@ -229,8 +229,7 @@ struct Vandalism
             points.push_back(point);
         }
         stroke.pi1 = points.size();
-        stroke.brush_id = brushes.size();
-        // TODO: multiple strokes use one brush_id
+
         Brush brush;
         brush.r = input->brushred;
         brush.g = input->brushgreen;
@@ -238,7 +237,14 @@ struct Vandalism
         brush.a = (input->tool == ERASE ? 0.0f : input->brushalpha);
         brush.e = (input->tool == ERASE ? input->eraseralpha : 0.0f);
         brush.diameter = input->brushdiameter;
-        brushes.push_back(brush);
+
+        if (brushes.empty() ||
+            ::memcmp(&brushes.back(), &brush, sizeof(Brush)) != 0)
+        {
+            brushes.push_back(brush);
+        }
+
+        stroke.brush_id = brushes.size() - 1;
         strokes.push_back(stroke);
     }
 
