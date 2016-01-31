@@ -508,6 +508,9 @@ struct Vandalism
         {
             result.a = lefta * righta;
             result.b = leftb * rightb;
+
+            result.a = result.a / result.b;
+            result.b = 1.0f;
         }
         else if (ty == TROTATE)
         {
