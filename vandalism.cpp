@@ -29,6 +29,7 @@ struct Vandalism
     // TODO: change this
     bool visiblesChanged;
 
+    bool autoOptimizeViews;
 
     // PAN related
 
@@ -107,6 +108,25 @@ struct Vandalism
         return currentViewIdx + 1 == views.size();
     }
 
+    void append_new_view(const test_transition& tr)
+    {
+        auto& prev = views[currentViewIdx];
+        if (autoOptimizeViews && prev.pin_index == NPOS && prev.si0 == prev.si1 &&
+            prev.tr.type == tr.type)
+        {
+            prev.si0 = strokes.size();
+            prev.si1 = strokes.size();
+            prev.tr = combine_transitions(prev.tr.a, prev.tr.b,
+                                          tr.a, tr.b,
+                                          prev.tr.type);
+        }
+        else
+        {
+            currentViewIdx = views.size();
+            views.push_back(test_view(tr, strokes.size(), strokes.size()));
+        }
+    }
+
     void remove_alterations()
     {
         preShiftX = 0.0f;
@@ -131,11 +151,10 @@ struct Vandalism
     {
         if (append_allowed())
         {
-            currentViewIdx = views.size();
             float dx = input->mousex - rotateStartX;
             float angle = si_pi * dx;
             test_transition trot = {TROTATE, -angle, 0.0f};
-            views.push_back(test_view(trot, strokes.size(), strokes.size()));
+            append_new_view(trot);
         }
 
         remove_alterations();
@@ -163,9 +182,8 @@ struct Vandalism
     {
         if (append_allowed())
         {
-            currentViewIdx = views.size();
             test_transition tzoom = {TZOOM, input->mousex, zoomStartX};
-            views.push_back(test_view(tzoom, strokes.size(), strokes.size()));
+            append_new_view(tzoom);
         }
 
         remove_alterations();
@@ -189,11 +207,10 @@ struct Vandalism
     {
         if (append_allowed())
         {
-            currentViewIdx = views.size();
-            test_transition t = {TPAN,
-                                 panStartX - input->mousex,
-                                 panStartY - input->mousey};
-            views.push_back(test_view(t, strokes.size(), strokes.size()));
+            test_transition tpan = {TPAN,
+                                    panStartX - input->mousex,
+                                    panStartY - input->mousey};
+            append_new_view(tpan);
         }
 
         remove_alterations();
@@ -425,6 +442,8 @@ struct Vandalism
         views.back().pin_index = 0;
 
         currentViewIdx = 0;
+
+        autoOptimizeViews = true;
 
         firstX = 0.0f;
         firstY = 0.0f;
