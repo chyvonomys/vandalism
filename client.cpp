@@ -7,7 +7,7 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wold-style-cast"
 #pragma clang diagnostic ignored "-Wfloat-equal"
-#include "imgui.h"
+#include "imgui/imgui.h"
 #pragma clang diagnostic pop
 
 kernel_services *current_services = 0;
