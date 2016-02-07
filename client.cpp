@@ -107,6 +107,7 @@ const i32 cfg_min_brush_diameter_units = 1;
 const i32 cfg_max_brush_diameter_units = 64;
 const i32 cfg_def_brush_diameter_units = 4;
 const float cfg_brush_diameter_inches_per_unit = 1.0f / 64.0f;
+const float cfg_depth_step = 1.0f / 10000.0f;
 
 u32 timingX;
 
@@ -219,11 +220,12 @@ extern "C" void cleanup()
 
 // TODO: optimize with triangle fans/strips maybe?
 
-void add_quad_tex(std::vector<output_data::Vertex> &quads,
-                  std::vector<u16> &idxs,
-                  test_point a, test_point b, test_point c, test_point d,
-                  float zindex, float ec,
-                  float rc, float gc, float bc, float ac)
+void add_quad(std::vector<output_data::Vertex> &quads,
+              std::vector<u16> &idxs,
+              test_point a, test_point b, test_point c, test_point d,
+              float zindex, float ec,
+              float rc, float gc, float bc, float ac,
+              float u0, float u1)
 {
     output_data::Vertex v;
 
@@ -233,39 +235,10 @@ void add_quad_tex(std::vector<output_data::Vertex> &quads,
 
     u16 qs = static_cast<u16>(quads.size());
 
-    v.x = a.x; v.y = a.y; v.u = 0.0f; v.v = 0.0f; quads.push_back(v);
-    v.x = b.x; v.y = b.y; v.u = 0.0f; v.v = 1.0f; quads.push_back(v);
-    v.x = c.x; v.y = c.y; v.u = 1.0f; v.v = 1.0f; quads.push_back(v);
-    v.x = d.x; v.y = d.y; v.u = 1.0f; v.v = 0.0f; quads.push_back(v);
-
-    // TODO: this can be pre-calculated, only count varies
-    idxs.push_back(qs + 0);
-    idxs.push_back(qs + 1);
-    idxs.push_back(qs + 2);
-    idxs.push_back(qs + 2);
-    idxs.push_back(qs + 3);
-    idxs.push_back(qs + 0);
-}
-
-void add_quad_const(std::vector<output_data::Vertex> &quads,
-                    std::vector<u16> &idxs,
-                    test_point a, test_point b, test_point c, test_point d,
-                    float zindex, float ec,
-                    float rc, float gc, float bc, float ac)
-{
-    output_data::Vertex v;
-
-    v.z = zindex;
-    v.u = 0.5f; v.v = 0.5f;
-    v.e = ec;
-    v.r = rc; v.g = gc; v.b = bc; v.a = ac;
-
-    u16 qs = static_cast<u16>(quads.size());
-
-    v.x = a.x; v.y = a.y; quads.push_back(v);
-    v.x = b.x; v.y = b.y; quads.push_back(v);
-    v.x = c.x; v.y = c.y; quads.push_back(v);
-    v.x = d.x; v.y = d.y; quads.push_back(v);
+    v.x = a.x; v.y = a.y; v.u = u0; v.v = 0.0f; quads.push_back(v);
+    v.x = b.x; v.y = b.y; v.u = u0; v.v = 1.0f; quads.push_back(v);
+    v.x = c.x; v.y = c.y; v.u = u1; v.v = 1.0f; quads.push_back(v);
+    v.x = d.x; v.y = d.y; v.u = u1; v.v = 0.0f; quads.push_back(v);
 
     // TODO: this can be pre-calculated, only count varies
     idxs.push_back(qs + 0);
@@ -281,9 +254,11 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
                 const test_point *points,
                 size_t pi0, size_t pi1, size_t si,
                 const test_transform& tform,
-                const Vandalism::Brush& brush)
+                const Vandalism::Brush& brush,
+                float depthStep)
 {
     float radius = brush.diameter * 0.5f;
+    float zindex = depthStep * si;
 
     for (size_t i = pi0 + 1; i < pi1; ++i)
     {
@@ -305,10 +280,10 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
             test_point c = apply_transform_pt(tform, {p1l.x, p1l.y});
             test_point d = apply_transform_pt(tform, {p1r.x, p1r.y});
 
-            float zindex = 0.00001f * si;
-            add_quad_const(quads, idxs,
-                           a, b, c, d, zindex, brush.e,
-                           brush.r, brush.g, brush.b, brush.a);
+            add_quad(quads, idxs,
+                     a, b, c, d, zindex, brush.e,
+                     brush.r, brush.g, brush.b, brush.a,
+                     0.5f, 0.5f);
         }
     }
 
@@ -327,10 +302,10 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
         test_point c = apply_transform_pt(tform, {tr.x, tr.y});
         test_point d = apply_transform_pt(tform, {br.x, br.y});
 
-        float zindex = 0.00001f * si;
-        add_quad_tex(quads, idxs,
-                     a, b, c, d, zindex, brush.e,
-                     brush.r, brush.g, brush.b, brush.a);
+        add_quad(quads, idxs,
+                 a, b, c, d, zindex, brush.e,
+                 brush.r, brush.g, brush.b, brush.a,
+                 0.0f, 1.0f);
     }
 }
 
@@ -637,7 +612,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
             const test_stroke& stroke = debug_data.strokes[vis.si];
             const Vandalism::Brush& brush = ism->brushes[stroke.brush_id];
             fill_quads(bake_quads, bake_idxs, debug_data.points,
-                       stroke.pi0, stroke.pi1, vis.si, tform, brush);
+                       stroke.pi0, stroke.pi1, vis.si, tform, brush,
+                       cfg_depth_step);
         }
 
         u32 vtxCnt = static_cast<u32>(bake_quads.size());
@@ -700,7 +676,8 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     if (ism->get_current_brush(currBrush))
     {
         fill_quads(curr_quads, curr_idxs, debug_data.points,
-                   currStart, currEnd, currId, id_transform(), currBrush);
+                   currStart, currEnd, currId, id_transform(), currBrush,
+                   cfg_depth_step);
     }
 
     u32 vtxCnt = static_cast<u32>(curr_quads.size());

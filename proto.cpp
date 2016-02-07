@@ -1159,7 +1159,7 @@ void RenderTarget::before(bool clear)
     if (clear)
     {
         glClearColor(0.0, 0.0, 0.0, 1.0);
-        glClearDepth(-1.0);
+        glClearDepth(0.0);
 
         GLbitfield clear_bits = (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glClear(clear_bits);
@@ -1360,8 +1360,9 @@ void MeshPresenter::setup()
         "  in vec4 l_color;                                         \n"
         "  void main()                                              \n"
         "  {                                                        \n"
-        "      float radius = length(l_uve.xy - vec2(0.5f, 0.5f));  \n"
-        "      if (radius > 0.5) discard;                           \n"
+        "      float rho = length(l_uve.xy - vec2(0.5f, 0.5f));     \n"
+        "      const float radius = 0.5f;                           \n"
+        "      if (rho > radius) discard;                           \n"
         "      float E = l_uve.z;                                   \n"
         "      float SRCa = (1.0f - l_color.a) * E;                 \n"
         "      float SRC1a = (1.0f - l_color.a) * (1.0f - E);       \n"
