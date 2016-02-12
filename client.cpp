@@ -97,6 +97,7 @@ float gui_brush_color[4];
 i32 gui_brush_diameter_units;
 bool gui_mouse_occupied;
 bool gui_mouse_hover;
+bool gui_fake_pressure;
 float gui_background_color[3];
 float gui_grid_bg_color[3];
 float gui_grid_fg_color[3];
@@ -189,6 +190,7 @@ extern "C" void setup(kernel_services *services)
 
     gui_mouse_occupied = false;
     gui_mouse_hover = false;
+    gui_fake_pressure = false;
 
     gui_goto_idx = 0;
 
@@ -257,7 +259,6 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
                 const Vandalism::Brush& brush,
                 float depthStep)
 {
-    float radius = brush.diameter * 0.5f;
     float zindex = depthStep * si;
 
     for (size_t i = pi0 + 1; i < pi1; ++i)
@@ -267,31 +268,42 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
         float2 dir = curr - prev;
         if (len(dir) > 0.001f)
         {
-            float2 side = radius * perp(dir * (1.0f / len(dir)));
+            Vandalism::Brush cb0 = brush.modified(points[i-1].t);
+            Vandalism::Brush cb1 = brush.modified(points[i].t);
+
+            float2 side = perp(dir * (1.0f / len(dir)));
+
+            float2 side0 = 0.5f * cb0.diameter * side;
+            float2 side1 = 0.5f * cb1.diameter * side;
 
             // x -ccw-> y
-            float2 p0l = prev + side;
-            float2 p0r = prev - side;
-            float2 p1l = curr + side;
-            float2 p1r = curr - side;
+            float2 p0l = prev + side0;
+            float2 p0r = prev - side0;
+            float2 p1l = curr + side1;
+            float2 p1r = curr - side1;
 
             test_point a = apply_transform_pt(tform, {p0r.x, p0r.y});
             test_point b = apply_transform_pt(tform, {p0l.x, p0l.y});
             test_point c = apply_transform_pt(tform, {p1l.x, p1l.y});
             test_point d = apply_transform_pt(tform, {p1r.x, p1r.y});
 
+            bool eraser = (cb1.type == 1);
+
+            // TODO: interpolate color/erase/alpha across quad
             add_quad(quads, idxs,
-                     a, b, c, d, zindex, brush.e,
-                     brush.r, brush.g, brush.b, brush.a,
+                     a, b, c, d, zindex, (eraser ? cb1.a : 0.0f),
+                     cb1.r, cb1.g, cb1.b, (eraser ? 0.0f : cb1.a),
                      0.5f, 0.5f);
         }
     }
 
     for (size_t i = pi0; i < pi1; ++i)
     {
+        Vandalism::Brush cb = brush.modified(points[i].t);
+
         float2 curr = {points[i].x, points[i].y};
-        float2 right = {radius, 0.0f};
-        float2 up = {0.0, radius};
+        float2 right = {0.5f * cb.diameter, 0.0f};
+        float2 up = {0.0, 0.5f * cb.diameter};
         float2 bl = curr - right - up;
         float2 br = curr + right - up;
         float2 tl = curr - right + up;
@@ -302,9 +314,11 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
         test_point c = apply_transform_pt(tform, {tr.x, tr.y});
         test_point d = apply_transform_pt(tform, {br.x, br.y});
 
+        bool eraser = (cb.type == 1);
+
         add_quad(quads, idxs,
-                 a, b, c, d, zindex, brush.e,
-                 brush.r, brush.g, brush.b, brush.a,
+                 a, b, c, d, zindex, (eraser ? cb.a : 0.0f),
+                 cb.r, cb.g, cb.b, (eraser ? 0.0f: cb.a),
                  0.0f, 1.0f);
     }
 }
@@ -577,6 +591,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ism_input.mousey = myin;
     ism_input.negligibledistance = pixel_height_in;
     ism_input.mousedown = input->mouseleft && !mouse_in_ui;
+    ism_input.fakepressure = gui_fake_pressure;
     ism_input.brushred = gui_brush_color[0];
     ism_input.brushgreen = gui_brush_color[1];
     ism_input.brushblue = gui_brush_color[2];
@@ -754,6 +769,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     ImGui::SliderInt("diameter", &gui_brush_diameter_units,
                      cfg_min_brush_diameter_units, cfg_max_brush_diameter_units);
     ImGui::SliderFloat("eraser", &gui_eraser_alpha, 0.0f, 1.0f);
+    ImGui::Checkbox("pressure", &gui_fake_pressure);
     ImGui::Separator();
     ImGui::ColorEdit3("grid bg", gui_grid_bg_color);
     ImGui::ColorEdit3("grid fg", gui_grid_fg_color);

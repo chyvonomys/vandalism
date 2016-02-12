@@ -14,7 +14,20 @@ struct Vandalism
     struct Brush
     {
         float diameter;
-        float r, g, b, a, e;
+        float r, g, b, a;
+        i32 type;
+
+        Brush modified(float t) const
+        {
+            Brush result;
+            result.diameter = diameter * t;
+            result.r = r;
+            result.g = g;
+            result.b = b;
+            result.a = a * t;
+            result.type = type;
+            return result;
+        }
     };
 
     std::vector<Stroke> strokes;
@@ -94,6 +107,7 @@ struct Vandalism
         float mousex;
         float mousey;
         bool mousedown;
+        bool fakepressure;
         Tool tool;
         float brushred, brushgreen, brushblue, brushalpha;
         float brushdiameter;
@@ -218,6 +232,11 @@ struct Vandalism
         visiblesChanged = true;
     }
 
+    float pressure_func(size_t i)
+    {
+        return (i > 100 ? 0.0f : (100.0f - i) / 100.0f);
+    }
+
     void start_draw(const Input *input)
     {
         Stroke stroke;
@@ -226,6 +245,7 @@ struct Vandalism
             Point point;
             point.x = input->mousex;
             point.y = input->mousey;
+            point.t = input->fakepressure ? pressure_func(0) : 1.0f;
             points.push_back(point);
         }
         stroke.pi1 = points.size();
@@ -234,8 +254,8 @@ struct Vandalism
         brush.r = input->brushred;
         brush.g = input->brushgreen;
         brush.b = input->brushblue;
-        brush.a = (input->tool == ERASE ? 0.0f : input->brushalpha);
-        brush.e = (input->tool == ERASE ? input->eraseralpha : 0.0f);
+        brush.a = (input->tool == ERASE ? input->eraseralpha : input->brushalpha);
+        brush.type = (input->tool == ERASE ? 1 : 0);
         brush.diameter = input->brushdiameter;
 
         if (brushes.empty() ||
@@ -259,6 +279,8 @@ struct Vandalism
         float eps = input->negligibledistance * input->negligibledistance;
         if (dx * dx + dy * dy > eps)
         {
+            size_t ptIdx = points.size() - strokes.back().pi0;
+            point.t = input->fakepressure ? pressure_func(ptIdx) : 1.0f;
             points.push_back(point);
             strokes.back().bbox.add(point);
             strokes.back().pi1 = points.size();
@@ -647,7 +669,7 @@ struct Vandalism
         }
         for (size_t i = 0; i < brushes.size(); ++i)
         {
-            os << "b " << brushes[i].e << ' ' << brushes[i].diameter << ' '
+            os << "b " << brushes[i].type << ' ' << brushes[i].diameter << ' '
                << brushes[i].r << ' ' << brushes[i].g << ' ' << brushes[i].b << ' ' << brushes[i].a << '\n';
         }
     }
@@ -730,7 +752,7 @@ struct Vandalism
                     std::istringstream ss(line);
                     ss.seekg(2);
                     Brush br;
-                    ok = !(ss >> br.e >> br.diameter
+                    ok = !(ss >> br.type >> br.diameter
                            >> br.r >> br.g >> br.b >> br.a).fail();
                     if (ok)
                     {

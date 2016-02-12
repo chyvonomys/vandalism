@@ -2,6 +2,9 @@ struct test_point
 {
     float x;
     float y;
+    float t;
+    test_point() : t(1.0f) {}
+    test_point(float a, float b) : x(a), y(b), t(1.0f) {}
 };
 
 struct test_segment
@@ -43,8 +46,8 @@ struct test_box
 
     void add_box(const test_box &b)
     {
-        add({b.x0, b.y0});
-        add({b.x1, b.y1});
+        add(test_point(b.x0, b.y0));
+        add(test_point(b.x1, b.y1));
     }
 
     bool empty() const
