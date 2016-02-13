@@ -83,6 +83,7 @@ struct output_data
     };
 
     bool bake_flag;
+    bool change_flag;
     bool quit_flag;
 
     kernel_services::MeshID fgmesh;

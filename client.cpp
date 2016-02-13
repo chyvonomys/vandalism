@@ -567,6 +567,8 @@ u32 DrawTestPin(offscreen_buffer *buffer,
 extern "C" void update_and_render(input_data *input, output_data *output)
 {
     output->quit_flag = false;
+    output->bake_flag = false;
+    output->change_flag = false;
 
     offscreen_buffer *buffer = output->buffer;
 
@@ -607,6 +609,10 @@ extern "C" void update_and_render(input_data *input, output_data *output)
 
     if (ism->visiblesChanged)
     {
+        // flag processed
+        // TODO: make this better
+        ism->visiblesChanged = false;
+
         bake_quads.clear();
         bake_idxs.clear();
         std::vector<test_visible> visibles;
@@ -640,9 +646,7 @@ extern "C" void update_and_render(input_data *input, output_data *output)
         output->bake_flag = true;
         output->bgmesh = bake_mesh;
         output->bgmeshCnt = idxCnt;
-        // flag processed
-        // TODO: make this better
-        ism->visiblesChanged = false;
+
         ::printf("update mesh: %lu visibles\n", visibles.size());
 
         viewsBuf->clear();
@@ -681,28 +685,36 @@ extern "C" void update_and_render(input_data *input, output_data *output)
     output->grid_fg_color[1] = gui_grid_fg_color[1];
     output->grid_fg_color[2] = gui_grid_fg_color[2];
 
-    size_t currStart, currEnd;
-    size_t currId = ism->get_current_stroke(currStart, currEnd);
-
-    curr_quads.clear();
-    curr_idxs.clear();
-
-    Vandalism::Brush currBrush;
-    if (ism->get_current_brush(currBrush))
+    if (ism->currentChanged)
     {
-        fill_quads(curr_quads, curr_idxs, debug_data.points,
-                   currStart, currEnd, currId, id_transform(), currBrush,
-                   cfg_depth_step);
+        // TODO: flag processed, improve this
+        ism->currentChanged = false;
+
+        size_t currStart, currEnd;
+        size_t currId = ism->get_current_stroke(currStart, currEnd);
+
+        curr_quads.clear();
+        curr_idxs.clear();
+
+        Vandalism::Brush currBrush;
+        if (ism->get_current_brush(currBrush))
+        {
+            fill_quads(curr_quads, curr_idxs, debug_data.points,
+                       currStart, currEnd, currId, id_transform(), currBrush,
+                       cfg_depth_step);
+        }
+
+        u32 vtxCnt = static_cast<u32>(curr_quads.size());
+        u32 idxCnt = static_cast<u32>(curr_idxs.size());
+
+        current_services->update_mesh(curr_mesh,
+                                      curr_quads.data(), vtxCnt,
+                                      curr_idxs.data(), idxCnt);
+        output->fgmesh = curr_mesh;
+        output->fgmeshCnt = idxCnt;
+
+        output->change_flag = true;
     }
-
-    u32 vtxCnt = static_cast<u32>(curr_quads.size());
-    u32 idxCnt = static_cast<u32>(curr_idxs.size());
-
-    current_services->update_mesh(curr_mesh,
-                                  curr_quads.data(), vtxCnt,
-                                  curr_idxs.data(), idxCnt);
-    output->fgmesh = curr_mesh;
-    output->fgmeshCnt = idxCnt;
 
     // Draw SW -----------------------------------------------------------------
 
@@ -855,11 +867,12 @@ extern "C" void update_and_render(input_data *input, output_data *output)
                 bake_idxs.capacity(),
                 output->bake_flag);
 
-    ImGui::Text("curr_quads v: (%lu/%lu) i: (%lu/%lu)",
+    ImGui::Text("curr_quads v: (%lu/%lu) i: (%lu/%lu) %d",
                 curr_quads.size(),
                 curr_quads.capacity(),
                 curr_idxs.size(),
-                curr_idxs.capacity());
+                curr_idxs.capacity(),
+                output->change_flag);
 
     ImGui::Text("mode: %d", ism->currentMode);
 

@@ -41,6 +41,7 @@ struct Vandalism
 
     // TODO: change this
     bool visiblesChanged;
+    bool currentChanged;
 
     bool autoOptimizeViews;
 
@@ -180,6 +181,8 @@ struct Vandalism
     {
         float dx = input->mousex - rotateStartX;
         rotateAngle = si_pi * dx;
+
+        currentChanged = true;
     }
 
     void start_zoom(const Input *input)
@@ -190,6 +193,8 @@ struct Vandalism
     void do_zoom(const Input *input)
     {
         zoomCoeff = input->mousex / zoomStartX;
+
+        currentChanged = true;
     }
 
     void done_zoom(const Input *input)
@@ -215,6 +220,8 @@ struct Vandalism
     {
         postShiftX = input->mousex - panStartX;
         postShiftY = input->mousey - panStartY;
+
+        currentChanged = true;
     }
 
     void done_pan(const Input *input)
@@ -284,6 +291,7 @@ struct Vandalism
             points.push_back(point);
             strokes.back().bbox.add(point);
             strokes.back().pi1 = points.size();
+            currentChanged = true;
         }
     }
 
@@ -343,6 +351,8 @@ struct Vandalism
 
         zoomCoeff = len(d1) / len(d0);
         rotateAngle = a1 - a0;
+
+        currentChanged = true;
     }
 
     void done_move2(const Input *input)

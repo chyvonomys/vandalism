@@ -48,7 +48,6 @@ bool initr_for_##n()                                                \
 LOAD(GLENABLE, glEnable)
 LOAD(GLDISABLE, glDisable)
 LOAD(GLBLENDFUNC, glBlendFunc)
-LOAD(GLBLENDFUNCSEPARATE, glBlendFuncSeparate)
 LOAD(GLVIEWPORT, glViewport)
 LOAD(GLCLEAR, glClear)
 LOAD(GLCLEARCOLOR, glClearColor)
@@ -300,7 +299,7 @@ struct BufferPresenter
 struct FSTexturePresenter
 {
     void setup(FSQuad *quad);
-    void draw(GLuint tex, bool specialRT,
+    void draw(GLuint tex, GLenum srcFactor, GLenum dstFactor,
               float x, float y,
               float x_, float y_,
               float s, float a,
@@ -335,7 +334,7 @@ struct RenderTarget
     void setup(u32 width, u32 height);
     void cleanup();
 
-    void before(bool clear);
+    void before();
     void after();
 
     GLuint m_fbo;
@@ -685,8 +684,11 @@ int main(int argc, char *argv[])
         FSTexturePresenter fs;
         fs.setup(&quad);
 
-        RenderTarget rt;
-        rt.setup(rtWidthPx, rtHeightPx);
+        RenderTarget bakeRT;
+        bakeRT.setup(rtWidthPx, rtHeightPx);
+
+        RenderTarget currRT;
+        currRT.setup(rtWidthPx, rtHeightPx);
         
         BufferPresenter blit;
         blit.setup(&quad, swWidthPx, swHeightPx);
@@ -860,29 +862,41 @@ int main(int argc, char *argv[])
 
             if (output.bake_flag)
             {
-                // flag processed
-                // TODO: ??
                 output.bake_flag = false;
-                rt.before(true);
+
+                bakeRT.before();
+                glClearColor(0.0, 0.0, 0.0, 1.0);
+                glClearDepth(0.0);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
                 render.draw(output.bgmesh, 0, output.bgmeshCnt,
                             2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
-                render.draw(output.fgmesh, 0, output.fgmeshCnt,
-                            2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
-                rt.after();
+                bakeRT.after();
             }
-            else
+
+            if (output.change_flag)
             {
-                // append
-                rt.before(false);
+                output.change_flag = false;
+
+                currRT.before();
+                glClearColor(0.0, 0.0, 0.0, 1.0);
+                glClearDepth(0.0);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+                fs.draw(bakeRT.m_tex, GL_ONE, GL_ZERO,
+                        output.preTranslateX, output.preTranslateY,
+                        output.postTranslateX, output.postTranslateY,
+                        output.scale, output.rotate,
+                        input.rtWidthIn, input.rtHeightIn,
+                        input.rtWidthIn, input.rtHeightIn);
+
                 render.draw(output.fgmesh, 0, output.fgmeshCnt,
                             2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
-                rt.after();
+                currRT.after();
             }
 
             glClearColor(output.bg_red, output.bg_green, output.bg_blue, 1.0);
-
-            GLbitfield clear_bits = (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            glClear(clear_bits);
+            glClear(GL_COLOR_BUFFER_BIT);
 
             glViewport(viewportLeftPx, viewportBottomPx,
                        input.vpWidthPx, input.vpHeightPx);
@@ -890,15 +904,12 @@ int main(int argc, char *argv[])
             // grid.draw(output.grid_bg_color, output.grid_fg_color,
             //           output.grid_translation, output.grid_zoom);
 
-            fs.draw(rt.m_tex, true,
-                    output.preTranslateX, output.preTranslateY,
-                    output.postTranslateX, output.postTranslateY,
-                    output.scale, output.rotate,
+            fs.draw(currRT.m_tex, GL_ONE, GL_SRC_ALPHA,
+                    0.0f, 0.0f,
+                    0.0f, 0.0f,
+                    1.0f, 0.0f,
                     input.vpWidthIn, input.vpHeightIn,
                     input.rtWidthIn, input.rtHeightIn);
-
-            glViewport(viewportLeftPx, viewportBottomPx,
-                       input.vpWidthPx, input.vpHeightPx);
 
             blit.draw(pixels,
                       static_cast<float>(input.vpWidthPt) / swWidthPx,
@@ -935,7 +946,8 @@ int main(int argc, char *argv[])
         uirender.cleanup();
         render.cleanup();
         blit.cleanup();
-        rt.cleanup();
+        bakeRT.cleanup();
+        currRT.cleanup();
         fs.cleanup();
         //grid.cleanup();
         quad.cleanup();
@@ -1149,21 +1161,13 @@ void RenderTarget::setup(u32 width, u32 height)
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void RenderTarget::before(bool clear)
+void RenderTarget::before()
 {
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_fbo);
     glViewport(0, 0,
                static_cast<GLsizei>(m_width),
                static_cast<GLsizei>(m_height));
 
-    if (clear)
-    {
-        glClearColor(0.0, 0.0, 0.0, 1.0);
-        glClearDepth(0.0);
-
-        GLbitfield clear_bits = (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glClear(clear_bits);
-    }
 }
 
 void RenderTarget::after()
@@ -1237,7 +1241,7 @@ void FSTexturePresenter::cleanup()
     glDeleteProgram(m_fullscreenProgram);
 }
 
-void FSTexturePresenter::draw(GLuint tex, bool specialRT,
+void FSTexturePresenter::draw(GLuint tex, GLenum blendSrc, GLenum blendDst,
                               float x, float y,
                               float x_, float y_,
                               float s, float a,
@@ -1245,14 +1249,7 @@ void FSTexturePresenter::draw(GLuint tex, bool specialRT,
                               float rtW, float rtH)
 {
     glEnable(GL_BLEND);
-    if (specialRT)
-    {
-        glBlendFunc(GL_ONE, GL_SRC_ALPHA);
-    }
-    else
-    {
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    }
+    glBlendFunc(blendSrc, blendDst);
     glUseProgram(m_fullscreenProgram);
     glUniform2f(m_preTranslationLoc, x, y);
     glUniform2f(m_postTranslationLoc, x_, y_);
@@ -1383,6 +1380,11 @@ void MeshPresenter::cleanup()
 void MeshPresenter::draw(kernel_services::MeshID mi, u32 offset, u32 count,
                          float scaleX, float scaleY)
 {
+    if (count == 0)
+    {
+        return;
+    }
+
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_GREATER);
     glEnable(GL_BLEND);
