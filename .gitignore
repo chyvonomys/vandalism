@@ -6,7 +6,10 @@
 *~
 
 # target
-proto
+ism
+
+# test files
+*.ism
 
 # imgui config
 imgui.ini
