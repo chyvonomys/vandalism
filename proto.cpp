@@ -1,13 +1,6 @@
 #define GLFW_INCLUDE_NONE
 
 #include <GLFW/glfw3.h>
-#include <objc/objc-runtime.h>
-namespace GLFWNative
-{
-#define GLFW_EXPOSE_NATIVE_COCOA
-#define GLFW_EXPOSE_NATIVE_NSGL
-#include <GLFW/glfw3native.h>
-}
 #include "glcorearb.h"
 #include <cstdio>
 #include <cstring>
@@ -648,21 +641,7 @@ int main(int argc, char *argv[])
     u32 rtWidthPx = static_cast<u32>(monitorWidthPt * pxPerPtHor);
     u32 rtHeightPx = static_cast<u32>(monitorHeightPt * pxPerPtVer);
 
-    // TODO: this doesn't seem to work, no matter what is set, frame takes ~16ms
     glfwMakeContextCurrent(pWindow);
-    /*
-    CGLGetCurrentContext();
-    CGLSetParameter();
-    */
-#if false
-    id nsgl = (id)GLFWNative::glfwGetNSGLContext(pWindow);
-    int swapInterval = 1;
-    const int NSOpenGLCPSwapInterval = 222;
-    objc_msgSend(nsgl, sel_registerName("setValues:forParameter:"),
-                 &swapInterval, NSOpenGLCPSwapInterval);
-#else
-    glfwSwapInterval(1);
-#endif
     
     bool gl_ok = load_gl_functions();
 
@@ -712,13 +691,6 @@ int main(int argc, char *argv[])
         input.nFrames = 0;
         output_data output;
         output.buffer = &buffer;
-
-        void *lib_handle = ::dlopen("client.dylib", RTLD_LAZY);
-
-        UPDATE_AND_RENDER_FUNC upd_and_rnd = reinterpret_cast<UPDATE_AND_RENDER_FUNC>(::dlsym(lib_handle, "update_and_render"));
-
-        SETUP_FUNC setup = reinterpret_cast<SETUP_FUNC>(::dlsym(lib_handle, "setup"));
-        CLEANUP_FUNC cleanup = reinterpret_cast<CLEANUP_FUNC>(::dlsym(lib_handle, "cleanup"));
         
         mach_timebase_info_data_t time_info;
         mach_timebase_info(&time_info);
@@ -743,7 +715,7 @@ int main(int argc, char *argv[])
         services.ui_vertex_layout = &ui_vertex_layout;
         services.stroke_vertex_layout = &stroke_vertex_layout;
 
-        (*setup)(&services);
+        setup(&services);
 
         bool reload_client = false;
         bool f9_was_up = true;
@@ -752,15 +724,8 @@ int main(int argc, char *argv[])
         {
             if (reload_client)
             {
-                (*cleanup)();
-                ::dlclose(lib_handle);
-                lib_handle = ::dlopen("client.dylib", RTLD_LAZY);
-
-                upd_and_rnd = reinterpret_cast<UPDATE_AND_RENDER_FUNC>(::dlsym(lib_handle, "update_and_render"));
-                setup = reinterpret_cast<SETUP_FUNC>(::dlsym(lib_handle, "setup"));
-                cleanup = reinterpret_cast<CLEANUP_FUNC>(::dlsym(lib_handle, "cleanup"));
-
-                (*setup)(&services);
+                cleanup();
+                setup(&services);
                 reload_client = false;
                 input.nFrames = 0;
             }
@@ -853,7 +818,7 @@ int main(int argc, char *argv[])
 
             TIME; // update ---------------------------------------------------------
 
-            (*upd_and_rnd)(&input, &output);
+            update_and_render(&input, &output);
 
             if (output.quit_flag)
             {
@@ -953,8 +918,6 @@ int main(int argc, char *argv[])
         quad.cleanup();
 
         delete [] pixels;
-
-        ::dlclose(lib_handle);
 
         check_gl_errors("cleanup");
     }
@@ -1073,48 +1036,6 @@ void BufferPresenter::draw(const u8* pixels, float portionX, float portionY)
     glUseProgram(0);
     glDisable(GL_BLEND);
 }
-
-/*
-void BufferPresenter::draw(const u8* pixels)
-{
-    // PBO update ----------------------------------------------------------
-    // update pixel buffer
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo[0]);
-    u8 *mappedPixels = static_cast<u8*>(glMapBuffer(GL_PIXEL_UNPACK_BUFFER,
-                                                          GL_WRITE_ONLY));
-    if (mappedPixels)
-    {
-        ::memcpy(mappedPixels, pixels, 4 * m_width * m_height);
-        glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-    }
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-
-    // PBO -dma-> texture --------------------------------------------------
-
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo[0]);
-
-    glBindTexture(GL_TEXTURE_2D, m_tex);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_width, m_height,
-                    GL_BGRA, GL_UNSIGNED_BYTE, 0);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-            
-    // drawcall ------------------------------------------------------------
-
-    glClearColor(0.3, 0.3, 0.3, 1.0);
-
-    GLbitfield clear_bits = (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glClear(clear_bits);
-
-    glUseProgram(m_fullscreenProgram);
-    glBindTexture(GL_TEXTURE_2D, m_tex);
-    glBindVertexArray(m_vao);
-    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-    glBindVertexArray(0);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glUseProgram(0);
-}
-*/
 
 void RenderTarget::setup(u32 width, u32 height)
 {

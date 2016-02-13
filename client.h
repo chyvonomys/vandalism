@@ -120,6 +120,6 @@ struct output_data
     u32 ui_drawcall_cnt;
 };
 
-typedef void (*UPDATE_AND_RENDER_FUNC)(input_data *input, output_data *output);
-typedef void (*SETUP_FUNC)(kernel_services *services);
-typedef void (*CLEANUP_FUNC)();
+void update_and_render(input_data *input, output_data *output);
+void setup(kernel_services *services);
+void cleanup();

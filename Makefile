@@ -4,25 +4,20 @@ EXCEPTIONS=-Wno-documentation -Wno-reserved-id-macro -Wno-c++98-compat -Wno-c++9
 WARNINGS=-Weverything $(EXCEPTIONS)
 COMPILER=clang++ --std=c++11 -Werror $(WARNINGS)
 
-BINS=proto client.dylib
+TARGET=ism
 
-all: $(BINS)
+OBJS=client.o imgui_w.o imgui_draw_w.o imgui_demo_w.o
 
-proto: proto.cpp client.h
-	$(COMPILER) -g $(CFLAGS) $(LDFLAGS) -lobjc -o $@ $<
+ism: proto.cpp $(OBJS)
+	$(COMPILER) -g $(CFLAGS) $(LDFLAGS) -o $@ proto.cpp $(OBJS)
 
 .cpp.o:
 	$(COMPILER) -g -c -o $@ $<
 
-OBJS=client.o imgui_w.o imgui_draw_w.o imgui_demo_w.o
-
 client.o: client.h client.cpp vandalism.cpp cascade.cpp tests.cpp swrender.h swcolor.h
-
-client.dylib: $(OBJS)
-	$(COMPILER) -g -Xlinker -dylib -o $@ $(OBJS)
 
 clean:
 	rm -f $(OBJS)
-	rm -f $(BINS)
-	rm -rf proto.DSYM client.dylib.DSYM
+	rm -f $(TARGET)
+	rm -rf *.dSYM
 	rm -f *~

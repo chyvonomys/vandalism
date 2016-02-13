@@ -120,7 +120,7 @@ std::vector<output_data::Vertex> curr_quads;
 std::vector<u16> bake_idxs;
 std::vector<u16> curr_idxs;
 
-extern "C" void setup(kernel_services *services)
+void setup(kernel_services *services)
 {
     ImGuiIO& io = ImGui::GetIO();
     io.RenderDrawListsFn = RenderImGuiDrawLists;
@@ -197,7 +197,7 @@ extern "C" void setup(kernel_services *services)
     timingX = 0;
 }
 
-extern "C" void cleanup()
+void cleanup()
 {
     ism->cleanup();
     delete ism;
@@ -564,7 +564,7 @@ u32 DrawTestPin(offscreen_buffer *buffer,
     return static_cast<u32>(visibles.size());
 }
 
-extern "C" void update_and_render(input_data *input, output_data *output)
+void update_and_render(input_data *input, output_data *output)
 {
     output->quit_flag = false;
     output->bake_flag = false;
