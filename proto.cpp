@@ -851,8 +851,6 @@ int main(int argc, char *argv[])
                 break;
             }
 
-            output.change_flag |= output.bake_flag;
-
             if (output.bake_flag)
             {
                 output.bake_flag = false;

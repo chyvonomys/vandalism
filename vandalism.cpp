@@ -125,6 +125,12 @@ struct Vandalism
 
     typedef void (Vandalism::*MC_FN)(const Input *);
 
+    void set_dirty()
+    {
+        visiblesChanged = true;
+        currentChanged = true;
+    }
+
     bool append_allowed() const
     {
         return currentViewIdx + 1 == views.size();
@@ -179,9 +185,7 @@ struct Vandalism
             append_new_view(trot);
         }
 
-        remove_alterations();
-
-        visiblesChanged = true; // TODO: really? depends on boundary shape
+        common_done();
     }
     
     void do_rotate(const Input *input)
@@ -212,9 +216,7 @@ struct Vandalism
             append_new_view(tzoom);
         }
 
-        remove_alterations();
-
-        visiblesChanged = true;
+        common_done();
     }
 
     void start_pan(const Input *input)
@@ -240,10 +242,7 @@ struct Vandalism
                                     panStartY - input->mousey};
             append_new_view(tpan);
         }
-
-        remove_alterations();
-
-        visiblesChanged = true;
+        common_done();
     }
 
     float pressure_func(size_t i)
@@ -321,7 +320,7 @@ struct Vandalism
             brushes.pop_back();
         }
 
-        visiblesChanged = true;
+        common_done();
     }
 
     void place1(const Input *input)
@@ -396,9 +395,7 @@ struct Vandalism
             views.push_back(test_view(tpost, strokes.size(), strokes.size()));
         }
 
-        remove_alterations();
-
-        visiblesChanged = true;
+        common_done();
     }
 
     void start_scroll(const Input *input)
@@ -438,9 +435,13 @@ struct Vandalism
             views.push_back(test_view(tpost, strokes.size(), strokes.size()));
         }
 
-        remove_alterations();
+        common_done();
+    }
 
-        visiblesChanged = true;
+    void common_done()
+    {
+        remove_alterations();
+        set_dirty();
     }
 
     MC_FN from_idle_handlers[MODECNT] =
@@ -524,8 +525,6 @@ struct Vandalism
     void setup()
     {
         currentMode = IDLE;
-        visiblesChanged = true;
-
         pins.push_back(0);
 
         test_transition none = {TPAN, 0.0f, 0.0f};
@@ -540,6 +539,7 @@ struct Vandalism
         firstY = 0.0f;
 
         remove_alterations();
+        set_dirty();
     }
 
     void cleanup()
@@ -650,7 +650,7 @@ struct Vandalism
                 }
             }
             views = optimized;
-            visiblesChanged = true;
+            set_dirty();
         }
     }
 
@@ -663,7 +663,7 @@ struct Vandalism
     {
         if (check_undo(true))
         {
-            visiblesChanged = true;
+            set_dirty();
         }
     }
 
@@ -707,7 +707,8 @@ struct Vandalism
         if (idx < views.size())
         {
             currentViewIdx = idx;
-            visiblesChanged = true;
+
+            set_dirty();
         }
     }
 
@@ -862,7 +863,7 @@ struct Vandalism
             points = newPoints;
             currentViewIdx = views.size() - 1;
 
-            visiblesChanged = true;
+            set_dirty();
         }
     }
 };
