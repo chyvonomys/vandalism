@@ -261,14 +261,60 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
 {
     float zindex = depthStep * si;
 
+    if (pi1 > pi0)
+    {
+        Vandalism::Brush cb = brush.modified(points[pi0].t);
+
+        float2 curr = {points[pi0].x, points[pi0].y};
+        float2 right = {0.5f * cb.diameter, 0.0f};
+        float2 up = {0.0, 0.5f * cb.diameter};
+        float2 bl = curr - right - up;
+        float2 br = curr + right - up;
+        float2 tl = curr - right + up;
+        float2 tr = curr + right + up;
+
+        test_point a = apply_transform_pt(tform, {bl.x, bl.y});
+        test_point b = apply_transform_pt(tform, {tl.x, tl.y});
+        test_point c = apply_transform_pt(tform, {tr.x, tr.y});
+        test_point d = apply_transform_pt(tform, {br.x, br.y});
+
+        bool eraser = (cb.type == 1);
+
+        add_quad(quads, idxs,
+                 a, b, c, d, zindex, (eraser ? cb.a : 0.0f),
+                 cb.r, cb.g, cb.b, (eraser ? 0.0f: cb.a),
+                 0.0f, 1.0f);
+    }
+
     for (size_t i = pi0 + 1; i < pi1; ++i)
     {
         float2 prev = {points[i-1].x, points[i-1].y};
         float2 curr = {points[i].x, points[i].y};
         float2 dir = curr - prev;
+
+        Vandalism::Brush cb0 = brush.modified(points[i-1].t);
+
+        float2 right = {0.5f * cb0.diameter, 0.0f};
+        float2 up = {0.0, 0.5f * cb0.diameter};
+        float2 bl = curr - right - up;
+        float2 br = curr + right - up;
+        float2 tl = curr - right + up;
+        float2 tr = curr + right + up;
+
+        test_point a0 = apply_transform_pt(tform, {bl.x, bl.y});
+        test_point b0 = apply_transform_pt(tform, {tl.x, tl.y});
+        test_point c0 = apply_transform_pt(tform, {tr.x, tr.y});
+        test_point d0 = apply_transform_pt(tform, {br.x, br.y});
+
+        bool eraser0 = (cb0.type == 1);
+
+        add_quad(quads, idxs,
+                 a0, b0, c0, d0, zindex, (eraser0 ? cb0.a : 0.0f),
+                 cb0.r, cb0.g, cb0.b, (eraser0 ? 0.0f: cb0.a),
+                 0.0f, 1.0f);
+
         if (len(dir) > 0.001f)
         {
-            Vandalism::Brush cb0 = brush.modified(points[i-1].t);
             Vandalism::Brush cb1 = brush.modified(points[i].t);
 
             float2 side = perp(dir * (1.0f / len(dir)));
@@ -299,27 +345,6 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
 
     for (size_t i = pi0; i < pi1; ++i)
     {
-        Vandalism::Brush cb = brush.modified(points[i].t);
-
-        float2 curr = {points[i].x, points[i].y};
-        float2 right = {0.5f * cb.diameter, 0.0f};
-        float2 up = {0.0, 0.5f * cb.diameter};
-        float2 bl = curr - right - up;
-        float2 br = curr + right - up;
-        float2 tl = curr - right + up;
-        float2 tr = curr + right + up;
-
-        test_point a = apply_transform_pt(tform, {bl.x, bl.y});
-        test_point b = apply_transform_pt(tform, {tl.x, tl.y});
-        test_point c = apply_transform_pt(tform, {tr.x, tr.y});
-        test_point d = apply_transform_pt(tform, {br.x, br.y});
-
-        bool eraser = (cb.type == 1);
-
-        add_quad(quads, idxs,
-                 a, b, c, d, zindex, (eraser ? cb.a : 0.0f),
-                 cb.r, cb.g, cb.b, (eraser ? 0.0f: cb.a),
-                 0.0f, 1.0f);
     }
 }
 
