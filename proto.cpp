@@ -775,7 +775,7 @@ int main(int argc, char *argv[])
                 input.scrolling = true;
                 last_scroll_updated_frame = input.nFrames;
             }
-            else if (input.nFrames - last_scroll_updated_frame > 60)
+            else if (input.nFrames - last_scroll_updated_frame > 5)
             {
                 input.scrolling = false;
             }
@@ -850,6 +850,8 @@ int main(int argc, char *argv[])
             {
                 break;
             }
+
+            output.change_flag |= output.bake_flag;
 
             if (output.bake_flag)
             {
