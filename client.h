@@ -55,6 +55,8 @@ struct input_data
     i32 swMouseXPx;
     i32 swMouseYPx;
     bool mouseleft;
+    bool scrolling;
+    float scrollY;
 
     i32 windowWidthPx, windowHeightPx;
     i32 windowWidthPt, windowHeightPt;

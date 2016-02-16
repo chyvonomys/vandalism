@@ -571,6 +571,15 @@ void delete_texture(kernel_services::TexID ti)
     glDeleteTextures(1, &textures[ti].glid);
 }
 
+bool scroll_updated = false;
+float scroll_y = 0.0f;
+
+void scroll_callback(GLFWwindow *, double, double yscroll)
+{
+    scroll_updated = true;
+    scroll_y += static_cast<float>(yscroll);
+}
+
 int main(int argc, char *argv[])
 {
     for (int i = 1; i < argc; ++i)
@@ -631,6 +640,8 @@ int main(int argc, char *argv[])
     GLFWwindow* pWindow;
     pWindow = glfwCreateWindow(windowWidthPt, windowHeightPt,
                                "proto", nullptr, nullptr);
+
+    glfwSetScrollCallback(pWindow, &scroll_callback);
 
     i32 windowWidthPx, windowHeightPx;
     glfwGetFramebufferSize(pWindow, &windowWidthPx, &windowHeightPx);
@@ -720,6 +731,8 @@ int main(int argc, char *argv[])
         bool reload_client = false;
         bool f9_was_up = true;
 
+        u32 last_scroll_updated_frame = 0;
+
         for (;;)
         {
             if (reload_client)
@@ -754,6 +767,19 @@ int main(int argc, char *argv[])
 
             input.mouseleft =
                 (glfwGetMouseButton(pWindow, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+
+            if (scroll_updated)
+            {
+                scroll_updated = false;
+                input.scrollY = scroll_y;
+                input.scrolling = true;
+                last_scroll_updated_frame = input.nFrames;
+            }
+            else if (input.nFrames - last_scroll_updated_frame > 60)
+            {
+                input.scrolling = false;
+            }
+
             glfwGetFramebufferSize(pWindow,
                                    &input.windowWidthPx,
                                    &input.windowHeightPx);

@@ -600,6 +600,8 @@ void update_and_render(input_data *input, output_data *output)
     ism_input.brushalpha = gui_brush_color[3];
     ism_input.eraseralpha = gui_eraser_alpha;
     ism_input.brushdiameter = gui_brush_diameter_units * cfg_brush_diameter_inches_per_unit;
+    ism_input.scrolly = input->scrollY;
+    ism_input.scrolling = input->scrolling;
 
     ism->update(&ism_input);
 

@@ -74,6 +74,10 @@ struct Vandalism
     float secondX1;
     float secondY1;
 
+    // SCROLL related
+
+    float scrollY0;
+
     struct Pan
     {
         float dx;
@@ -82,14 +86,15 @@ struct Vandalism
 
     enum Mode
     {
-        IDLE     = 0,
-        DRAWING  = 1,
-        PANNING  = 2,
-        ZOOMING  = 3,
-        ROTATING = 4,
-        PLACING1 = 5,
-        MOVING2  = 6,
-        MODECNT  = 7
+        IDLE      = 0,
+        DRAWING   = 1,
+        PANNING   = 2,
+        ZOOMING   = 3,
+        ROTATING  = 4,
+        PLACING1  = 5,
+        MOVING2   = 6,
+        SCROLLING = 7,
+        MODECNT   = 8
     };
 
     enum Tool
@@ -107,6 +112,8 @@ struct Vandalism
     {
         float mousex;
         float mousey;
+        float scrolly;
+        bool scrolling;
         bool mousedown;
         bool fakepressure;
         Tool tool;
@@ -394,17 +401,59 @@ struct Vandalism
         visiblesChanged = true;
     }
 
+    void start_scroll(const Input *input)
+    {
+        scrollY0 = input->scrolly;
+        preShiftX = -input->mousex;
+        preShiftY = -input->mousey;
+        postShiftX = input->mousex;
+        postShiftY = input->mousey;
+    }
+
+    void do_scroll(const Input *input)
+    {
+        float scrollAmount = input->scrolly - scrollY0;
+        zoomCoeff = powf(2.0f, scrollAmount);
+
+        currentChanged = true;
+    }
+
+    void done_scroll(const Input *input)
+    {
+        float scrollAmount = input->scrolly - scrollY0;
+        zoomCoeff = powf(2.0f, scrollAmount);
+
+        if (append_allowed())
+        {
+            currentViewIdx = views.size();
+            test_transition tpre = {TPAN, postShiftX, postShiftY};
+            views.push_back(test_view(tpre, strokes.size(), strokes.size()));
+
+            currentViewIdx = views.size();
+            test_transition tzoom = {TZOOM, zoomCoeff, 1.0f};
+            views.push_back(test_view(tzoom, strokes.size(), strokes.size()));
+
+            currentViewIdx = views.size();
+            test_transition tpost = {TPAN, preShiftX, preShiftY};
+            views.push_back(test_view(tpost, strokes.size(), strokes.size()));
+        }
+
+        remove_alterations();
+
+        visiblesChanged = true;
+    }
+
     MC_FN from_idle_handlers[MODECNT] =
     {&Vandalism::idle, &Vandalism::start_draw, &Vandalism::start_pan, &Vandalism::start_zoom,
-     &Vandalism::start_rotate, &Vandalism::place1, &Vandalism::start_move2};
+     &Vandalism::start_rotate, &Vandalism::place1, &Vandalism::start_move2, &Vandalism::start_scroll};
 
     MC_FN to_idle_handlers[MODECNT] =
     {&Vandalism::idle, &Vandalism::done_draw, &Vandalism::done_pan, &Vandalism::done_zoom,
-     &Vandalism::done_rotate, &Vandalism::place1, &Vandalism::done_move2};
+     &Vandalism::done_rotate, &Vandalism::place1, &Vandalism::done_move2, &Vandalism::done_scroll};
 
     MC_FN same_mode_handlers[MODECNT] =
     {&Vandalism::idle, &Vandalism::do_draw, &Vandalism::do_pan, &Vandalism::do_zoom,
-     &Vandalism::do_rotate, &Vandalism::place1, &Vandalism::do_move2};
+     &Vandalism::do_rotate, &Vandalism::place1, &Vandalism::do_move2, &Vandalism::do_scroll};
 
     MC_FN mode_change_handlers(Mode from, Mode to)
     {
@@ -455,6 +504,10 @@ struct Vandalism
             case SECOND:
                 return MOVING2;
             }
+        }
+        else if (input->scrolling)
+        {
+            return SCROLLING;
         }
         return IDLE;
     }
