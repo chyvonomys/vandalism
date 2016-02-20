@@ -110,6 +110,7 @@ const i32 cfg_def_brush_diameter_units = 4;
 const float cfg_brush_diameter_inches_per_unit = 1.0f / 64.0f;
 const float cfg_depth_step = 1.0f / 10000.0f;
 const char* cfg_font_path = "Roboto_Condensed/RobotoCondensed-Regular.ttf";
+const char* cfg_default_file = "default.ism";
 
 u32 timingX;
 
@@ -828,12 +829,19 @@ void update_and_render(input_data *input, output_data *output)
     {
         if (ImGui::Button("Save"))
         {
-            ism->save_data("debug.ism");
+            ism->save_data(cfg_default_file);
         }
         ImGui::SameLine();
         if (ImGui::Button("Load"))
         {
-            ism->load_data("debug.ism");
+            if (current_services->check_file(cfg_default_file))
+            {
+                ism->load_data(cfg_default_file);
+            }
+            else
+            {
+                ::printf("nothing to load, there is no default save file\n");
+            }
         }
         if (ImGui::Button("Optimize views"))
         {
