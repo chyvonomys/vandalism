@@ -611,7 +611,7 @@ double get_platform_counter_freq()
 	mach_timebase_info_data_t time_info;
 	mach_timebase_info(&time_info);
 
-	return time_info.numer / time_info.denom / 1000.0;
+	return time_info.numer / time_info.denom * 1e6;
 }
 #endif
 
@@ -1453,3 +1453,21 @@ void UIPresenter::draw(kernel_services::TexID ti, kernel_services::MeshID mi,
 }
 
 // TODO: samplers are not set up (uniform)
+
+bool kernel_services::check_file(const char *path)
+{
+	FILE *f = nullptr;
+
+#ifdef _WIN32
+	::fopen_s(&f, path, "r");
+#elif __APPLE__
+    f = ::fopen(path, "r");
+#endif
+
+    if (f)
+    {
+        ::fclose(f);
+        return true;
+    }
+    return false;
+}

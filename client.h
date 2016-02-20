@@ -43,6 +43,8 @@ struct kernel_services
     CREATE_MESH create_mesh;
     UPDATE_MESH update_mesh;
     DELETE_MESH delete_mesh;
+
+    bool check_file(const char* path);
 };
 
 struct input_data

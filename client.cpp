@@ -130,11 +130,8 @@ void setup(kernel_services *services)
     u8 *pixels;
     i32 width, height;
 
-	FILE *fontfile = nullptr;
-	::fopen_s(&fontfile, cfg_font_path, "r");
-	if (fontfile)
+	if (services->check_file(cfg_font_path))
 	{
-		::fclose(fontfile);
 		ImFontConfig config;
 		config.OversampleH = 3;
 		config.OversampleV = 3;
