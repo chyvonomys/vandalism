@@ -13,3 +13,15 @@ ism
 
 # imgui config
 imgui.ini
+
+# windows build specific
+vs/deps
+vs/build
+vs/target
+vs/run
+
+# vs specific
+vs/*.vcxproj.user
+vs/*.suo
+vs/*.sdf
+vs/*.opensdf
