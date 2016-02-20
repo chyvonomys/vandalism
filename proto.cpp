@@ -1,11 +1,17 @@
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#elif __APPLE__
+#include <mach/mach_time.h>
+#endif
+
 #define GLFW_INCLUDE_NONE
 
 #include <GLFW/glfw3.h>
 #include "glcorearb.h"
 #include <cstdio>
 #include <cstring>
-#include <mach/mach_time.h>
-#include <dlfcn.h>
+
 #include <vector>
 #include "client.h"
 #include "math.h"
@@ -580,6 +586,35 @@ void scroll_callback(GLFWwindow *, double, double yscroll)
     scroll_y += static_cast<float>(yscroll);
 }
 
+#ifdef _WIN32
+u64 get_platform_counter()
+{
+	LARGE_INTEGER v;
+	QueryPerformanceCounter(&v);
+	return v.QuadPart;
+}
+
+double get_platform_counter_freq()
+{
+	LARGE_INTEGER f;
+	QueryPerformanceFrequency(&f);
+	return f.QuadPart / 1000.0;
+}
+#elif __APPLE__
+u64 get_platform_counter()
+{
+	return mach_absolute_time();
+}
+
+double get_platform_counter_freq()
+{
+	mach_timebase_info_data_t time_info;
+	mach_timebase_info(&time_info);
+
+	return time_info.numer / time_info.denom / 1000.0;
+}
+#endif
+
 int main(int argc, char *argv[])
 {
     for (int i = 1; i < argc; ++i)
@@ -646,8 +681,8 @@ int main(int argc, char *argv[])
     i32 windowWidthPx, windowHeightPx;
     glfwGetFramebufferSize(pWindow, &windowWidthPx, &windowHeightPx);
 
-    float pxPerPtHor = windowWidthPx / windowWidthPt;
-    float pxPerPtVer = windowHeightPx / windowHeightPt;
+    float pxPerPtHor = static_cast<float>(windowWidthPx) / windowWidthPt;
+    float pxPerPtVer = static_cast<float>(windowHeightPx) / windowHeightPt;
 
     u32 rtWidthPx = static_cast<u32>(monitorWidthPt * pxPerPtHor);
     u32 rtHeightPx = static_cast<u32>(monitorHeightPt * pxPerPtVer);
@@ -703,16 +738,15 @@ int main(int argc, char *argv[])
         output_data output;
         output.buffer = &buffer;
         
-        mach_timebase_info_data_t time_info;
-        mach_timebase_info(&time_info);
+		double counter_ticks_per_ms = get_platform_counter_freq();
 
         const u32 TIMEPOINTS = 10;
         const u32 INTERVALS = TIMEPOINTS-1;
-        uint64_t timestamps[TIMEPOINTS] = {0};
+        u64 timestamps[TIMEPOINTS] = {0};
 
-        double intervals[INTERVALS];
+        double intervalsMs[INTERVALS];
 
-#define TIME timestamps[nTimePoints++] = mach_absolute_time();
+#define TIME timestamps[nTimePoints++] = get_platform_counter(); 
 
         u32 nTimePoints = 0;
 
@@ -745,11 +779,9 @@ int main(int argc, char *argv[])
             
             for (u8 i = 1; i < nTimePoints; ++i)
             {
-                intervals[i-1] = 1e-6 *
-                    static_cast<double>(timestamps[i] - timestamps[i-1]) *
-                    time_info.numer / time_info.denom;
+				intervalsMs[i - 1] = static_cast<double>(timestamps[i] - timestamps[i - 1]) / counter_ticks_per_ms;
             }
-            input.pTimeIntervals = intervals;
+            input.pTimeIntervals = intervalsMs;
             input.nTimeIntervals = (nTimePoints == 0 ? 0 : nTimePoints - 1);
             ++input.nFrames;
             nTimePoints = 0;
@@ -829,11 +861,8 @@ int main(int argc, char *argv[])
             input.swHeightPx = input.vpHeightPt;
 
             // transform to buffer Px coords
-            double swMousePxX = mousePtX / input.vpWidthPt * input.swWidthPx;
-            double swMousePxY = mousePtY / input.vpHeightPt * input.swHeightPx;
-
-            input.swMouseXPx = static_cast<i32>(swMousePxX);
-            input.swMouseYPx = static_cast<i32>(swMousePxY);
+			input.swMouseXPx = static_cast<float>(mousePtX) / input.vpWidthPt * input.swWidthPx;
+			input.swMouseYPx = static_cast<float>(mousePtY) / input.vpHeightPt * input.swHeightPx;
 
             // NOTE: all mouse coords have Y axis pointing down.
 
@@ -912,7 +941,8 @@ int main(int argc, char *argv[])
                               output.ui_drawcalls[i].mesh_id,
                               output.ui_drawcalls[i].offset,
                               output.ui_drawcalls[i].count,
-                              input.swWidthPx, input.swHeightPx);
+                              static_cast<float>(input.swWidthPx),
+							  static_cast<float>(input.swHeightPx));
             }
 
             TIME; // finish ---------------------------------------------------------

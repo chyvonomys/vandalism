@@ -19,8 +19,8 @@ struct test_box
     float y0, y1;
 
     test_box() :
-        x0(INFINITY), x1(-INFINITY),
-        y0(INFINITY), y1(-INFINITY)
+        x0(FLT_MAX), x1(-FLT_MAX),
+        y0(FLT_MAX), y1(-FLT_MAX)
     {}
 
     test_box(float l, float r, float b, float t) :

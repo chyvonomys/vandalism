@@ -1,4 +1,4 @@
-#include <cstddef>
+#include <cstdint>
 
 typedef uint64_t u64;
 typedef uint32_t u32;
@@ -52,8 +52,7 @@ struct input_data
 
     u32 nFrames;
 
-    i32 swMouseXPx;
-    i32 swMouseYPx;
+	float swMouseXPx, swMouseYPx;
     bool mouseleft;
     bool scrolling;
     float scrollY;
@@ -64,12 +63,12 @@ struct input_data
 
     i32 vpWidthPx, vpHeightPx;
     i32 vpWidthPt, vpHeightPt;
-    float vpWidthIn, vpHeightIn;
 
+	float vpWidthIn, vpHeightIn;
     float rtWidthIn, rtHeightIn;
-
     i32 swWidthPx, swHeightPx;
-    kernel_services services;
+
+	kernel_services services;
 };
 
 struct output_data

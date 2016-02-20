@@ -444,17 +444,9 @@ struct Vandalism
         set_dirty();
     }
 
-    MC_FN from_idle_handlers[MODECNT] =
-    {&Vandalism::idle, &Vandalism::start_draw, &Vandalism::start_pan, &Vandalism::start_zoom,
-     &Vandalism::start_rotate, &Vandalism::place1, &Vandalism::start_move2, &Vandalism::start_scroll};
-
-    MC_FN to_idle_handlers[MODECNT] =
-    {&Vandalism::idle, &Vandalism::done_draw, &Vandalism::done_pan, &Vandalism::done_zoom,
-     &Vandalism::done_rotate, &Vandalism::place1, &Vandalism::done_move2, &Vandalism::done_scroll};
-
-    MC_FN same_mode_handlers[MODECNT] =
-    {&Vandalism::idle, &Vandalism::do_draw, &Vandalism::do_pan, &Vandalism::do_zoom,
-     &Vandalism::do_rotate, &Vandalism::place1, &Vandalism::do_move2, &Vandalism::do_scroll};
+	MC_FN from_idle_handlers[MODECNT];
+	MC_FN to_idle_handlers[MODECNT];
+	MC_FN same_mode_handlers[MODECNT];
 
     MC_FN mode_change_handlers(Mode from, Mode to)
     {
@@ -524,6 +516,35 @@ struct Vandalism
 
     void setup()
     {
+		// TODO: this should be statically initialized once (works in clang)
+		// doesn't work in vs2013
+		from_idle_handlers[IDLE] = &Vandalism::idle;
+		from_idle_handlers[DRAWING] = &Vandalism::start_draw;
+		from_idle_handlers[PANNING] = &Vandalism::start_pan;
+		from_idle_handlers[ZOOMING] = &Vandalism::start_zoom;
+		from_idle_handlers[ROTATING] = &Vandalism::start_rotate;
+		from_idle_handlers[PLACING1] = &Vandalism::place1;
+		from_idle_handlers[MOVING2] = &Vandalism::start_move2;
+		from_idle_handlers[SCROLLING] = &Vandalism::start_scroll;
+
+		to_idle_handlers[IDLE] = &Vandalism::idle;
+		to_idle_handlers[DRAWING] = &Vandalism::done_draw;
+		to_idle_handlers[PANNING] = &Vandalism::done_pan;
+		to_idle_handlers[ZOOMING] = &Vandalism::done_zoom;
+		to_idle_handlers[ROTATING] = &Vandalism::done_rotate;
+		to_idle_handlers[PLACING1] = &Vandalism::place1;
+		to_idle_handlers[MOVING2] = &Vandalism::done_move2;
+		to_idle_handlers[SCROLLING] = &Vandalism::done_scroll;
+
+		same_mode_handlers[IDLE] = &Vandalism::idle;
+		same_mode_handlers[DRAWING] = &Vandalism::do_draw;
+		same_mode_handlers[PANNING] = &Vandalism::do_pan;
+		same_mode_handlers[ZOOMING] = &Vandalism::do_zoom;
+		same_mode_handlers[ROTATING] = &Vandalism::do_rotate;
+		same_mode_handlers[PLACING1] = &Vandalism::place1;
+		same_mode_handlers[MOVING2] = &Vandalism::do_move2;
+		same_mode_handlers[SCROLLING] = &Vandalism::do_scroll;
+
         currentMode = IDLE;
         pins.push_back(0);
 

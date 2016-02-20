@@ -109,6 +109,7 @@ const i32 cfg_max_brush_diameter_units = 64;
 const i32 cfg_def_brush_diameter_units = 4;
 const float cfg_brush_diameter_inches_per_unit = 1.0f / 64.0f;
 const float cfg_depth_step = 1.0f / 10000.0f;
+const char* cfg_font_path = "Roboto_Condensed/RobotoCondensed-Regular.ttf";
 
 u32 timingX;
 
@@ -129,10 +130,17 @@ void setup(kernel_services *services)
     u8 *pixels;
     i32 width, height;
 
-    ImFontConfig config;
-    config.OversampleH = 3;
-    config.OversampleV = 3;
-    io.Fonts->AddFontFromFileTTF("Roboto_Condensed/RobotoCondensed-Regular.ttf", 16.0f, &config);
+	FILE *fontfile = nullptr;
+	::fopen_s(&fontfile, cfg_font_path, "r");
+	if (fontfile)
+	{
+		::fclose(fontfile);
+		ImFontConfig config;
+		config.OversampleH = 3;
+		config.OversampleV = 3;
+		io.Fonts->AddFontFromFileTTF(cfg_font_path, 16.0f, &config);
+	}
+
     io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
 
     font_texture_id = services->create_texture(static_cast<u32>(width),
@@ -458,7 +466,7 @@ u32 DrawTestAll(offscreen_buffer *buffer,
                    float viewportW, float viewportH,
                    const test_data &data)
 {
-    test_box ds_bbox = {INFINITY, -INFINITY, INFINITY, -INFINITY};
+    test_box ds_bbox;
     test_transform accum_transform = id_transform();
 
     // ls_*** - current view's space
@@ -508,8 +516,8 @@ u32 DrawTestAll(offscreen_buffer *buffer,
         static_cast<float>(y1)
     };
 
-    float wb_h = y1 - y0;
-    float wb_w = x1 - x0;
+    float wb_h = static_cast<float>(y1 - y0);
+	float wb_w = static_cast<float>(x1 - x0);
 
     float whole_box_aspect_ratio = wb_h / wb_w;
     float content_box_aspect_ratio = (ds_bbox.y1 - ds_bbox.y0) / (ds_bbox.x1 - ds_bbox.x0);
@@ -597,11 +605,9 @@ void update_and_render(input_data *input, output_data *output)
 
     offscreen_buffer *buffer = output->buffer;
 
-    float mxnorm = static_cast<float>(input->swMouseXPx) /
-                   static_cast<float>(input->swWidthPx) - 0.5f;
+    float mxnorm = input->swMouseXPx / static_cast<float>(input->swWidthPx) - 0.5f;
 
-    float mynorm = static_cast<float>(input->swMouseYPx) /
-                   static_cast<float>(input->swHeightPx) - 0.5f;
+    float mynorm = input->swMouseYPx / static_cast<float>(input->swHeightPx) - 0.5f;
 
     mynorm = -mynorm;
 
@@ -794,9 +800,9 @@ void update_and_render(input_data *input, output_data *output)
     // Draw ImGui --------------------------------------------------------------
 
     ImGuiIO& io = ImGui::GetIO();
-    io.DisplaySize = ImVec2(input->swWidthPx, input->swHeightPx);
+    io.DisplaySize = ImVec2(static_cast<float>(input->swWidthPx), static_cast<float>(input->swHeightPx));
     io.DeltaTime = 0.01666666f;
-    io.MousePos = ImVec2(input->swMouseXPx, input->swMouseYPx);
+	io.MousePos = ImVec2(input->swMouseXPx, input->swMouseYPx);
     io.MouseDown[0] = input->mouseleft;
 
     ImGui::NewFrame();
@@ -869,9 +875,7 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::Begin("debug");
     ImGui::Text("mouse-inch: (%g, %g)", mxin, myin);
     ImGui::Text("mouse-norm: (%g, %g)", mxnorm, mynorm);
-    ImGui::Text("mouse-ui-px: (%g, %g)",
-                static_cast<double>(input->swMouseXPx),
-                static_cast<double>(input->swMouseYPx));
+    ImGui::Text("mouse-ui-px: (%g, %g)", input->swMouseXPx, input->swMouseYPx);
 
     ImGui::Text("tool active: %d", static_cast<i32>(ism_input.mousedown));
 
