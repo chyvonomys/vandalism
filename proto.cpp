@@ -118,6 +118,7 @@ LOAD(GLGETSTRING, glGetString)
 bool g_printShaders = false;
 bool g_printGLDiagnostics = false;
 size_t g_quitFrame = 0;
+bool g_noRetina = false;
 
 bool load_gl_functions()
 {
@@ -628,6 +629,10 @@ int main(int argc, char *argv[])
         {
             g_quitFrame = 2;
         }
+        else if (strcmp(argv[i], "--noretina") == 0)
+        {
+            g_noRetina = true;
+        }
     }
 
     glfwInit();
@@ -669,8 +674,8 @@ int main(int argc, char *argv[])
     i32 windowWidthPt = vpPaddingPt + initialVpWidthPt + vpPaddingPt;
     i32 windowHeightPt = vpPaddingPt + initialVpHeightPt + vpPaddingPt;
 
-    u32 swWidthPx = monitorWidthPt;
-    u32 swHeightPx = monitorHeightPt;
+    u32 swrtWidthPx = monitorWidthPt;
+    u32 swrtHeightPx = monitorHeightPt;
 
     GLFWwindow* pWindow;
     pWindow = glfwCreateWindow(windowWidthPt, windowHeightPt,
@@ -680,12 +685,19 @@ int main(int argc, char *argv[])
 
     i32 windowWidthPx, windowHeightPx;
     glfwGetFramebufferSize(pWindow, &windowWidthPx, &windowHeightPx);
+    if (g_noRetina)
+    {
+        windowWidthPx = windowWidthPt;
+        windowHeightPx = windowHeightPt;
+    }
 
     float pxPerPtHor = static_cast<float>(windowWidthPx) / windowWidthPt;
     float pxPerPtVer = static_cast<float>(windowHeightPx) / windowHeightPt;
 
     u32 rtWidthPx = static_cast<u32>(monitorWidthPt * pxPerPtHor);
     u32 rtHeightPx = static_cast<u32>(monitorHeightPt * pxPerPtVer);
+
+    ::printf("rendertarget: %d x %d px\n", rtWidthPx, rtHeightPx);
 
     glfwMakeContextCurrent(pWindow);
     
@@ -716,16 +728,16 @@ int main(int argc, char *argv[])
         currRT.setup(rtWidthPx, rtHeightPx);
         
         BufferPresenter blit;
-        blit.setup(&quad, swWidthPx, swHeightPx);
+        blit.setup(&quad, swrtWidthPx, swrtHeightPx);
 
         check_gl_errors("after setup");
 
-        GLubyte *pixels = new GLubyte[swWidthPx * swHeightPx * 4];
+        GLubyte *pixels = new GLubyte[swrtWidthPx * swrtHeightPx * 4];
 
         offscreen_buffer buffer;
         buffer.data = pixels;
-        buffer.width = swWidthPx;
-        buffer.height = swHeightPx;
+        buffer.width = swrtWidthPx;
+        buffer.height = swrtHeightPx;
 
         MeshPresenter render;
         render.setup();
@@ -849,6 +861,9 @@ int main(int argc, char *argv[])
             double mousePtX, mousePtY;
             glfwGetCursorPos(pWindow, &mousePtX, &mousePtY);
 
+            input.rawMouseXPt = static_cast<float>(mousePtX);
+            input.rawMouseYPt = static_cast<float>(mousePtY);
+
             // clamp to viewport Pt coords
             mousePtX = si_clampd(mousePtX, viewportLeftPt, viewportRightPt);
             mousePtY = si_clampd(mousePtY, viewportBottomPt, viewportTopPt);
@@ -857,12 +872,11 @@ int main(int argc, char *argv[])
             mousePtX = mousePtX - viewportLeftPt;
             mousePtY = mousePtY - viewportBottomPt;
 
+            input.vpMouseXPt = static_cast<float>(mousePtX);
+            input.vpMouseYPt = static_cast<float>(mousePtY);
+
             input.swWidthPx = input.vpWidthPt;
             input.swHeightPx = input.vpHeightPt;
-
-            // transform to buffer Px coords
-			input.swMouseXPx = static_cast<float>(mousePtX) / input.vpWidthPt * input.swWidthPx;
-			input.swMouseYPx = static_cast<float>(mousePtY) / input.vpHeightPt * input.swHeightPx;
 
             // NOTE: all mouse coords have Y axis pointing down.
 
@@ -932,8 +946,8 @@ int main(int argc, char *argv[])
                     input.rtWidthIn, input.rtHeightIn);
 
             blit.draw(pixels,
-                      static_cast<float>(input.vpWidthPt) / swWidthPx,
-                      static_cast<float>(input.vpHeightPt) / swHeightPx);
+                      static_cast<float>(input.swWidthPx) / swrtWidthPx,
+                      static_cast<float>(input.swHeightPx) / swrtHeightPx);
 
             for (u32 i = 0; i < output.ui_drawcall_cnt; ++i)
             {
@@ -941,8 +955,8 @@ int main(int argc, char *argv[])
                               output.ui_drawcalls[i].mesh_id,
                               output.ui_drawcalls[i].offset,
                               output.ui_drawcalls[i].count,
-                              static_cast<float>(input.swWidthPx),
-							  static_cast<float>(input.swHeightPx));
+                              input.vpWidthPt,
+							  input.vpHeightPt);
             }
 
             TIME; // finish ---------------------------------------------------------

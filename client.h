@@ -54,7 +54,8 @@ struct input_data
 
     u32 nFrames;
 
-	float swMouseXPx, swMouseYPx;
+    float rawMouseXPt, rawMouseYPt;
+    float vpMouseXPt, vpMouseYPt;
     bool mouseleft;
     bool scrolling;
     float scrollY;
@@ -68,6 +69,7 @@ struct input_data
 
 	float vpWidthIn, vpHeightIn;
     float rtWidthIn, rtHeightIn;
+
     i32 swWidthPx, swHeightPx;
 
 	kernel_services services;

@@ -603,9 +603,8 @@ void update_and_render(input_data *input, output_data *output)
 
     offscreen_buffer *buffer = output->buffer;
 
-    float mxnorm = input->swMouseXPx / static_cast<float>(input->swWidthPx) - 0.5f;
-
-    float mynorm = input->swMouseYPx / static_cast<float>(input->swHeightPx) - 0.5f;
+    float mxnorm = input->vpMouseXPt / input->vpWidthPt - 0.5f;
+    float mynorm = input->vpMouseYPt / input->vpHeightPt - 0.5f;
 
     mynorm = -mynorm;
 
@@ -763,8 +762,8 @@ void update_and_render(input_data *input, output_data *output)
     if (!mouse_in_ui)
     {
         draw_pixel(buffer,
-                   static_cast<u32>(input->swMouseXPx),
-                   static_cast<u32>(input->swMouseYPx),
+                   static_cast<u32>((mxnorm + 0.5f) * input->swWidthPx),
+                   static_cast<u32>((mynorm + 0.5f) * input->swHeightPx),
                    pack_color(COLOR_YELLOW));
     }
 
@@ -798,9 +797,9 @@ void update_and_render(input_data *input, output_data *output)
     // Draw ImGui --------------------------------------------------------------
 
     ImGuiIO& io = ImGui::GetIO();
-    io.DisplaySize = ImVec2(static_cast<float>(input->swWidthPx), static_cast<float>(input->swHeightPx));
+    io.DisplaySize = ImVec2(input->vpWidthPt, input->vpHeightPt);
     io.DeltaTime = 0.01666666f;
-	io.MousePos = ImVec2(input->swMouseXPx, input->swMouseYPx);
+	io.MousePos = ImVec2(input->vpMouseXPt, input->vpMouseYPt);
     io.MouseDown[0] = input->mouseleft;
 
     ImGui::NewFrame();
@@ -880,7 +879,8 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::Begin("debug");
     ImGui::Text("mouse-inch: (%g, %g)", mxin, myin);
     ImGui::Text("mouse-norm: (%g, %g)", mxnorm, mynorm);
-    ImGui::Text("mouse-ui-px: (%g, %g)", input->swMouseXPx, input->swMouseYPx);
+    ImGui::Text("mouse-ui-pt: (%g, %g)", input->vpMouseXPt, input->vpMouseYPt);
+    ImGui::Text("mouse-raw-pt: (%g, %g)", input->rawMouseXPt, input->rawMouseYPt);
 
     ImGui::Text("tool active: %d", static_cast<i32>(ism_input.mousedown));
 
