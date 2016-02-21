@@ -36,13 +36,11 @@ struct kernel_services
 
     typedef u32 MeshID;
 
-    typedef MeshID (*CREATE_MESH)(const VertexLayout&, u32, u32);
-    typedef void (*UPDATE_MESH)(MeshID, const void*, u32, const u16*, u32);
-    typedef void (*DELETE_MESH)(MeshID);
-
-    CREATE_MESH create_mesh;
-    UPDATE_MESH update_mesh;
-    DELETE_MESH delete_mesh;
+    MeshID create_mesh(const VertexLayout&, u32, u32);
+    MeshID create_quad_mesh(const VertexLayout&, u32);
+    void update_mesh(MeshID, const void*, u32, const u16*, u32);
+    void update_mesh_vb(MeshID, const void*, u32);
+    void delete_mesh(MeshID);
 
     bool check_file(const char* path);
 };

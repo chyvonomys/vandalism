@@ -119,9 +119,6 @@ ImGuiTextBuffer *viewsBuf;
 std::vector<output_data::Vertex> bake_quads;
 std::vector<output_data::Vertex> curr_quads;
 
-std::vector<u16> bake_idxs;
-std::vector<u16> curr_idxs;
-
 void setup(kernel_services *services)
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -155,13 +152,12 @@ void setup(kernel_services *services)
     bake_quads.reserve(BAKE_QUADS_CNT * 4);
     curr_quads.reserve(CURR_QUADS_CNT * 4);
 
-    bake_idxs.reserve(BAKE_QUADS_CNT * 6);
-    curr_idxs.reserve(CURR_QUADS_CNT * 6);
-
-    bake_mesh = current_services->create_mesh(*current_services->stroke_vertex_layout,
-                                              BAKE_QUADS_CNT * 4, BAKE_QUADS_CNT * 6);
-    curr_mesh = current_services->create_mesh(*current_services->stroke_vertex_layout,
-                                              CURR_QUADS_CNT * 4, CURR_QUADS_CNT * 6);
+    bake_mesh = current_services->
+    create_quad_mesh(*current_services->stroke_vertex_layout,
+                     BAKE_QUADS_CNT * 4);
+    curr_mesh = current_services->
+    create_quad_mesh(*current_services->stroke_vertex_layout,
+                     CURR_QUADS_CNT * 4);
 
     io.Fonts->ClearInputData();
     io.Fonts->ClearTexData();
@@ -229,7 +225,6 @@ void cleanup()
 // TODO: optimize with triangle fans/strips maybe?
 
 void add_quad(std::vector<output_data::Vertex> &quads,
-              std::vector<u16> &idxs,
               test_point a, test_point b, test_point c, test_point d,
               float zindex, float ec,
               float rc, float gc, float bc, float ac,
@@ -241,24 +236,13 @@ void add_quad(std::vector<output_data::Vertex> &quads,
     v.e = ec;
     v.r = rc; v.g = gc; v.b = bc; v.a = ac;
 
-    u16 qs = static_cast<u16>(quads.size());
-
     v.x = a.x; v.y = a.y; v.u = u0; v.v = 0.0f; quads.push_back(v);
     v.x = b.x; v.y = b.y; v.u = u0; v.v = 1.0f; quads.push_back(v);
     v.x = c.x; v.y = c.y; v.u = u1; v.v = 1.0f; quads.push_back(v);
     v.x = d.x; v.y = d.y; v.u = u1; v.v = 0.0f; quads.push_back(v);
-
-    // TODO: this can be pre-calculated, only count varies
-    idxs.push_back(qs + 0);
-    idxs.push_back(qs + 1);
-    idxs.push_back(qs + 2);
-    idxs.push_back(qs + 2);
-    idxs.push_back(qs + 3);
-    idxs.push_back(qs + 0);
 }
 
 void fill_quads(std::vector<output_data::Vertex>& quads,
-                std::vector<u16>& idxs,
                 const test_point *points,
                 size_t pi0, size_t pi1, size_t si,
                 const test_transform& tform,
@@ -286,7 +270,7 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
 
         bool eraser = (cb.type == 1);
 
-        add_quad(quads, idxs,
+        add_quad(quads,
                  a, b, c, d, zindex, (eraser ? cb.a : 0.0f),
                  cb.r, cb.g, cb.b, (eraser ? 0.0f: cb.a),
                  0.0f, 1.0f);
@@ -314,7 +298,7 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
 
         bool eraser0 = (cb0.type == 1);
 
-        add_quad(quads, idxs,
+        add_quad(quads,
                  a0, b0, c0, d0, zindex, (eraser0 ? cb0.a : 0.0f),
                  cb0.r, cb0.g, cb0.b, (eraser0 ? 0.0f: cb0.a),
                  0.0f, 1.0f);
@@ -342,7 +326,7 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
             bool eraser = (cb1.type == 1);
 
             // TODO: interpolate color/erase/alpha across quad
-            add_quad(quads, idxs,
+            add_quad(quads,
                      a, b, c, d, zindex, (eraser ? cb1.a : 0.0f),
                      cb1.r, cb1.g, cb1.b, (eraser ? 0.0f : cb1.a),
                      0.5f, 0.5f);
@@ -644,7 +628,6 @@ void update_and_render(input_data *input, output_data *output)
         ism->visiblesChanged = false;
 
         bake_quads.clear();
-        bake_idxs.clear();
         std::vector<test_visible> visibles;
         std::vector<test_transform> transforms;
         test_box viewbox = {-0.5f * input->rtWidthIn,
@@ -662,17 +645,16 @@ void update_and_render(input_data *input, output_data *output)
             const test_transform& tform = transforms[vis.ti];
             const test_stroke& stroke = debug_data.strokes[vis.si];
             const Vandalism::Brush& brush = ism->brushes[stroke.brush_id];
-            fill_quads(bake_quads, bake_idxs, debug_data.points,
+            fill_quads(bake_quads, debug_data.points,
                        stroke.pi0, stroke.pi1, vis.si, tform, brush,
                        cfg_depth_step);
         }
 
         u32 vtxCnt = static_cast<u32>(bake_quads.size());
-        u32 idxCnt = static_cast<u32>(bake_idxs.size());
+        u32 idxCnt = vtxCnt / 4 * 6;
 
-        current_services->update_mesh(bake_mesh,
-                                      bake_quads.data(), vtxCnt,
-                                      bake_idxs.data(), idxCnt);
+        current_services->update_mesh_vb(bake_mesh,
+                                         bake_quads.data(), vtxCnt);
         output->bake_flag = true;
         output->bgmesh = bake_mesh;
         output->bgmeshCnt = idxCnt;
@@ -724,22 +706,20 @@ void update_and_render(input_data *input, output_data *output)
         size_t currId = ism->get_current_stroke(currStart, currEnd);
 
         curr_quads.clear();
-        curr_idxs.clear();
 
         Vandalism::Brush currBrush;
         if (ism->get_current_brush(currBrush))
         {
-            fill_quads(curr_quads, curr_idxs, debug_data.points,
+            fill_quads(curr_quads, debug_data.points,
                        currStart, currEnd, currId, id_transform(), currBrush,
                        cfg_depth_step);
         }
 
         u32 vtxCnt = static_cast<u32>(curr_quads.size());
-        u32 idxCnt = static_cast<u32>(curr_idxs.size());
+        u32 idxCnt = vtxCnt / 4 * 6;
 
-        current_services->update_mesh(curr_mesh,
-                                      curr_quads.data(), vtxCnt,
-                                      curr_idxs.data(), idxCnt);
+        current_services->update_mesh_vb(curr_mesh,
+                                         curr_quads.data(), vtxCnt);
         output->fgmesh = curr_mesh;
         output->fgmeshCnt = idxCnt;
 
@@ -896,18 +876,14 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::Text("ism points: %lu", ism->points.size());
     ImGui::Text("ism brushes: %lu", ism->brushes.size());
 
-    ImGui::Text("bake_quads v: (%lu/%lu) i: (%lu/%lu) %d",
+    ImGui::Text("bake_quads v: (%lu/%lu) %d",
                 bake_quads.size(),
                 bake_quads.capacity(),
-                bake_idxs.size(),
-                bake_idxs.capacity(),
                 output->bake_flag);
 
-    ImGui::Text("curr_quads v: (%lu/%lu) i: (%lu/%lu) %d",
+    ImGui::Text("curr_quads v: (%lu/%lu) %d",
                 curr_quads.size(),
                 curr_quads.capacity(),
-                curr_idxs.size(),
-                curr_idxs.capacity(),
                 output->change_flag);
 
     ImGui::Text("mode: %d", ism->currentMode);

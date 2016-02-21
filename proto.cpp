@@ -278,6 +278,17 @@ struct FSQuad
     GLuint m_vao;
 };
 
+struct QuadIndexes
+{
+    void setup();
+    void cleanup();
+
+    void before();
+    void after();
+
+    GLuint m_ibuf;
+};
+
 struct BufferPresenter
 {
     void setup(FSQuad *quad, u32 width, u32 height);
@@ -377,6 +388,7 @@ struct Mesh
     GLuint vbuf;
     u32 vsize;
     u32 isize;
+    bool quad_mesh;
 };
 
 // TODO: this runs always up
@@ -450,15 +462,19 @@ VertexLayoutN<3> stroke_vertex_layout =
     {"color",      2, 4, 4, GL_FLOAT, false}
 };
 
-kernel_services::MeshID create_mesh(const VertexLayout& layout,
-                                    u32 initialVCount,
-                                    u32 initialICount)
+QuadIndexes quad_indexes;
+
+kernel_services::MeshID create_mesh_common(const VertexLayout& layout,
+                                           u32 initialVCount,
+                                           u32 initialICount,
+                                           bool quad_mesh)
 {
     Mesh &mesh = meshes[next_mesh_idx];
 
     u32 vertexSize = static_cast<u32>(layout.total_size());
     mesh.vsize = vertexSize;
     mesh.isize = 2;
+    mesh.quad_mesh = quad_mesh;
 
     glGenVertexArrays(1, &mesh.vao);
 
@@ -494,38 +510,72 @@ kernel_services::MeshID create_mesh(const VertexLayout& layout,
 
     glBindVertexArray(0);
 
-    glGenBuffers(1, &mesh.ibuf);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.ibuf);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                 static_cast<GLsizeiptr>(initialICount * mesh.isize),
-                 nullptr, GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    if (mesh.quad_mesh)
+    {
+        mesh.ibuf = quad_indexes.m_ibuf;
+    }
+    else
+    {
+        glGenBuffers(1, &mesh.ibuf);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.ibuf);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                     static_cast<GLsizeiptr>(initialICount * mesh.isize),
+                     nullptr, GL_DYNAMIC_DRAW);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    }
 
     ++next_mesh_idx;
 
     return next_mesh_idx - 1;
 }
 
-void update_mesh(kernel_services::MeshID mi,
-                 const void *vtxdata, u32 vtxcnt,
-                 const u16 *idxdata, u32 idxcnt)
+void kernel_services::update_mesh_vb(kernel_services::MeshID mi,
+                                     const void *vtxdata, u32 vtxcnt)
 {
     glBindBuffer(GL_ARRAY_BUFFER, meshes[mi].vbuf);
     glBufferData(GL_ARRAY_BUFFER, vtxcnt * meshes[mi].vsize,
                  vtxdata, GL_DYNAMIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, meshes[mi].ibuf);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, idxcnt * meshes[mi].isize,
-                 idxdata, GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }
 
-void delete_mesh(kernel_services::MeshID mi)
+void kernel_services::update_mesh(kernel_services::MeshID mi,
+                                  const void *vtxdata, u32 vtxcnt,
+                                  const u16 *idxdata, u32 idxcnt)
+{
+    update_mesh_vb(mi, vtxdata, vtxcnt);
+
+    if (!meshes[mi].quad_mesh)
+    {
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, meshes[mi].ibuf);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, idxcnt * meshes[mi].isize,
+                     idxdata, GL_DYNAMIC_DRAW);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    }
+}
+
+kernel_services::MeshID
+kernel_services::create_quad_mesh(const VertexLayout& layout,
+                                  u32 initialVCount)
+{
+    return create_mesh_common(layout, initialVCount, 0, true);
+}
+
+kernel_services::MeshID
+kernel_services::create_mesh(const VertexLayout& layout,
+                             u32 initialVCount,
+                             u32 initialICount)
+{
+    return create_mesh_common(layout, initialVCount, initialICount, false);
+}
+
+void kernel_services::delete_mesh(kernel_services::MeshID mi)
 {
     glDeleteVertexArrays(1, &meshes[mi].vao);
     glDeleteBuffers(1, &meshes[mi].vbuf);
-    glDeleteBuffers(1, &meshes[mi].ibuf);
+    if (!meshes[mi].quad_mesh)
+    {
+        glDeleteBuffers(1, &meshes[mi].ibuf);
+    }
 }
 
 struct Texture
@@ -718,6 +768,8 @@ int main(int argc, char *argv[])
         FSQuad quad;
         quad.setup();
 
+        quad_indexes.setup();
+
         FSTexturePresenter fs;
         fs.setup(&quad);
 
@@ -763,9 +815,6 @@ int main(int argc, char *argv[])
         u32 nTimePoints = 0;
 
         kernel_services services;
-        services.create_mesh = create_mesh;
-        services.update_mesh = update_mesh;
-        services.delete_mesh = delete_mesh;
         services.create_texture = create_texture;
         services.update_texture = update_texture;
         services.delete_texture = delete_texture;
@@ -986,6 +1035,7 @@ int main(int argc, char *argv[])
         fs.cleanup();
         //grid.cleanup();
         quad.cleanup();
+        quad_indexes.cleanup();
 
         delete [] pixels;
 
@@ -1485,3 +1535,49 @@ bool kernel_services::check_file(const char *path)
     }
     return false;
 }
+
+void QuadIndexes::setup()
+{
+    std::vector<u16> buffer;
+    const size_t vtx_cnt = 65536;
+    const size_t quad_cnt = vtx_cnt / 4;
+    const size_t idx_cnt = quad_cnt * 6;
+    buffer.resize(idx_cnt);
+
+    u16 *ptr = buffer.data();
+    u16 idx = 0;
+    for (size_t i = 0; i < quad_cnt; ++i)
+    {
+        ptr[0] = idx + 0;
+        ptr[1] = idx + 1;
+        ptr[2] = idx + 2;
+        ptr[3] = idx + 2;
+        ptr[4] = idx + 3;
+        ptr[5] = idx + 0;
+        ptr += 6;
+        idx += 4;
+    }
+
+    glGenBuffers(1, &m_ibuf);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_ibuf);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u16) * idx_cnt,
+                 buffer.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+}
+
+void QuadIndexes::cleanup()
+{
+    glDeleteBuffers(1, &m_ibuf);
+}
+
+void QuadIndexes::before()
+{
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_ibuf);
+}
+
+void QuadIndexes::after()
+{
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+}
+
+
