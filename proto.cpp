@@ -458,7 +458,7 @@ VertexLayoutN<3> ui_vertex_layout =
 VertexLayoutN<3> stroke_vertex_layout =
 {
     {"msPosition", 0, 3, 4, GL_FLOAT, false},
-    {"uve",        1, 3, 4, GL_FLOAT, false},
+    {"uvew",       1, 4, 4, GL_FLOAT, false},
     {"color",      2, 4, 4, GL_FLOAT, false}
 };
 
@@ -1376,17 +1376,17 @@ void MeshPresenter::setup()
     const char *vertex_src =
         "  #version 330 core                               \n"
         "  layout (location = 0) in vec3 i_msPosition;     \n"
-        "  layout (location = 1) in vec3 i_uve;            \n"
+        "  layout (location = 1) in vec4 i_uvew;           \n"
         "  layout (location = 2) in vec4 i_color;          \n"
         "  uniform vec2 u_scale;                           \n"
-        "  out vec3 l_uve;                                 \n"
+        "  out vec4 l_uvew;                                \n"
         "  out vec4 l_color;                               \n"
         "  void main()                                     \n"
         "  {                                               \n"
         "      gl_Position.xy = i_msPosition.xy * u_scale; \n"
         "      gl_Position.z = i_msPosition.z;             \n"
         "      gl_Position.w = 1.0f;                       \n"
-        "      l_uve = i_uve;                              \n"
+        "      l_uvew = i_uvew;                            \n"
         "      l_color = i_color;                          \n"
         "  }                                               \n";
 
@@ -1394,17 +1394,20 @@ void MeshPresenter::setup()
         "  #version 330 core                                        \n"
         "  layout (location = 0) out vec4 o_color;                  \n"
         "  layout (location = 1) out vec4 o_color1;                 \n"
-        "  in vec3 l_uve;                                           \n"
+        "  in vec4 l_uvew;                                          \n"
         "  in vec4 l_color;                                         \n"
         "  void main()                                              \n"
         "  {                                                        \n"
-        "      float rho = length(l_uve.xy - vec2(0.5f, 0.5f));     \n"
-        "      const float radius = 0.5f;                           \n"
+        "      float rho = length(l_uvew.xy - vec2(0.5f, 0.5f));    \n"
+        "      float w = l_uvew.w;                                  \n"
+        "      float radius = mix(0.4f, 0.5f, w);                   \n"
+        "      float s = mix(1.0f, 0.6f, w);                        \n"
         "      if (rho > radius) discard;                           \n"
-        "      float E = l_uve.z;                                   \n"
-        "      float SRCa = (1.0f - l_color.a) * E;                 \n"
-        "      float SRC1a = (1.0f - l_color.a) * (1.0f - E);       \n"
-        "      o_color.rgb = l_color.rgb * l_color.a;               \n"
+        "      float A = l_color.a * s;                             \n"
+        "      float E = l_uvew.z * s;                              \n"
+        "      float SRCa = (1.0f - A) * E;                         \n"
+        "      float SRC1a = (1.0f - A) * (1.0f - E);               \n"
+        "      o_color.rgb = l_color.rgb * A;                       \n"
         "      o_color.a = SRCa;                                    \n"
         "      o_color1.a = SRC1a;                                  \n"
         "  }                                                        \n";
