@@ -1,3 +1,4 @@
+
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -630,11 +631,16 @@ void delete_texture(kernel_services::TexID ti)
 
 bool scroll_updated = false;
 float scroll_y = 0.0f;
+float cfg_fixed_scroll_step = 0.1f;
 
 void scroll_callback(GLFWwindow *, double, double yscroll)
 {
     scroll_updated = true;
-    scroll_y += static_cast<float>(yscroll);
+
+    if (yscroll > 0.0)
+        scroll_y += cfg_fixed_scroll_step;
+    else if (yscroll < 0.0)
+        scroll_y -= cfg_fixed_scroll_step;
 }
 
 #ifdef _WIN32
@@ -861,16 +867,22 @@ int main(int argc, char *argv[])
             input.mouseleft =
                 (glfwGetMouseButton(pWindow, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
 
+            if (input.scrolling)
+            {
+                input.scrollY = scroll_y;
+            }
+
+            if (input.nFrames - last_scroll_updated_frame > 5)
+            {
+                input.scrolling = false;
+            }
+
             if (scroll_updated)
             {
                 scroll_updated = false;
-                input.scrollY = scroll_y;
                 input.scrolling = true;
+                // keep the input.scrollY at its previous value
                 last_scroll_updated_frame = input.nFrames;
-            }
-            else if (input.nFrames - last_scroll_updated_frame > 5)
-            {
-                input.scrolling = false;
             }
 
             glfwGetFramebufferSize(pWindow,
