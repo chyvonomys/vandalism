@@ -836,6 +836,10 @@ void update_and_render(input_data *input, output_data *output)
         {
             ism->undo();
         }
+        if (ImGui::Button("Clear"))
+        {
+            ism->clear();
+        }
         ImGui::SameLine();
         output->quit_flag = ImGui::Button("Quit");
     }

@@ -546,13 +546,8 @@ struct Vandalism
 		same_mode_handlers[SCROLLING] = &Vandalism::do_scroll;
 
         currentMode = IDLE;
-        pins.push_back(0);
 
-        test_transition none = {TPAN, 0.0f, 0.0f};
-        views.push_back(test_view(none, 0, 0));
-        views.back().pin_index = 0;
-
-        currentViewIdx = 0;
+        setup_default_view();
 
         autoOptimizeViews = true;
 
@@ -886,5 +881,29 @@ struct Vandalism
 
             set_dirty();
         }
+    }
+
+    void setup_default_view()
+    {
+        pins.push_back(0);
+
+        test_transition none = {TPAN, 0.0f, 0.0f};
+        views.push_back(test_view(none, 0, 0));
+        views.back().pin_index = 0;
+
+        currentViewIdx = 0;
+    }
+
+    void clear()
+    {
+        brushes.clear();
+        views.clear();
+        strokes.clear();
+        points.clear();
+        pins.clear();
+
+        setup_default_view();
+
+        set_dirty();
     }
 };
