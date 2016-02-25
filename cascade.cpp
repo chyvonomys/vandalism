@@ -46,8 +46,11 @@ struct test_box
 
     void add_box(const test_box &b)
     {
-        add(test_point(b.x0, b.y0));
-        add(test_point(b.x1, b.y1));
+        if (!b.empty())
+        {
+            add(test_point(b.x0, b.y0));
+            add(test_point(b.x1, b.y1));
+        }
     }
 
     bool empty() const
@@ -321,6 +324,9 @@ test_basis basis_in_basis(const test_basis &b0,
 test_box apply_transform_box(const test_transform &t,
                              const test_box &b)
 {
+    if (b.empty())
+        return b;
+
     test_box result;
     result.add(apply_transform_pt(t, {b.x0, b.y0})); // BL
     result.add(apply_transform_pt(t, {b.x0, b.y1})); // TL
@@ -403,6 +409,21 @@ void query(const test_data &data, size_t pin, const test_box &viewport,
         crop(data, vi, transforms.size(), ls_box, visibles, ls_negligible);
         transforms.push_back(ls2ps);
     }
+}
+
+test_box query_bbox(const test_data &data, size_t pin)
+{
+    test_box ps_accum_box;
+
+    for (size_t vi = 0; vi < data.nviews; ++vi)
+    {
+        test_transform ls2ps = get_relative_transform(data, vi, pin);
+
+        test_box ps_view_box = apply_transform_box(ls2ps, data.views[vi].bbox);
+        ps_accum_box.add_box(ps_view_box);
+    }
+
+    return ps_accum_box;
 }
 
 #include "tests.cpp"

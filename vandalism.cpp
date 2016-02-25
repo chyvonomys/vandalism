@@ -906,4 +906,36 @@ struct Vandalism
 
         set_dirty();
     }
+
+    void show_all(float vpW, float vpH)
+    {
+        if (strokes.empty())
+            return;
+
+        currentViewIdx = views.size() - 1;
+        test_box all_box = query_bbox(get_debug_data(), currentViewIdx);
+
+
+        test_transition center = {TPAN,
+                                  0.5f * (all_box.x1 + all_box.x0),
+                                  0.5f * (all_box.y1 + all_box.y0)};
+
+        append_new_view(center);
+
+        float vpAspect = vpH / vpW;
+        float bbAspect = all_box.height() / all_box.width();
+
+        test_transition fit;
+        if (vpAspect > bbAspect)
+        {
+            fit = {TZOOM, vpW, all_box.width()};
+        }
+        else
+        {
+            fit = {TZOOM, vpH, all_box.height()};
+        }
+        append_new_view(fit);
+
+        set_dirty();
+    }
 };

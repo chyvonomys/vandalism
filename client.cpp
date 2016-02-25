@@ -832,6 +832,11 @@ void update_and_render(input_data *input, output_data *output)
         {
             ism->optimize_views();
         }
+        ImGui::SameLine();
+        if (ImGui::Button("Show all strokes"))
+        {
+            ism->show_all(input->vpWidthIn, input->vpHeightIn);
+        }
         if (ism->undoable() && ImGui::Button("Undo"))
         {
             ism->undo();
