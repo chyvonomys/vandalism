@@ -98,6 +98,7 @@ i32 gui_brush_diameter_units;
 bool gui_mouse_occupied;
 bool gui_mouse_hover;
 bool gui_fake_pressure;
+bool gui_fancy_brush;
 float gui_background_color[3];
 float gui_grid_bg_color[3];
 float gui_grid_fg_color[3];
@@ -193,6 +194,7 @@ void setup(kernel_services *services)
     gui_mouse_occupied = false;
     gui_mouse_hover = false;
     gui_fake_pressure = false;
+    gui_fancy_brush = false;
 
     gui_goto_idx = 0;
 
@@ -335,12 +337,15 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
         }
     }
 
-    size_t v1idx = quads.size();
-
-    for (size_t i = v0idx; i < v1idx; ++i)
+    if (gui_fancy_brush)
     {
-        quads.push_back(quads[i]);
-        quads.back().w = 1.0f;
+        size_t v1idx = quads.size();
+
+        for (size_t i = v0idx; i < v1idx; ++i)
+        {
+            quads.push_back(quads[i]);
+            quads.back().w = 1.0f;
+        }
     }
 }
 
@@ -596,8 +601,6 @@ void update_and_render(input_data *input, output_data *output)
     float mxnorm = input->vpMouseXPt / input->vpWidthPt - 0.5f;
     float mynorm = input->vpMouseYPt / input->vpHeightPt - 0.5f;
 
-    mynorm = -mynorm;
-
     float mxin = input->vpWidthIn * mxnorm;
     float myin = input->vpHeightIn * mynorm;
 
@@ -608,7 +611,7 @@ void update_and_render(input_data *input, output_data *output)
     Vandalism::Input ism_input;
     ism_input.tool = static_cast<Vandalism::Tool>(gui_tool);
     ism_input.mousex = mxin;
-    ism_input.mousey = myin;
+    ism_input.mousey = -myin;
     ism_input.negligibledistance = pixel_height_in;
     ism_input.mousedown = input->mouseleft && !mouse_in_ui;
     ism_input.fakepressure = gui_fake_pressure;
@@ -798,6 +801,7 @@ void update_and_render(input_data *input, output_data *output)
                      cfg_min_brush_diameter_units, cfg_max_brush_diameter_units);
     ImGui::SliderFloat("eraser", &gui_eraser_alpha, 0.0f, 1.0f);
     ImGui::Checkbox("pressure", &gui_fake_pressure);
+    ImGui::Checkbox("fancy", &gui_fancy_brush);
     ImGui::Separator();
     ImGui::ColorEdit3("grid bg", gui_grid_bg_color);
     ImGui::ColorEdit3("grid fg", gui_grid_fg_color);
