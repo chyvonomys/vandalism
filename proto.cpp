@@ -672,6 +672,26 @@ double get_platform_counter_freq()
 }
 #endif
 
+class signal_change_detector
+{
+public:
+    signal_change_detector() : previous_value(false), current_value(false) {}
+
+    void feed(bool value)
+    {
+        previous_value = current_value;
+        current_value = value;
+    }
+
+    bool is_rising_edge() const
+    {
+        return current_value && !previous_value;
+    }
+private:
+    bool previous_value;
+    bool current_value;
+};
+
 int main(int argc, char *argv[])
 {
     for (int i = 1; i < argc; ++i)
@@ -699,6 +719,7 @@ int main(int argc, char *argv[])
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, 1);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_SRGB_CAPABLE, 1);
 
     GLFWmonitor* pMonitor = glfwGetPrimaryMonitor();
 
@@ -829,8 +850,10 @@ int main(int argc, char *argv[])
 
         setup(&services);
 
+        signal_change_detector f9_signal, s_signal;
+
         bool reload_client = false;
-        bool f9_was_up = true;
+        bool gamma_enabled = true;
 
         u32 last_scroll_updated_frame = 0;
 
@@ -857,12 +880,18 @@ int main(int argc, char *argv[])
 
             glfwPollEvents();
 
-            bool f9_is_down = (glfwGetKey(pWindow, GLFW_KEY_F9) == GLFW_PRESS);
-            if (f9_is_down && f9_was_up)
+            f9_signal.feed(glfwGetKey(pWindow, GLFW_KEY_F9) == GLFW_PRESS);
+            s_signal.feed(glfwGetKey(pWindow, GLFW_KEY_S) == GLFW_PRESS);
+
+            if (f9_signal.is_rising_edge())
             {
                 reload_client = true;
             }
-            f9_was_up = !f9_is_down;
+
+            if (s_signal.is_rising_edge())
+            {
+                gamma_enabled = !gamma_enabled;
+            }
 
             input.mouseleft =
                 (glfwGetMouseButton(pWindow, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
@@ -990,6 +1019,11 @@ int main(int argc, char *argv[])
                 currRT.after();
             }
 
+            if (gamma_enabled)
+            {
+                glEnable(GL_FRAMEBUFFER_SRGB);
+            }
+
             glClearColor(output.bg_red, output.bg_green, output.bg_blue, 1.0);
             glClear(GL_COLOR_BUFFER_BIT);
 
@@ -1018,6 +1052,11 @@ int main(int argc, char *argv[])
                               output.ui_drawcalls[i].count,
                               input.vpWidthPt,
 							  input.vpHeightPt);
+            }
+
+            if (gamma_enabled)
+            {
+                glDisable(GL_FRAMEBUFFER_SRGB);
             }
 
             TIME; // finish ---------------------------------------------------------
