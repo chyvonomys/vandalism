@@ -23,13 +23,9 @@ struct kernel_services
 {
     typedef u32 TexID;
 
-    typedef TexID (*CREATE_TEXTURE)(u32, u32, u32);
-    typedef void (*UPDATE_TEXTURE)(TexID, const u8*);
-    typedef void (*DELETE_TEXTURE)(TexID);
-
-    CREATE_TEXTURE create_texture;
-    UPDATE_TEXTURE update_texture;
-    DELETE_TEXTURE delete_texture;
+    TexID create_texture(u32, u32, u32);
+    void update_texture(TexID, const u8*);
+    void delete_texture(TexID);
 
     const VertexLayout *ui_vertex_layout;
     const VertexLayout *stroke_vertex_layout;

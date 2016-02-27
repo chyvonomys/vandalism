@@ -17,31 +17,32 @@
 #include "client.h"
 #include "math.h"
 
-const size_t GL_FUNCTIONS_CAPACITY = 100;
-const char *g_names[GL_FUNCTIONS_CAPACITY];
-
-typedef bool (*gl_func_initr)();
-gl_func_initr g_initrs[GL_FUNCTIONS_CAPACITY];
-size_t g_size = 0;
-
 #define ASSERT(cond) if (!(cond)) *reinterpret_cast<volatile i32 *>(0) = 1;
 
-#define DECL(t, n)                                                  \
-bool initr_for_##n();                                               \
-t delay_for_##n()                                                   \
-{                                                                   \
-    ASSERT(g_size < GL_FUNCTIONS_CAPACITY);                         \
-    g_names[g_size] = #n;                                           \
-    g_initrs[g_size] = initr_for_##n;                               \
-    ++g_size;                                                       \
-    return nullptr;                                                 \
-}                                                                   \
-t n = delay_for_##n();                                              \
-bool initr_for_##n()                                                \
-{                                                                   \
-    n = reinterpret_cast<t>(glfwGetProcAddress(#n));                \
-    return n != nullptr;                                            \
-}                                                                   \
+struct initr_item
+{
+	const char *name;
+	bool (*callback)();
+};
+
+std::vector<initr_item> g_initrs;
+
+#pragma warning(push)
+#pragma warning(disable: 4191) // unsafe reinterpret cast
+
+#define DECL(t, n)                                        \
+bool initr_for_##n();                                     \
+t delay_for_##n()                                         \
+{                                                         \
+	g_initrs.push_back({#n, initr_for_##n});              \
+    return nullptr;                                       \
+}                                                         \
+t n = delay_for_##n();                                    \
+bool initr_for_##n()                                      \
+{                                                         \
+    n = reinterpret_cast<t>(glfwGetProcAddress(#n));      \
+    return n != nullptr;                                  \
+}                                                         \
 
 #define LOAD(t, n) DECL(PFN##t##PROC, n)
 
@@ -115,6 +116,7 @@ LOAD(GLFINISH, glFinish)
 LOAD(GLGETERROR, glGetError)
 LOAD(GLGETSTRING, glGetString)
 
+#pragma warning(pop) // unsafe reinterpret cast
 
 bool g_printShaders = false;
 bool g_printGLDiagnostics = false;
@@ -124,12 +126,12 @@ bool g_noRetina = false;
 bool load_gl_functions()
 {
     bool result = true;
-    for (size_t i = 0; i < g_size; ++i)
+    for (auto &x : g_initrs)
     {
-        bool ok = (*g_initrs[i])();
+        bool ok = (*x.callback)();
         if (g_printGLDiagnostics)
         {
-            ::printf("%s -> %s\n", g_names[i], (ok ? "OK" : "FAIL"));
+            ::printf("%s -> %s\n", x.name, (ok ? "OK" : "FAIL"));
         }
         result = result && ok;
     }
@@ -592,7 +594,7 @@ u32 next_texture_idx = 0;
 const u32 MAXTEXCNT = 10;
 Texture textures[MAXTEXCNT];
 
-kernel_services::TexID create_texture(u32 w, u32 h, u32 comp)
+kernel_services::TexID kernel_services::create_texture(u32 w, u32 h, u32 comp)
 {
     Texture &tex = textures[next_texture_idx];
     tex.width = w;
@@ -614,7 +616,7 @@ kernel_services::TexID create_texture(u32 w, u32 h, u32 comp)
 }
 
 // TODO: this is alpha only
-void update_texture(kernel_services::TexID ti, const u8 *pixels)
+void kernel_services::update_texture(kernel_services::TexID ti, const u8 *pixels)
 {
     glBindTexture(GL_TEXTURE_2D, textures[ti].glid);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
@@ -624,7 +626,7 @@ void update_texture(kernel_services::TexID ti, const u8 *pixels)
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-void delete_texture(kernel_services::TexID ti)
+void kernel_services::delete_texture(kernel_services::TexID ti)
 {
     glDeleteTextures(1, &textures[ti].glid);
 }
@@ -843,9 +845,6 @@ int main(int argc, char *argv[])
         u32 nTimePoints = 0;
 
         kernel_services services;
-        services.create_texture = create_texture;
-        services.update_texture = update_texture;
-        services.delete_texture = delete_texture;
         services.ui_vertex_layout = &ui_vertex_layout;
         services.stroke_vertex_layout = &stroke_vertex_layout;
 
@@ -1077,7 +1076,7 @@ int main(int argc, char *argv[])
             }
         }
 
-        (*cleanup)();
+        cleanup();
 
         uirender.cleanup();
         render.cleanup();
