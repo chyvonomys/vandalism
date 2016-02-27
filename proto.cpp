@@ -826,6 +826,7 @@ int main(int argc, char *argv[])
         
         input_data input;
         input.nFrames = 0;
+		input.scrolling = false;
         output_data output;
         output.buffer = &buffer;
         
@@ -1050,8 +1051,8 @@ int main(int argc, char *argv[])
                               output.ui_drawcalls[i].mesh_id,
                               output.ui_drawcalls[i].offset,
                               output.ui_drawcalls[i].count,
-                              input.vpWidthPt,
-							  input.vpHeightPt);
+							  static_cast<float>(input.vpWidthPt),
+							  static_cast<float>(input.vpHeightPt));
             }
 
             if (gamma_enabled)

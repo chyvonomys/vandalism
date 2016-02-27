@@ -4,11 +4,15 @@
 #include "swcolor.h"
 #include "swrender.h"
 
+#ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wold-style-cast"
 #pragma clang diagnostic ignored "-Wfloat-equal"
 #include "imgui/imgui.h"
 #pragma clang diagnostic pop
+#else
+#include "imgui/imgui.h"
+#endif
 
 kernel_services *current_services = 0;
 output_data *current_output = 0;
@@ -786,7 +790,7 @@ void update_and_render(input_data *input, output_data *output)
     // Draw ImGui --------------------------------------------------------------
 
     ImGuiIO& io = ImGui::GetIO();
-    io.DisplaySize = ImVec2(input->vpWidthPt, input->vpHeightPt);
+	io.DisplaySize = ImVec2(static_cast<float>(input->vpWidthPt), static_cast<float>(input->vpHeightPt));
     io.DeltaTime = 0.01666666f;
 	io.MousePos = ImVec2(input->vpMouseXPt, input->vpMouseYPt);
     io.MouseDown[0] = input->mouseleft;
