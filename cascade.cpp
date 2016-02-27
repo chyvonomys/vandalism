@@ -105,7 +105,7 @@ struct test_data
     const test_point *points;
     const test_stroke *strokes;
     const test_view *views;
-    const size_t nviews;
+    size_t nviews;
 };
 
 struct test_visible

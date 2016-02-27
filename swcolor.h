@@ -14,12 +14,7 @@ struct color
         g((c >> 8) & 0xFF),
         b((c >> 16) & 0xFF),
         a(c >> 24)
-    {
-        b = (b * a) / 255;
-        g = (g * a) / 255;
-        r = (r * a) / 255;
-        a = 255;
-    }
+    {}
     color(u8 rr, u8 gg, u8 bb, u8 aa)
         : r(rr), g(gg), b(bb), a(aa) {}
 };

@@ -8,5 +8,9 @@
 #include "imgui/imgui_draw.cpp"
 #pragma clang diagnostic pop
 #else
+#pragma warning(push)
+#pragma warning(disable: 4365)
+#pragma warning(disable: 4640)
 #include "imgui/imgui_draw.cpp"
+#pragma warning(pop)
 #endif
