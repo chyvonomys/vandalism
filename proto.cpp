@@ -19,8 +19,6 @@
 #include "client.h"
 #include "math.h"
 
-#define ASSERT(cond) if (!(cond)) *reinterpret_cast<volatile i32 *>(0) = 1;
-
 struct initr_item
 {
 	const char *name;
@@ -29,8 +27,10 @@ struct initr_item
 
 std::vector<initr_item> g_initrs;
 
+#ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable: 4191) // unsafe reinterpret cast
+#endif
 
 #define DECL(t, n)                                        \
 bool initr_for_##n();                                     \
@@ -118,7 +118,9 @@ LOAD(GLFINISH, glFinish)
 LOAD(GLGETERROR, glGetError)
 LOAD(GLGETSTRING, glGetString)
 
+#ifdef _MSC_VER
 #pragma warning(pop) // unsafe reinterpret cast
+#endif
 
 bool g_printShaders = false;
 bool g_printGLDiagnostics = false;
