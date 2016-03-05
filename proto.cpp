@@ -142,6 +142,12 @@ bool load_gl_functions()
     return result;
 }
 
+template <typename I>
+GLvoid* make_gl_offset(I offs)
+{
+	return reinterpret_cast<GLvoid*>(static_cast<size_t>(offs));
+}
+
 void check_gl_errors(const char *tag)
 {
     GLenum err = glGetError();
@@ -425,7 +431,7 @@ struct VertexLayout
     { return offset_(count()); }
 
     GLvoid* offset(size_t si) const
-    { return reinterpret_cast<GLvoid*>(offset_(si)); }
+    { return make_gl_offset(offset_(si)); }
 };
 
 template <size_t N>
@@ -603,7 +609,7 @@ kernel_services::TexID kernel_services::create_texture(u32 w, u32 h, u32 comp)
     Texture &tex = textures[next_texture_idx];
     tex.width = w;
     tex.height = h;
-    tex.format = (comp == 1 ? GL_RED : GL_RGBA);
+    tex.format = static_cast<GLenum>(comp == 1 ? GL_RED : GL_RGBA);
     glGenTextures(1, &tex.glid);
 
     glBindTexture(GL_TEXTURE_2D, tex.glid);
@@ -654,7 +660,7 @@ u64 get_platform_counter()
 {
 	LARGE_INTEGER v;
 	QueryPerformanceCounter(&v);
-	return v.QuadPart;
+	return static_cast<u64>(v.QuadPart);
 }
 
 double get_platform_counter_freq()
@@ -729,10 +735,10 @@ int main(int argc, char *argv[])
 
     GLFWmonitor* pMonitor = glfwGetPrimaryMonitor();
 
-    u32 monitorWidthPt, monitorHeightPt;
+    i32 monitorWidthPt, monitorHeightPt;
     const GLFWvidmode* pVideomode = glfwGetVideoMode(pMonitor);
-    monitorWidthPt = static_cast<u32>(pVideomode->width);
-    monitorHeightPt = static_cast<u32>(pVideomode->height);
+    monitorWidthPt = pVideomode->width;
+    monitorHeightPt = pVideomode->height;
 
     i32 monitorWidthMm, monitorHeightMm;
     glfwGetMonitorPhysicalSize(pMonitor, &monitorWidthMm, &monitorHeightMm);
@@ -757,8 +763,8 @@ int main(int argc, char *argv[])
     i32 windowWidthPt = vpPaddingPt + initialVpWidthPt + vpPaddingPt;
     i32 windowHeightPt = vpPaddingPt + initialVpHeightPt + vpPaddingPt;
 
-    u32 swrtWidthPx = monitorWidthPt;
-    u32 swrtHeightPx = monitorHeightPt;
+    u32 swrtWidthPx = static_cast<u32>(monitorWidthPt);
+    u32 swrtHeightPx = static_cast<u32>(monitorHeightPt);
 
     GLFWwindow* pWindow;
     pWindow = glfwCreateWindow(windowWidthPt, windowHeightPt,
@@ -1495,7 +1501,7 @@ void MeshPresenter::draw(kernel_services::MeshID mi, u32 offset, u32 count,
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, meshes[mi].ibuf);
     glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(count), GL_UNSIGNED_SHORT,
-                   reinterpret_cast<GLvoid*>(offset * meshes[mi].isize));
+                   make_gl_offset(offset * meshes[mi].isize));
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
     glBindVertexArray(0);
@@ -1564,7 +1570,7 @@ void UIPresenter::draw(kernel_services::TexID ti, kernel_services::MeshID mi,
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, meshes[mi].ibuf);
     glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(count), GL_UNSIGNED_SHORT,
-                   reinterpret_cast<GLvoid*>(offset * meshes[mi].isize));
+                   make_gl_offset(offset * meshes[mi].isize));
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
     glBindVertexArray(0);
@@ -1606,12 +1612,12 @@ void QuadIndexes::setup()
     u16 idx = 0;
     for (size_t i = 0; i < quad_cnt; ++i)
     {
-        ptr[0] = idx + 0;
-        ptr[1] = idx + 1;
-        ptr[2] = idx + 2;
-        ptr[3] = idx + 2;
-        ptr[4] = idx + 3;
-        ptr[5] = idx + 0;
+		ptr[0] = idx;
+		ptr[1] = static_cast<u16>(idx + 1);
+		ptr[2] = static_cast<u16>(idx + 2);
+		ptr[3] = static_cast<u16>(idx + 2);
+		ptr[4] = static_cast<u16>(idx + 3);
+		ptr[5] = idx;
         ptr += 6;
         idx += 4;
     }

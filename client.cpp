@@ -147,7 +147,7 @@ void setup(kernel_services *services)
                                                static_cast<u32>(height),
                                                4);
     services->update_texture(font_texture_id, pixels);
-    io.Fonts->TexID = reinterpret_cast<void *>(font_texture_id);
+    io.Fonts->TexID = reinterpret_cast<void *>(static_cast<size_t>(font_texture_id));
 
     current_services = services;
 
