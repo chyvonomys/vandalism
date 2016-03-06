@@ -441,7 +441,7 @@ void update_and_render(input_data *input, output_data *output)
 
     ism->update(&ism_input);
 
-    const test_data &debug_data = ism->get_debug_data();
+    const test_data &bake_data = ism->get_bake_data();
 
     bool scrollViewsDown = false;
 
@@ -459,7 +459,7 @@ void update_and_render(input_data *input, output_data *output)
                             -0.5f * input->rtHeightIn,
                             +0.5f * input->rtHeightIn};
 
-        query(debug_data, ism->currentViewIdx,
+        query(bake_data, ism->currentViewIdx,
               viewbox, visibles, transforms,
               pixel_height_in);
 
@@ -467,9 +467,9 @@ void update_and_render(input_data *input, output_data *output)
         {
             const test_visible& vis = visibles[visIdx];
             const test_transform& tform = transforms[vis.ti];
-            const test_stroke& stroke = debug_data.strokes[vis.si];
+            const test_stroke& stroke = bake_data.strokes[vis.si];
             const Vandalism::Brush& brush = ism->brushes[stroke.brush_id];
-            fill_quads(bake_quads, debug_data.points,
+            fill_quads(bake_quads, bake_data.points,
                        stroke.pi0, stroke.pi1, vis.si, tform, brush,
                        cfg_depth_step);
         }
@@ -486,9 +486,9 @@ void update_and_render(input_data *input, output_data *output)
         ::printf("update mesh: %lu visibles\n", visibles.size());
 
         viewsBuf->clear();
-        for (u32 vi = 0; vi < debug_data.nviews; ++vi)
+        for (u32 vi = 0; vi < bake_data.nviews; ++vi)
         {
-            const auto &view = debug_data.views[vi];
+            const auto &view = bake_data.views[vi];
             auto t = view.tr.type;
             const char *typestr = (t == TZOOM ? "ZOOM" :
                                    (t == TPAN ? "PAN" :
@@ -526,18 +526,17 @@ void update_and_render(input_data *input, output_data *output)
         // TODO: flag processed, improve this
         ism->currentChanged = false;
 
-        size_t currStart, currEnd;
-        size_t currId = ism->get_current_stroke(currStart, currEnd);
+        const test_data& current_data = ism->get_current_data();
+        const Vandalism::Brush& currBrush = ism->get_current_brush();
+        size_t currStrokeId = ism->get_current_stroke_id();
 
         curr_quads.clear();
 
-        Vandalism::Brush currBrush;
-        if (ism->get_current_brush(currBrush))
-        {
-            fill_quads(curr_quads, debug_data.points,
-                       currStart, currEnd, currId, id_transform(), currBrush,
-                       cfg_depth_step);
-        }
+        const Vandalism::Stroke& stroke = current_data.strokes[0];
+        fill_quads(curr_quads, current_data.points,
+                   stroke.pi0, stroke.pi1, currStrokeId,
+                   id_transform(), currBrush,
+                   cfg_depth_step);
 
         u32 vtxCnt = static_cast<u32>(curr_quads.size());
         u32 idxCnt = vtxCnt / 4 * 6;
@@ -658,7 +657,7 @@ void update_and_render(input_data *input, output_data *output)
 
     ImGui::SetNextWindowSize(ImVec2(200, 300), ImGuiSetCond_FirstUseEver);
     ImGui::Begin("views");
-    ImGui::SliderInt("view", &gui_goto_idx, 0, static_cast<i32>(debug_data.nviews-1));
+    ImGui::SliderInt("view", &gui_goto_idx, 0, static_cast<i32>(bake_data.nviews-1));
     if (ImGui::Button("Goto view"))
     {
         ism->set_view(static_cast<size_t>(gui_goto_idx));

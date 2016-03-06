@@ -39,6 +39,10 @@ struct Vandalism
 
     size_t currentViewIdx;
 
+    std::vector<Point> currentPoints;
+    Stroke currentStroke;
+    Brush currentBrush;
+
     // TODO: change this
     bool visiblesChanged;
     bool currentChanged;
@@ -252,33 +256,24 @@ struct Vandalism
 
     void start_draw(const Input *input)
     {
-        Stroke stroke;
-        stroke.pi0 = points.size();
-        {
-            Point point;
-            point.x = input->mousex;
-            point.y = input->mousey;
-            point.t = input->fakepressure ? pressure_func(0) : 1.0f;
-            points.push_back(point);
-        }
-        stroke.pi1 = points.size();
+        Point point;
+        point.x = input->mousex;
+        point.y = input->mousey;
+        point.t = input->fakepressure ? pressure_func(0) : 1.0f;
 
-        Brush brush;
-        brush.r = input->brushred;
-        brush.g = input->brushgreen;
-        brush.b = input->brushblue;
-        brush.a = (input->tool == ERASE ? input->eraseralpha : input->brushalpha);
-        brush.type = (input->tool == ERASE ? 1 : 0);
-        brush.diameter = input->brushdiameter;
+        currentPoints.clear();
+        currentPoints.push_back(point);
+        currentStroke.pi0 = 0;
+        currentStroke.pi1 = 1;
+        currentStroke.bbox.add(point);
+        currentStroke.brush_id = NPOS;
 
-        if (brushes.empty() ||
-            ::memcmp(&brushes.back(), &brush, sizeof(Brush)) != 0)
-        {
-            brushes.push_back(brush);
-        }
-
-        stroke.brush_id = brushes.size() - 1;
-        strokes.push_back(stroke);
+        currentBrush.r = input->brushred;
+        currentBrush.g = input->brushgreen;
+        currentBrush.b = input->brushblue;
+        currentBrush.a = (input->tool == ERASE ? input->eraseralpha : input->brushalpha);
+        currentBrush.type = (input->tool == ERASE ? 1 : 0);
+        currentBrush.diameter = input->brushdiameter;
     }
 
     void do_draw(const Input *input)
@@ -287,16 +282,16 @@ struct Vandalism
         point.x = input->mousex;
         point.y = input->mousey;
 
-        float dx = point.x - points.back().x;
-        float dy = point.y - points.back().y;
+        float dx = point.x - currentPoints.back().x;
+        float dy = point.y - currentPoints.back().y;
         float eps = input->negligibledistance * input->negligibledistance;
         if (dx * dx + dy * dy > eps)
         {
-            size_t ptIdx = points.size() - strokes.back().pi0;
+            size_t ptIdx = currentPoints.size();
             point.t = input->fakepressure ? pressure_func(ptIdx) : 1.0f;
-            points.push_back(point);
-            strokes.back().bbox.add(point);
-            strokes.back().pi1 = points.size();
+            currentPoints.push_back(point);
+            currentStroke.bbox.add(point);
+            currentStroke.pi1 += 1;
             currentChanged = true;
         }
     }
@@ -305,20 +300,28 @@ struct Vandalism
     {
         if (append_allowed())
         {
-            strokes.back().bbox.grow(0.5f * brushes.back().diameter);
-            views[currentViewIdx].bbox.add_box(strokes.back().bbox);
-
-            views[currentViewIdx].si1 = strokes.size();
-        }
-        else
-        {
-            for (size_t pi = strokes.back().pi0; pi < strokes.back().pi1; ++pi)
+            // TODO: keep only unique?
+            if (brushes.empty() ||
+                ::memcmp(&brushes.back(), &currentBrush, sizeof(Brush)) != 0)
             {
-                points.pop_back();
+                brushes.push_back(currentBrush);
             }
-            strokes.pop_back();
-            brushes.pop_back();
+
+            strokes.push_back(currentStroke);
+            strokes.back().pi0 += points.size();
+            strokes.back().pi1 += points.size();
+            strokes.back().brush_id = brushes.size() - 1;
+            strokes.back().bbox.grow(0.5f * currentBrush.diameter);
+
+            points.insert(points.end(),
+                          currentPoints.cbegin(), currentPoints.cend());
+
+            views[currentViewIdx].bbox.add_box(currentStroke.bbox);
+            views[currentViewIdx].si1 += 1;
         }
+
+        currentStroke.pi0 = 0;
+        currentStroke.pi1 = 0;
 
         common_done();
     }
@@ -562,32 +565,17 @@ struct Vandalism
     {
     }
 
-    size_t get_current_stroke(size_t &from, size_t &to)
+    const Brush& get_current_brush() const
     {
-        if (currentMode == DRAWING)
-        {
-            from = strokes.back().pi0;
-            to = strokes.back().pi1;
-        }
-        else
-        {
-            from = 0;
-            to = 0;
-        }
-        return strokes.size() - 1;
+        return currentBrush;
     }
 
-    bool get_current_brush(Brush &brush) const
+    size_t get_current_stroke_id() const
     {
-        if (currentMode == DRAWING)
-        {
-            brush = brushes[strokes.back().brush_id];
-            return true;
-        }
-        return false;
+        return strokes.size();
     }
 
-    test_data get_debug_data() const
+    test_data get_bake_data() const
     {
         test_data result =
         {
@@ -595,6 +583,19 @@ struct Vandalism
             strokes.data(),
             views.data(),
             views.size()
+        };
+
+        return result;
+    }
+
+    test_data get_current_data() const
+    {
+        test_data result =
+        {
+            currentPoints.data(),
+            &currentStroke,
+            nullptr,
+            0
         };
 
         return result;
@@ -913,8 +914,7 @@ struct Vandalism
             return;
 
         currentViewIdx = views.size() - 1;
-        test_box all_box = query_bbox(get_debug_data(), currentViewIdx);
-
+        test_box all_box = query_bbox(get_bake_data(), currentViewIdx);
 
         test_transition center = {TPAN,
                                   0.5f * (all_box.x1 + all_box.x0),
