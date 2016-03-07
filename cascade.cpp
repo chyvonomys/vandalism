@@ -426,4 +426,56 @@ test_box query_bbox(const test_data &data, size_t pin)
     return ps_accum_box;
 }
 
+float dist_to_seg(const test_point& p,
+                  const test_point& p1, const test_point& p2)
+{
+    float dx = p2.x - p1.x;
+    float dy = p2.y - p1.y;
+    return ::fabsf(dy * p.x - dx * p.y + p2.x * p1.y - p2.y * p1.x)
+    / ::sqrtf(dy * dy + dx * dx);
+}
+
+void ramer_douglas_peucker(const test_point* from, const test_point* to,
+                           std::vector<test_point>& result, float epsilon)
+{
+    if (from == to)
+    {
+        result.push_back(*from);
+        return;
+    }
+
+    if (to - from == 1)
+    {
+        result.push_back(*from);
+        result.push_back(*to);
+        return;
+    }
+
+    float max_dist = 0.0f;
+    const test_point* max_pt = 0;
+    for (const test_point* p = from + 1; p != to; ++p)
+    {
+        // TODO: this may be actually not exactly what we need here
+        float d = dist_to_seg(*p, *from, *to);
+
+        if (d > max_dist)
+        {
+            max_pt = p;
+            max_dist = d;
+        }
+    }
+
+    if (max_dist > epsilon)
+    {
+        ramer_douglas_peucker(from, max_pt, result, epsilon);
+        result.pop_back();
+        ramer_douglas_peucker(max_pt, to, result, epsilon);
+    }
+    else
+    {
+        result.push_back(*from);
+        result.push_back(*to);
+    }
+}
+
 #include "tests.cpp"

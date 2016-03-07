@@ -296,6 +296,8 @@ struct Vandalism
         }
     }
 
+    // TODO: is point in done_* the same as in previous do_* if there was any?
+
     void done_draw(const Input *)
     {
         if (append_allowed())
@@ -308,13 +310,19 @@ struct Vandalism
             }
 
             strokes.push_back(currentStroke);
-            strokes.back().pi0 += points.size();
-            strokes.back().pi1 += points.size();
             strokes.back().brush_id = brushes.size() - 1;
             strokes.back().bbox.grow(0.5f * currentBrush.diameter);
 
-            points.insert(points.end(),
-                          currentPoints.cbegin(), currentPoints.cend());
+            strokes.back().pi0 = points.size();
+
+            ramer_douglas_peucker(currentPoints.data(), currentPoints.data() + currentPoints.size() - 1,
+                                  points, 0.1f * currentBrush.diameter);
+
+            strokes.back().pi1 = points.size();
+
+            ::printf("simplify %lu -> %lu\n",
+                     currentStroke.pi1 - currentStroke.pi0,
+                     strokes.back().pi1 - strokes.back().pi0);
 
             views[currentViewIdx].bbox.add_box(currentStroke.bbox);
             views[currentViewIdx].si1 += 1;
