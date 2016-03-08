@@ -87,6 +87,14 @@ inline float2 operator*(const float2 &v, float k)
     return result;
 }
 
+inline float2 operator/(const float2 &v, float k)
+{
+    float2 result;
+    result.x = v.x / k;
+    result.y = v.y / k;
+    return result;
+}
+
 inline float len(const float2 &v)
 {
     float result = si_sqrtf(v.x * v.x + v.y * v.y);

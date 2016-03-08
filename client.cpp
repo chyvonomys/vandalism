@@ -249,8 +249,8 @@ void add_quad(std::vector<output_data::Vertex> &quads,
 }
 
 void fill_quads(std::vector<output_data::Vertex>& quads,
-                const test_point *points,
-                size_t pi0, size_t pi1, size_t si,
+                const test_point *points, size_t N,
+                size_t si,
                 const test_transform& tform,
                 const Vandalism::Brush& brush,
                 float depthStep)
@@ -259,11 +259,11 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
 
     size_t v0idx = quads.size();
 
-    if (pi1 > pi0)
+    if (N > 0)
     {
-        Vandalism::Brush cb = brush.modified(points[pi0].t);
+        Vandalism::Brush cb = brush.modified(points[0].t);
 
-        float2 curr = {points[pi0].x, points[pi0].y};
+        float2 curr = {points[0].x, points[0].y};
         float2 right = {0.5f * cb.diameter, 0.0f};
         float2 up = {0.0, 0.5f * cb.diameter};
         float2 bl = curr - right - up;
@@ -284,7 +284,7 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
                  0.0f, 1.0f);
     }
 
-    for (size_t i = pi0 + 1; i < pi1; ++i)
+    for (size_t i = 1; i < N; ++i)
     {
         float2 prev = {points[i-1].x, points[i-1].y};
         float2 curr = {points[i].x, points[i].y};
@@ -469,8 +469,10 @@ void update_and_render(input_data *input, output_data *output)
             const test_transform& tform = transforms[vis.ti];
             const test_stroke& stroke = bake_data.strokes[vis.si];
             const Vandalism::Brush& brush = ism->brushes[stroke.brush_id];
-            fill_quads(bake_quads, bake_data.points,
-                       stroke.pi0, stroke.pi1, vis.si, tform, brush,
+            std::vector<test_point> sampled;
+            smooth_stroke(bake_data.points + stroke.pi0, stroke.pi1 - stroke.pi0, sampled);
+            fill_quads(bake_quads, sampled.data(), sampled.size(),
+                       vis.si, tform, brush,
                        cfg_depth_step);
         }
 
@@ -533,9 +535,10 @@ void update_and_render(input_data *input, output_data *output)
         curr_quads.clear();
 
         const Vandalism::Stroke& stroke = current_data.strokes[0];
-        fill_quads(curr_quads, current_data.points,
-                   stroke.pi0, stroke.pi1, currStrokeId,
-                   id_transform(), currBrush,
+        std::vector<test_point> sampled;
+        smooth_stroke(current_data.points + stroke.pi0, stroke.pi1 - stroke.pi0, sampled);
+        fill_quads(curr_quads, sampled.data(), sampled.size(),
+                   currStrokeId, id_transform(), currBrush,
                    cfg_depth_step);
 
         u32 vtxCnt = static_cast<u32>(curr_quads.size());

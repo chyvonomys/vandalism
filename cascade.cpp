@@ -5,6 +5,7 @@ struct test_point
     float t;
     test_point() : t(1.0f) {}
     test_point(float a, float b) : x(a), y(b), t(1.0f) {}
+    test_point(const float2& v, float s) : x(v.x), y(v.y), t(s) {}
 };
 
 struct test_segment
@@ -475,6 +476,95 @@ void ramer_douglas_peucker(const test_point* from, const test_point* to,
     {
         result.push_back(*from);
         result.push_back(*to);
+    }
+}
+
+float2 hermite(const float2& p0, const float2& m0,
+               const float2& p1, const float2& m1,
+               float t)
+{
+    float t2 = t * t;
+    float t3 = t2 * t;
+    float h00 = 2.0f * t3 - 3.0f * t2 + 1.0f;
+    float h10 = t3 - 2.0f * t2 + t;
+    float h01 = -2.0f * t3 + 3.0f * t2;
+    float h11 = t3 - t2;
+    return h00 * p0 + h10 * m0 + h01 * p1 + h11 * m1;
+}
+
+float2 tangent2(const float2& p0, float t0,
+                const float2& p1, float t1,
+                const float2& p2, float t2)
+{
+    return 0.5f * ((p2 - p1) / (t2 - t1) + (p1 - p0) / (t1 - t0));
+}
+
+float2 tangent(const float2& p0, float t0,
+               const float2& p1, float t1)
+{
+    return (p1 - p0) / (t1 - t0);
+}
+
+void smooth_stroke(const test_point* input, size_t N, std::vector<test_point>& output)
+{
+    if (N < 3)
+    {
+        for (size_t i = 0; i < N; ++i)
+        {
+            output.push_back(input[i]);
+        }
+        return;
+    }
+
+    {
+        float2 p0 = {input[0].x, input[0].y};
+        float2 p1 = {input[1].x, input[1].y};
+        float2 p2 = {input[2].x, input[2].y};
+        float2 m0 = tangent(p0, 0, p1, 1);
+        float2 m1 = tangent2(p0, 0, p1, 1, p2, 2);
+
+        float t0 = input[0].t;
+        float t1 = input[1].t;
+
+        output.push_back(input[0]);
+        output.push_back(test_point(hermite(p0, m0, p1, m1, 0.25f), lerp(t0, t1, 0.25f)));
+        output.push_back(test_point(hermite(p0, m0, p1, m1, 0.5f), lerp(t0, t1, 0.5f)));
+        output.push_back(test_point(hermite(p0, m0, p1, m1, 0.75f), lerp(t0, t1, 0.75f)));
+    }
+
+    for (size_t i = 1; i <= N-3; ++i)
+    {
+        float2 p0 = {input[i-1].x, input[i-1].y};
+        float2 p1 = {input[i].x,   input[i].y};
+        float2 p2 = {input[i+1].x, input[i+1].y};
+        float2 p3 = {input[i+2].x, input[i+2].y};
+        float2 m1 = tangent2(p0, i-1, p1, i,   p2, i+1);
+        float2 m2 = tangent2(p1, i,   p2, i+1, p3, i+2);
+
+        float t1 = input[i].t;
+        float t2 = input[i+1].t;
+
+        output.push_back(input[i]);
+        output.push_back(test_point(hermite(p1, m1, p2, m2, 0.25f), lerp(t1, t2, 0.25f)));
+        output.push_back(test_point(hermite(p1, m1, p2, m2, 0.5f), lerp(t1, t2, 0.5f)));
+        output.push_back(test_point(hermite(p1, m1, p2, m2, 0.75f), lerp(t1, t2, 0.75f)));
+    }
+
+    {
+        float2 p0 = {input[N-3].x, input[N-3].y};
+        float2 p1 = {input[N-2].x, input[N-2].y};
+        float2 p2 = {input[N-1].x, input[N-1].y};
+        float2 m1 = tangent2(p0, N-3, p1, N-2, p2, N-1);
+        float2 m2 = tangent(p1, N-2, p2, N-1);
+
+        float t1 = input[N-2].t;
+        float t2 = input[N-1].t;
+
+        output.push_back(input[N-2]);
+        output.push_back(test_point(hermite(p1, m1, p2, m2, 0.25f), lerp(t1, t2, 0.25f)));
+        output.push_back(test_point(hermite(p1, m1, p2, m2, 0.5f), lerp(t1, t2, 0.5f)));
+        output.push_back(test_point(hermite(p1, m1, p2, m2, 0.75f), lerp(t1, t2, 0.75f)));
+        output.push_back(input[N-1]);
     }
 }
 
