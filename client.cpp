@@ -1,8 +1,6 @@
 #include <vector>
 #include "client.h"
 #include "math.h"
-#include "swcolor.h"
-#include "swrender.h"
 
 #ifdef __clang__
 #pragma clang diagnostic push
@@ -353,6 +351,7 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
     }
 }
 
+#if 0
 u32 draw_timing(offscreen_buffer *buffer, u32 framex,
                  double *intervals, u32 intervalCnt)
 {
@@ -404,14 +403,13 @@ u32 draw_timing(offscreen_buffer *buffer, u32 framex,
 
     return framex + 2;
 }
+#endif
 
 void update_and_render(input_data *input, output_data *output)
 {
     output->quit_flag = false;
     output->bake_flag = false;
     output->change_flag = false;
-
-    offscreen_buffer *buffer = output->buffer;
 
     float mxnorm = input->vpMouseXPt / input->vpWidthPt - 0.5f;
     float mynorm = input->vpMouseYPt / input->vpHeightPt - 0.5f;
@@ -554,9 +552,10 @@ void update_and_render(input_data *input, output_data *output)
 
     // Draw SW -----------------------------------------------------------------
 
+#if 0
     if (input->nFrames == 1)
     {
-        clear_buffer(buffer, COLOR_GRAY);
+        clear_buffer(buffer, 0x00000000);
         timingX = 0;
     }
 
@@ -578,6 +577,7 @@ void update_and_render(input_data *input, output_data *output)
 
     draw_line(buffer, fXPx-2, fYPx, fXPx+2, fYPx, pack_color(COLOR_RED));
     draw_line(buffer, fXPx, fYPx-2, fXPx, fYPx+2, pack_color(COLOR_RED));
+#endif
 
     current_output = output;
 
@@ -589,7 +589,23 @@ void update_and_render(input_data *input, output_data *output)
 	io.MousePos = ImVec2(input->vpMouseXPt, input->vpMouseYPt);
     io.MouseDown[0] = input->mouseleft;
 
-    ImGui::NewFrame();
+	struct Timing
+	{
+		static float time_getter(void *data, int idx)
+		{
+			const double *pValues = static_cast<input_data *>(data)->pTimeIntervals;
+			return static_cast<float>(pValues[idx]);
+		}
+	};
+
+	ImGui::NewFrame();
+
+	if (input->nTimeIntervals > 1)
+	{
+		ImGui::Begin("performance");
+		ImGui::PlotHistogram("frame time", Timing::time_getter, input, static_cast<int>(input->nTimeIntervals));
+		ImGui::End();
+	}
 
     ImGui::SetNextWindowSize(ImVec2(100, 200), ImGuiSetCond_FirstUseEver);
     ImGui::Begin("vandalism");

@@ -38,11 +38,5 @@
     <ClInclude Include="..\math.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\swcolor.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\swrender.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
 </Project>

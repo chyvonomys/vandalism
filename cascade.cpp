@@ -532,6 +532,7 @@ void smooth_stroke(const test_point* input, size_t N, std::vector<test_point>& o
         output.push_back(test_point(hermite(p0, m0, p1, m1, 0.75f), lerp(t0, t1, 0.75f)));
     }
 
+	// TODO: better tangents
     for (size_t i = 1; i <= N-3; ++i)
     {
         float2 p0 = {input[i-1].x, input[i-1].y};

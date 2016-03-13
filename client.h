@@ -10,13 +10,6 @@ typedef int32_t i32;
 typedef int16_t i16;
 typedef int8_t i8;
 
-struct offscreen_buffer
-{
-    u8 *data;
-    u32 width;
-    u32 height;
-};
-
 struct VertexLayout;
 
 struct kernel_services
@@ -71,8 +64,6 @@ struct input_data
 
 struct output_data
 {
-    offscreen_buffer *buffer;
-
     // TODO: should be somehow generated from layout
     struct Vertex
     {

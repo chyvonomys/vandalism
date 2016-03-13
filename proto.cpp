@@ -95,7 +95,6 @@ LOAD(GLTEXIMAGE2D, glTexImage2D)
 LOAD(GLTEXSUBIMAGE2D, glTexSubImage2D)
 LOAD(GLTEXPARAMETERI, glTexParameteri)
 
-
 LOAD(GLGENFRAMEBUFFERS, glGenFramebuffers)
 LOAD(GLDELETEFRAMEBUFFERS, glDeleteFramebuffers)
 LOAD(GLGENRENDERBUFFERS, glGenRenderbuffers)
@@ -763,8 +762,8 @@ int main(int argc, char *argv[])
     i32 windowWidthPt = vpPaddingPt + initialVpWidthPt + vpPaddingPt;
     i32 windowHeightPt = vpPaddingPt + initialVpHeightPt + vpPaddingPt;
 
-    u32 swrtWidthPx = static_cast<u32>(monitorWidthPt);
-    u32 swrtHeightPx = static_cast<u32>(monitorHeightPt);
+    //u32 swrtWidthPx = static_cast<u32>(monitorWidthPt);
+    //u32 swrtHeightPx = static_cast<u32>(monitorHeightPt);
 
     GLFWwindow* pWindow;
     pWindow = glfwCreateWindow(windowWidthPt, windowHeightPt,
@@ -818,17 +817,12 @@ int main(int argc, char *argv[])
         RenderTarget currRT;
         currRT.setup(rtWidthPx, rtHeightPx);
         
-        BufferPresenter blit;
-        blit.setup(&quad, swrtWidthPx, swrtHeightPx);
+        //BufferPresenter blit;
+        //blit.setup(&quad, swrtWidthPx, swrtHeightPx);
 
         check_gl_errors("after setup");
 
-        GLubyte *pixels = new GLubyte[swrtWidthPx * swrtHeightPx * 4];
-
-        offscreen_buffer buffer;
-        buffer.data = pixels;
-        buffer.width = swrtWidthPx;
-        buffer.height = swrtHeightPx;
+        //GLubyte *pixels = new GLubyte[swrtWidthPx * swrtHeightPx * 4];
 
         MeshPresenter render;
         render.setup();
@@ -840,7 +834,6 @@ int main(int argc, char *argv[])
         input.nFrames = 0;
 		input.scrolling = false;
         output_data output;
-        output.buffer = &buffer;
         
 		double counter_ticks_per_ms = get_platform_counter_freq();
 
@@ -1050,9 +1043,9 @@ int main(int argc, char *argv[])
                     input.vpWidthIn, input.vpHeightIn,
                     input.rtWidthIn, input.rtHeightIn);
 
-            blit.draw(pixels,
-                      static_cast<float>(input.swWidthPx) / swrtWidthPx,
-                      static_cast<float>(input.swHeightPx) / swrtHeightPx);
+            //blit.draw(pixels,
+            //          static_cast<float>(input.swWidthPx) / swrtWidthPx,
+            //          static_cast<float>(input.swHeightPx) / swrtHeightPx);
 
             for (u32 i = 0; i < output.ui_drawcall_cnt; ++i)
             {
@@ -1090,7 +1083,7 @@ int main(int argc, char *argv[])
 
         uirender.cleanup();
         render.cleanup();
-        blit.cleanup();
+        //blit.cleanup();
         bakeRT.cleanup();
         currRT.cleanup();
         fs.cleanup();
@@ -1098,7 +1091,7 @@ int main(int argc, char *argv[])
         quad.cleanup();
         quad_indexes.cleanup();
 
-        delete [] pixels;
+        //delete [] pixels;
 
         check_gl_errors("cleanup");
     }
