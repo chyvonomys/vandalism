@@ -15,19 +15,21 @@
 kernel_services *current_services = 0;
 output_data *current_output = 0;
 
-
 kernel_services::TexID font_texture_id;
 
 std::vector<kernel_services::MeshID> ui_meshes;
 std::vector<output_data::drawcall> ui_drawcalls;
 
+kernel_services::MeshID lines_mesh;
 kernel_services::MeshID bake_mesh;
 kernel_services::MeshID curr_mesh;
 
+std::vector<ImDrawVert> lines_vb;
+
+// TODO: ImDrawIdx vs u16 in proto.cpp
+
 void RenderImGuiDrawLists(ImDrawData *drawData)
 {
-    ui_drawcalls.clear();
-
     for (size_t li = 0; li < static_cast<size_t>(drawData->CmdListsCount); ++li)
     {
         const ImDrawList *drawList = drawData->CmdLists[li];
@@ -115,8 +117,6 @@ const float cfg_depth_step = 1.0f / 10000.0f;
 const char* cfg_font_path = "Roboto_Condensed/RobotoCondensed-Regular.ttf";
 const char* cfg_default_file = "default.ism";
 
-u32 timingX;
-
 ImGuiTextBuffer *viewsBuf;
 
 std::vector<output_data::Vertex> bake_quads;
@@ -155,12 +155,11 @@ void setup(kernel_services *services)
     bake_quads.reserve(BAKE_QUADS_CNT * 4);
     curr_quads.reserve(CURR_QUADS_CNT * 4);
 
-    bake_mesh = current_services->
-    create_quad_mesh(*current_services->stroke_vertex_layout,
-                     BAKE_QUADS_CNT * 4);
-    curr_mesh = current_services->
-    create_quad_mesh(*current_services->stroke_vertex_layout,
-                     CURR_QUADS_CNT * 4);
+    bake_mesh = current_services->create_quad_mesh(*current_services->stroke_vertex_layout,
+                                                   BAKE_QUADS_CNT * 4);
+    curr_mesh = current_services->create_quad_mesh(*current_services->stroke_vertex_layout,
+                                                   CURR_QUADS_CNT * 4);
+    lines_mesh = current_services->create_quad_mesh(*current_services->ui_vertex_layout, 16);
 
     io.Fonts->ClearInputData();
     io.Fonts->ClearTexData();
@@ -199,8 +198,6 @@ void setup(kernel_services *services)
     gui_fancy_brush = false;
 
     gui_goto_idx = 0;
-
-    timingX = 0;
 }
 
 void cleanup()
@@ -215,6 +212,7 @@ void cleanup()
 
     current_services->delete_mesh(bake_mesh);
     current_services->delete_mesh(curr_mesh);
+    current_services->delete_mesh(lines_mesh);
 
     ui_meshes.clear();
     ui_drawcalls.clear();
@@ -350,60 +348,6 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
         }
     }
 }
-
-#if 0
-u32 draw_timing(offscreen_buffer *buffer, u32 framex,
-                 double *intervals, u32 intervalCnt)
-{
-    u32 maxy = buffer->height - 1;
-    double maxti = 200; // ms
-    double sum = 0.0;
-    double total = 0.0;
-    for (u32 ti = 0; ti < intervalCnt; ++ti)
-        total += intervals[ti];
-
-    draw_line(buffer,
-              (framex + 2) % buffer->width, 0,
-              (framex + 2) % buffer->width, maxy,
-              0x00000000);
-    draw_line(buffer,
-              (framex + 3) % buffer->width, 0,
-              (framex + 3) % buffer->width, maxy,
-              0x00000000);
-
-    if (total > maxti)
-    {
-        draw_line(buffer, framex, 0, framex, maxy, pack_color(COLOR_RED));
-        draw_line(buffer, framex+1, 0, framex+1, maxy, pack_color(COLOR_RED));
-    }
-    else
-    {
-        for (u32 ti = 0; ti < intervalCnt; ++ti)
-        {
-            u32 yfrom = static_cast<u32>((sum / maxti) * maxy);
-            sum += intervals[ti];
-            u32 yto = static_cast<u32>((sum / maxti) * maxy);
-            u32 tii = ti + 1;
-            color col = uint32_to_color(tii);
-            u32 pcol = pack_color(col);
-            draw_line(buffer, framex, yfrom, framex, yto, pcol);
-            draw_line(buffer, framex+1, yfrom, framex+1, yto, pcol);
-
-            draw_line(buffer, 30 * ti, maxy, 30 * (ti + 1), maxy, pcol);
-            draw_line(buffer, 30 * ti, maxy-1, 30 * (ti + 1), maxy-1, pcol);
-            draw_line(buffer, 30 * ti, maxy-2, 30 * (ti + 1), maxy-2, pcol);
-        }
-    }
-    for (u32 h = 1; h < 4; ++h)
-    {
-        u32 targetmsy = static_cast<u32>(h * 16.666666 / maxti * maxy);
-        draw_line(buffer, 0, targetmsy, buffer->width - 1, targetmsy,
-                  pack_color(COLOR_CYAN));
-    }
-
-    return framex + 2;
-}
-#endif
 
 void update_and_render(input_data *input, output_data *output)
 {
@@ -550,41 +494,45 @@ void update_and_render(input_data *input, output_data *output)
         output->change_flag = true;
     }
 
-    // Draw SW -----------------------------------------------------------------
+    // Draw UI -----------------------------------------------------------------
 
-#if 0
-    if (input->nFrames == 1)
-    {
-        clear_buffer(buffer, 0x00000000);
-        timingX = 0;
-    }
+    float uiResHor = static_cast<float>(input->vpWidthPt);
+    float uiResVer = static_cast<float>(input->vpHeightPt);
 
-    timingX = draw_timing(buffer, timingX,
-                input->pTimeIntervals, input->nTimeIntervals);
+    float fXPx = (ism->firstX / input->vpWidthIn + 0.5f) * uiResHor;
+    float fYPx = (0.5f - ism->firstY / input->vpHeightIn) * uiResVer;
 
-    timingX = timingX % static_cast<u32>(input->swWidthPx);
+    ImDrawVert vtx;
+    vtx.col = 0xFF5555FF;
+    vtx.uv = ImGui::GetIO().Fonts->TexUvWhitePixel;
 
-    if (!mouse_in_ui)
-    {
-        draw_pixel(buffer,
-                   static_cast<u32>((mxnorm + 0.5f) * input->swWidthPx),
-                   static_cast<u32>((mynorm + 0.5f) * input->swHeightPx),
-                   pack_color(COLOR_YELLOW));
-    }
+    lines_vb.clear();
+    vtx.pos = ImVec2(fXPx-5.0f, fYPx-0.5f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(fXPx-5.0f, fYPx+0.5f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(fXPx+5.0f, fYPx+0.5f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(fXPx+5.0f, fYPx-0.5f); lines_vb.push_back(vtx);
 
-    u32 fXPx = static_cast<u32>((ism->firstX / input->vpWidthIn + 0.5f) * input->swWidthPx);
-    u32 fYPx = static_cast<u32>((0.5f - ism->firstY / input->vpHeightIn) * input->swHeightPx);
+    vtx.pos = ImVec2(fXPx-0.5f, fYPx-5.0f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(fXPx+0.5f, fYPx-5.0f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(fXPx+0.5f, fYPx+5.0f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(fXPx-0.5f, fYPx+5.0f); lines_vb.push_back(vtx);
 
-    draw_line(buffer, fXPx-2, fYPx, fXPx+2, fYPx, pack_color(COLOR_RED));
-    draw_line(buffer, fXPx, fYPx-2, fXPx, fYPx+2, pack_color(COLOR_RED));
-#endif
+    current_services->update_mesh_vb(lines_mesh, lines_vb.data(), 8);
 
-    current_output = output;
+    ui_drawcalls.clear();
+
+    output_data::drawcall lines_drawcall;
+    lines_drawcall.texture_id = font_texture_id;
+    lines_drawcall.mesh_id = lines_mesh;
+    lines_drawcall.offset = 0;
+    lines_drawcall.count = 12;
+
+    ui_drawcalls.push_back(lines_drawcall);
 
     // Draw ImGui --------------------------------------------------------------
 
     ImGuiIO& io = ImGui::GetIO();
-	io.DisplaySize = ImVec2(static_cast<float>(input->vpWidthPt), static_cast<float>(input->vpHeightPt));
+	io.DisplaySize = ImVec2(uiResHor, uiResVer);
     io.DeltaTime = 0.01666666f;
 	io.MousePos = ImVec2(input->vpMouseXPt, input->vpMouseYPt);
     io.MouseDown[0] = input->mouseleft;
@@ -600,10 +548,35 @@ void update_and_render(input_data *input, output_data *output)
 
 	ImGui::NewFrame();
 
+    {
+        ImGuiStyle& style = ImGui::GetStyle();
+        style.Colors[ImGuiCol_Text]             = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+        style.Colors[ImGuiCol_FrameBg]          = ImVec4(1.0f, 1.0f, 1.0f, 0.1f);
+        style.Colors[ImGuiCol_TitleBg]          = ImVec4(0.4f, 0.5f, 0.1f, 1.0f);
+        style.Colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.5f, 0.5f, 0.3f, 0.5f);
+        style.Colors[ImGuiCol_TitleBgActive]    = ImVec4(0.4f, 0.5f, 0.0f, 1.0f);
+        style.Colors[ImGuiCol_SliderGrabActive] = ImVec4(0.4f, 0.5f, 0.1f, 1.0f);
+        style.Colors[ImGuiCol_Button]           = ImVec4(0.4f, 0.4f, 0.4f, 1.0f);
+        style.Colors[ImGuiCol_ButtonHovered]    = ImVec4(0.5f, 0.5f, 0.5f, 1.0f);
+        style.Colors[ImGuiCol_ButtonActive]     = ImVec4(0.4f, 0.5f, 0.1f, 1.0f);
+
+        style.AntiAliasedLines = false;
+        style.AntiAliasedShapes = false;
+        style.WindowPadding = ImVec2(4, 4);
+        style.WindowRounding = 0;
+        style.WindowTitleAlign = ImGuiAlign_Center;
+        style.FramePadding = ImVec2(3, 2);
+        style.ItemInnerSpacing = ImVec2(3, 3);
+        style.ItemSpacing = ImVec2(3, 3);
+        style.ScrollbarRounding = 0;
+        style.WindowFillAlphaDefault = 0.9f;
+    }
+
 	if (input->nTimeIntervals > 1)
 	{
 		ImGui::Begin("performance");
-		ImGui::PlotHistogram("frame time", Timing::time_getter, input, static_cast<int>(input->nTimeIntervals));
+		ImGui::PlotHistogram("frame time", Timing::time_getter, input,
+                             static_cast<int>(input->nTimeIntervals));
 		ImGui::End();
 	}
 
@@ -734,6 +707,7 @@ void update_and_render(input_data *input, output_data *output)
 
     ImGui::End();
 
+    current_output = output;
     ImGui::Render();
 
     gui_mouse_occupied = ImGui::IsAnyItemActive();

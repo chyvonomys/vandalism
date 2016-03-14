@@ -757,13 +757,10 @@ int main(int argc, char *argv[])
     i32 initialVpWidthPt = monitorWidthPt / 2;
     i32 initialVpHeightPt = monitorHeightPt / 2;
 
-    i32 vpPaddingPt = 64;
+    i32 vpPaddingPt = 2;
 
     i32 windowWidthPt = vpPaddingPt + initialVpWidthPt + vpPaddingPt;
     i32 windowHeightPt = vpPaddingPt + initialVpHeightPt + vpPaddingPt;
-
-    //u32 swrtWidthPx = static_cast<u32>(monitorWidthPt);
-    //u32 swrtHeightPx = static_cast<u32>(monitorHeightPt);
 
     GLFWwindow* pWindow;
     pWindow = glfwCreateWindow(windowWidthPt, windowHeightPt,
@@ -817,19 +814,14 @@ int main(int argc, char *argv[])
         RenderTarget currRT;
         currRT.setup(rtWidthPx, rtHeightPx);
         
-        //BufferPresenter blit;
-        //blit.setup(&quad, swrtWidthPx, swrtHeightPx);
-
-        check_gl_errors("after setup");
-
-        //GLubyte *pixels = new GLubyte[swrtWidthPx * swrtHeightPx * 4];
-
         MeshPresenter render;
         render.setup();
 
         UIPresenter uirender;
         uirender.setup();
-        
+
+        check_gl_errors("after setup");
+
         input_data input;
         input.nFrames = 0;
 		input.scrolling = false;
@@ -1043,10 +1035,6 @@ int main(int argc, char *argv[])
                     input.vpWidthIn, input.vpHeightIn,
                     input.rtWidthIn, input.rtHeightIn);
 
-            //blit.draw(pixels,
-            //          static_cast<float>(input.swWidthPx) / swrtWidthPx,
-            //          static_cast<float>(input.swHeightPx) / swrtHeightPx);
-
             for (u32 i = 0; i < output.ui_drawcall_cnt; ++i)
             {
                 uirender.draw(output.ui_drawcalls[i].texture_id,
@@ -1083,15 +1071,12 @@ int main(int argc, char *argv[])
 
         uirender.cleanup();
         render.cleanup();
-        //blit.cleanup();
         bakeRT.cleanup();
         currRT.cleanup();
         fs.cleanup();
         //grid.cleanup();
         quad.cleanup();
         quad_indexes.cleanup();
-
-        //delete [] pixels;
 
         check_gl_errors("cleanup");
     }
