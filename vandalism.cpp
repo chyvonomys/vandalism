@@ -358,8 +358,8 @@ struct Vandalism
         float2 d0 = s0 - f;
         float2 d1 = s1 - f;
 
-        float a0 = static_cast<float>(::atan2(d0.y, d0.x));
-        float a1 = static_cast<float>(::atan2(d1.y, d1.x));
+        float a0 = static_cast<float>(::atan2f(d0.y, d0.x));
+        float a1 = static_cast<float>(::atan2f(d1.y, d1.x));
 
         preShiftX = -f.x;
         preShiftY = -f.y;
@@ -386,8 +386,8 @@ struct Vandalism
             float2 d0 = s0 - f;
             float2 d1 = s1 - f;
 
-            float a0 = static_cast<float>(::atan2(d0.y, d0.x));
-            float a1 = static_cast<float>(::atan2(d1.y, d1.x));
+            float a0 = static_cast<float>(::atan2f(d0.y, d0.x));
+            float a1 = static_cast<float>(::atan2f(d1.y, d1.x));
 
             currentViewIdx = views.size();
             test_transition tpre = {TPAN, f.x, f.y};

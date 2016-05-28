@@ -3,6 +3,7 @@
 #pragma clang diagnostic ignored "-Wold-style-cast"
 #pragma clang diagnostic ignored "-Wfloat-equal"
 #pragma clang diagnostic ignored "-Wfloat-conversion"
+#pragma clang diagnostic ignored "-Wformat-pedantic"
 #include "imgui/imgui.cpp"
 #pragma clang diagnostic pop
 #else
