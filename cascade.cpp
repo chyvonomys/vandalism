@@ -2,10 +2,10 @@ struct test_point
 {
     float x;
     float y;
-    float t;
-    test_point() : t(1.0f) {}
-    test_point(float a, float b) : x(a), y(b), t(1.0f) {}
-    test_point(const float2& v, float s) : x(v.x), y(v.y), t(s) {}
+    float w;
+    test_point() : w(1.0f) {}
+    test_point(float a, float b) : x(a), y(b), w(1.0f) {}
+    test_point(const float2& p, float v) : x(p.x), y(p.y), w(v) {}
 };
 
 struct test_segment
@@ -520,51 +520,61 @@ void smooth_stroke(const test_point* input, size_t N, std::vector<test_point>& o
         float2 p0 = {input[0].x, input[0].y};
         float2 p1 = {input[1].x, input[1].y};
         float2 p2 = {input[2].x, input[2].y};
-        float2 m0 = tangent(p0, 0, p1, 1);
-        float2 m1 = tangent2(p0, 0, p1, 1, p2, 2);
+        float t0 = 0.0f;//input[0].t;
+        float t1 = 1.0f;//input[1].t;
+        float t2 = 2.0f;//input[2].t;
+        float2 m0 = tangent(p0, t0, p1, t1);
+        float2 m1 = tangent2(p0, t0, p1, t1, p2, t2);
 
-        float t0 = input[0].t;
-        float t1 = input[1].t;
+        float w0 = input[0].w;
+        float w1 = input[1].w;
 
         output.push_back(input[0]);
-        output.push_back(test_point(hermite(p0, m0, p1, m1, 0.25f), lerp(t0, t1, 0.25f)));
-        output.push_back(test_point(hermite(p0, m0, p1, m1, 0.5f), lerp(t0, t1, 0.5f)));
-        output.push_back(test_point(hermite(p0, m0, p1, m1, 0.75f), lerp(t0, t1, 0.75f)));
+        output.push_back(test_point(hermite(p0, m0, p1, m1, 0.25f), lerp(w0, w1, 0.25f)));
+        output.push_back(test_point(hermite(p0, m0, p1, m1, 0.50f), lerp(w0, w1, 0.50f)));
+        output.push_back(test_point(hermite(p0, m0, p1, m1, 0.75f), lerp(w0, w1, 0.75f)));
     }
 
 	// TODO: better tangents
     for (size_t i = 1; i <= N-3; ++i)
     {
         float2 p0 = {input[i-1].x, input[i-1].y};
-        float2 p1 = {input[i].x,   input[i].y};
+        float2 p1 = {input[i+0].x, input[i+0].y};
         float2 p2 = {input[i+1].x, input[i+1].y};
         float2 p3 = {input[i+2].x, input[i+2].y};
-        float2 m1 = tangent2(p0, i-1, p1, i,   p2, i+1);
-        float2 m2 = tangent2(p1, i,   p2, i+1, p3, i+2);
+        float t0 = i-1;//input[i-1].w;
+        float t1 = i+0;//input[i+0].w;
+        float t2 = i+1;//input[i+1].w;
+        float t3 = i+2;//input[i+2].w;
+        float2 m1 = tangent2(p0, t0, p1, t1, p2, t2);
+        float2 m2 = tangent2(p1, t1, p2, t2, p3, t3);
 
-        float t1 = input[i].t;
-        float t2 = input[i+1].t;
+        float w1 = input[i+0].w;
+        float w2 = input[i+1].w;
 
         output.push_back(input[i]);
-        output.push_back(test_point(hermite(p1, m1, p2, m2, 0.25f), lerp(t1, t2, 0.25f)));
-        output.push_back(test_point(hermite(p1, m1, p2, m2, 0.5f), lerp(t1, t2, 0.5f)));
-        output.push_back(test_point(hermite(p1, m1, p2, m2, 0.75f), lerp(t1, t2, 0.75f)));
+        output.push_back(test_point(hermite(p1, m1, p2, m2, 0.25f), lerp(w1, w2, 0.25f)));
+        output.push_back(test_point(hermite(p1, m1, p2, m2, 0.50f), lerp(w1, w2, 0.50f)));
+        output.push_back(test_point(hermite(p1, m1, p2, m2, 0.75f), lerp(w1, w2, 0.75f)));
     }
 
     {
         float2 p0 = {input[N-3].x, input[N-3].y};
         float2 p1 = {input[N-2].x, input[N-2].y};
         float2 p2 = {input[N-1].x, input[N-1].y};
-        float2 m1 = tangent2(p0, N-3, p1, N-2, p2, N-1);
-        float2 m2 = tangent(p1, N-2, p2, N-1);
+        float t0 = N-3;//input[N-3].t;
+        float t1 = N-2;//input[N-2].t;
+        float t2 = N-1;//input[N-1].t;
+        float2 m1 = tangent2(p0, t0, p1, t1, p2, t2);
+        float2 m2 = tangent(p1, t1, p2, t2);
 
-        float t1 = input[N-2].t;
-        float t2 = input[N-1].t;
+        float w1 = input[N-2].w;
+        float w2 = input[N-1].w;
 
         output.push_back(input[N-2]);
-        output.push_back(test_point(hermite(p1, m1, p2, m2, 0.25f), lerp(t1, t2, 0.25f)));
-        output.push_back(test_point(hermite(p1, m1, p2, m2, 0.5f), lerp(t1, t2, 0.5f)));
-        output.push_back(test_point(hermite(p1, m1, p2, m2, 0.75f), lerp(t1, t2, 0.75f)));
+        output.push_back(test_point(hermite(p1, m1, p2, m2, 0.25f), lerp(w1, w2, 0.25f)));
+        output.push_back(test_point(hermite(p1, m1, p2, m2, 0.50f), lerp(w1, w2, 0.50f)));
+        output.push_back(test_point(hermite(p1, m1, p2, m2, 0.75f), lerp(w1, w2, 0.75f)));
         output.push_back(input[N-1]);
     }
 }

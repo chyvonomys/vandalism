@@ -120,6 +120,7 @@ struct Vandalism
         bool scrolling;
         bool mousedown;
         bool fakepressure;
+        bool simplify;
         Tool tool;
         float brushred, brushgreen, brushblue, brushalpha;
         float brushdiameter;
@@ -259,7 +260,7 @@ struct Vandalism
         Point point;
         point.x = input->mousex;
         point.y = input->mousey;
-        point.t = input->fakepressure ? pressure_func(0) : 1.0f;
+        point.w = input->fakepressure ? pressure_func(0) : 1.0f;
 
         currentPoints.clear();
         currentPoints.push_back(point);
@@ -288,7 +289,7 @@ struct Vandalism
         if (dx * dx + dy * dy > eps)
         {
             size_t ptIdx = currentPoints.size();
-            point.t = input->fakepressure ? pressure_func(ptIdx) : 1.0f;
+            point.w = input->fakepressure ? pressure_func(ptIdx) : 1.0f;
             currentPoints.push_back(point);
             currentStroke.bbox.add(point);
             currentStroke.pi1 += 1;
@@ -298,7 +299,7 @@ struct Vandalism
 
     // TODO: is point in done_* the same as in previous do_* if there was any?
 
-    void done_draw(const Input *)
+    void done_draw(const Input *input)
     {
         if (append_allowed())
         {
@@ -315,8 +316,15 @@ struct Vandalism
 
             strokes.back().pi0 = points.size();
 
-            ramer_douglas_peucker(currentPoints.data(), currentPoints.data() + currentPoints.size() - 1,
-                                  points, 0.1f * currentBrush.diameter);
+            if (input->simplify)
+            {
+                ramer_douglas_peucker(currentPoints.data(), currentPoints.data() + currentPoints.size() - 1,
+                                      points, 0.1f * currentBrush.diameter);
+            }
+            else
+            {
+                std::copy(currentPoints.cbegin(), currentPoints.cend(), std::back_inserter(points));
+            }
 
             strokes.back().pi1 = points.size();
 

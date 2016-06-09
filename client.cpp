@@ -103,6 +103,8 @@ bool gui_mouse_occupied;
 bool gui_mouse_hover;
 bool gui_fake_pressure;
 bool gui_fancy_brush;
+bool gui_simplify;
+bool gui_smooth;
 float gui_background_color[3];
 float gui_grid_bg_color[3];
 float gui_grid_fg_color[3];
@@ -121,6 +123,11 @@ ImGuiTextBuffer *viewsBuf;
 
 std::vector<output_data::Vertex> bake_quads;
 std::vector<output_data::Vertex> curr_quads;
+
+// temp vectors, reuse to avoid reallocations
+std::vector<test_point> sampled_points;
+std::vector<test_visible> visibles;
+std::vector<test_transform> transforms;
 
 void setup(kernel_services *services)
 {
@@ -196,6 +203,8 @@ void setup(kernel_services *services)
     gui_mouse_hover = false;
     gui_fake_pressure = false;
     gui_fancy_brush = false;
+    gui_simplify = true;
+    gui_smooth = true;
 
     gui_goto_idx = 0;
 }
@@ -257,7 +266,7 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
 
     if (N > 0)
     {
-        Vandalism::Brush cb = brush.modified(points[0].t);
+        Vandalism::Brush cb = brush.modified(points[0].w);
 
         float2 curr = {points[0].x, points[0].y};
         float2 right = {0.5f * cb.diameter, 0.0f};
@@ -286,7 +295,7 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
         float2 curr = {points[i].x, points[i].y};
         float2 dir = curr - prev;
 
-        Vandalism::Brush cb0 = brush.modified(points[i-1].t);
+        Vandalism::Brush cb0 = brush.modified(points[i-1].w);
 
         float2 right = {0.5f * cb0.diameter, 0.0f};
         float2 up = {0.0, 0.5f * cb0.diameter};
@@ -309,7 +318,7 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
 
         if (len(dir) > 0.001f)
         {
-            Vandalism::Brush cb1 = brush.modified(points[i].t);
+            Vandalism::Brush cb1 = brush.modified(points[i].w);
 
             float2 side = perp(dir * (1.0f / len(dir)));
 
@@ -380,6 +389,7 @@ void update_and_render(input_data *input, output_data *output)
     ism_input.brushdiameter = gui_brush_diameter_units * cfg_brush_diameter_inches_per_unit;
     ism_input.scrolly = input->scrollY;
     ism_input.scrolling = input->scrolling;
+    ism_input.simplify = gui_simplify;
 
     ism->update(&ism_input);
 
@@ -394,8 +404,8 @@ void update_and_render(input_data *input, output_data *output)
         ism->visiblesChanged = false;
 
         bake_quads.clear();
-        std::vector<test_visible> visibles;
-        std::vector<test_transform> transforms;
+        visibles.clear();
+        transforms.clear();
         test_box viewbox = {-0.5f * input->rtWidthIn,
                             +0.5f * input->rtWidthIn,
                             -0.5f * input->rtHeightIn,
@@ -411,11 +421,20 @@ void update_and_render(input_data *input, output_data *output)
             const test_transform& tform = transforms[vis.ti];
             const test_stroke& stroke = bake_data.strokes[vis.si];
             const Vandalism::Brush& brush = ism->brushes[stroke.brush_id];
-            std::vector<test_point> sampled;
-            smooth_stroke(bake_data.points + stroke.pi0, stroke.pi1 - stroke.pi0, sampled);
-            fill_quads(bake_quads, sampled.data(), sampled.size(),
-                       vis.si, tform, brush,
-                       cfg_depth_step);
+            if (gui_smooth)
+            {
+                sampled_points.clear();
+                smooth_stroke(bake_data.points + stroke.pi0, stroke.pi1 - stroke.pi0, sampled_points);
+                fill_quads(bake_quads, sampled_points.data(), sampled_points.size(),
+                           vis.si, tform, brush,
+                           cfg_depth_step);
+            }
+            else
+            {
+                fill_quads(bake_quads, bake_data.points + stroke.pi0, stroke.pi1 - stroke.pi0,
+                           vis.si, tform, brush,
+                           cfg_depth_step);
+            }
         }
 
         u32 vtxCnt = static_cast<u32>(bake_quads.size());
@@ -477,11 +496,20 @@ void update_and_render(input_data *input, output_data *output)
         curr_quads.clear();
 
         const Vandalism::Stroke& stroke = current_data.strokes[0];
-        std::vector<test_point> sampled;
-        smooth_stroke(current_data.points + stroke.pi0, stroke.pi1 - stroke.pi0, sampled);
-        fill_quads(curr_quads, sampled.data(), sampled.size(),
-                   currStrokeId, id_transform(), currBrush,
-                   cfg_depth_step);
+        if (gui_smooth)
+        {
+            sampled_points.clear();
+            smooth_stroke(current_data.points + stroke.pi0, stroke.pi1 - stroke.pi0, sampled_points);
+            fill_quads(curr_quads, sampled_points.data(), sampled_points.size(),
+                       currStrokeId, id_transform(), currBrush,
+                       cfg_depth_step);
+        }
+        else
+        {
+            fill_quads(curr_quads, current_data.points + stroke.pi0, stroke.pi1 - stroke.pi0,
+                       currStrokeId, id_transform(), currBrush,
+                       cfg_depth_step);
+        }
 
         u32 vtxCnt = static_cast<u32>(curr_quads.size());
         u32 idxCnt = vtxCnt / 4 * 6;
@@ -589,6 +617,8 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::SliderFloat("eraser", &gui_eraser_alpha, 0.0f, 1.0f);
     ImGui::Checkbox("pressure", &gui_fake_pressure);
     ImGui::Checkbox("fancy", &gui_fancy_brush);
+    ImGui::Checkbox("simplify", &gui_simplify);
+    ImGui::Checkbox("smooth", &gui_smooth);
     ImGui::Separator();
     ImGui::ColorEdit3("grid bg", gui_grid_bg_color);
     ImGui::ColorEdit3("grid fg", gui_grid_fg_color);
