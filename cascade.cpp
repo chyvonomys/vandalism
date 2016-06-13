@@ -479,6 +479,40 @@ void ramer_douglas_peucker(const test_point* from, const test_point* to,
     }
 }
 
+#include "fitbezier.cpp"
+
+void sample_bezier(const std::vector<bezier4>& pieces,
+                   std::vector<test_point>& pts)
+{
+    for (size_t i = 0; i < pieces.size(); ++i)
+    {
+        for (float t = 0.0f; t < 0.99f; t += 0.1f)
+        {
+            pts.push_back(test_point(pieces[i].eval(t), 1.0f));
+        }
+    }
+    if (!pieces.empty())
+    {
+        pts.push_back(test_point(pieces.back().eval(1.0f), 1.0f));
+    }
+}
+
+// N > 2
+void smooth_stroke_2(const test_point* input, size_t N,
+                     std::vector<test_point>& output,
+                     float error)
+{
+    std::vector<bezier4> pieces;
+    float2 t0 = {input[1].x - input[0].x,
+                 input[1].y - input[0].y};
+    t0 = t0 / len(t0);
+    float2 t1 = {input[N-2].x - input[N-1].x,
+                 input[N-2].y - input[N-1].y};
+    t1 = t1 / len(t1);
+    fit_bezier(input, 0, N, t0, t1, pieces, error);
+    sample_bezier(pieces, output);
+}
+
 float2 hermite(const float2& p0, const float2& m0,
                const float2& p1, const float2& m1,
                float t)
@@ -505,17 +539,10 @@ float2 tangent(const float2& p0, float t0,
     return (p1 - p0) / (t1 - t0);
 }
 
-void smooth_stroke(const test_point* input, size_t N, std::vector<test_point>& output)
+// N > 2
+void smooth_stroke_1(const test_point* input, size_t N,
+                     std::vector<test_point>& output)
 {
-    if (N < 3)
-    {
-        for (size_t i = 0; i < N; ++i)
-        {
-            output.push_back(input[i]);
-        }
-        return;
-    }
-
     {
         float2 p0 = {input[0].x, input[0].y};
         float2 p1 = {input[1].x, input[1].y};
@@ -576,6 +603,29 @@ void smooth_stroke(const test_point* input, size_t N, std::vector<test_point>& o
         output.push_back(test_point(hermite(p1, m1, p2, m2, 0.50f), lerp(w1, w2, 0.50f)));
         output.push_back(test_point(hermite(p1, m1, p2, m2, 0.75f), lerp(w1, w2, 0.75f)));
         output.push_back(input[N-1]);
+    }
+}
+
+void smooth_stroke(const test_point* input, size_t N,
+                   std::vector<test_point>& output,
+                   float error, bool ng)
+{
+    if (N < 3)
+    {
+        for (size_t i = 0; i < N; ++i)
+        {
+            output.push_back(input[i]);
+        }
+        return;
+    }
+
+    if (ng)
+    {
+        smooth_stroke_2(input, N, output, error);
+    }
+    else
+    {
+        smooth_stroke_1(input, N, output);
     }
 }
 

@@ -112,6 +112,13 @@ struct Vandalism
         SECOND = 6
     };
 
+    enum Smooth
+    {
+        NONE      = 0,
+        HERMITE   = 1,
+        FITBEZIER = 2
+    };
+
     struct Input
     {
         float mousex;
@@ -121,6 +128,7 @@ struct Vandalism
         bool mousedown;
         bool fakepressure;
         bool simplify;
+        Smooth smooth;
         Tool tool;
         float brushred, brushgreen, brushblue, brushalpha;
         float brushdiameter;
@@ -318,19 +326,37 @@ struct Vandalism
 
             if (input->simplify)
             {
-                ramer_douglas_peucker(currentPoints.data(), currentPoints.data() + currentPoints.size() - 1,
-                                      points, 0.1f * currentBrush.diameter);
+                std::vector<test_point> simplified;
+                ramer_douglas_peucker(currentPoints.data(),
+                                      currentPoints.data() + currentPoints.size() - 1,
+                                      simplified,
+                                      0.1f * currentBrush.diameter);
+                ::printf("simplify %lu -> %lu\n",
+                         currentPoints.size(), simplified.size());
+                currentPoints = simplified;
             }
-            else
+
+            if (input->smooth == FITBEZIER)
             {
-                std::copy(currentPoints.cbegin(), currentPoints.cend(), std::back_inserter(points));
+                smooth_stroke(currentPoints.data(),
+                              currentPoints.size(),
+                              points, 2.0f * input->negligibledistance,
+                              true);
+            }
+            else if (input->smooth == HERMITE)
+            {
+                smooth_stroke(currentPoints.data(),
+                              currentPoints.size(),
+                              points, 2.0f * input->negligibledistance,
+                              false);
+            }
+            else if (input->smooth == NONE)
+            {
+                std::copy(currentPoints.cbegin(), currentPoints.cend(),
+                          std::back_inserter(points));
             }
 
             strokes.back().pi1 = points.size();
-
-            ::printf("simplify %lu -> %lu\n",
-                     currentStroke.pi1 - currentStroke.pi0,
-                     strokes.back().pi1 - strokes.back().pi0);
 
             views[currentViewIdx].bbox.add_box(currentStroke.bbox);
             views[currentViewIdx].si1 += 1;

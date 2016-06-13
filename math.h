@@ -141,6 +141,10 @@ inline float sin(const float2 &a, const float2 &b)
     return result;
 }
 
+inline float2 lerp(const float2& a, const float2& b, float t)
+{
+    return a * (1.0f - t) + b * t;
+}
 
 inline float si_minf(float a, float b)
 {

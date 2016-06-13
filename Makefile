@@ -14,7 +14,7 @@ ism: proto.cpp $(OBJS)
 .cpp.o:
 	$(COMPILER) -g -c -o $@ $<
 
-client.o: client.h client.cpp vandalism.cpp cascade.cpp tests.cpp
+client.o: client.h client.cpp vandalism.cpp cascade.cpp tests.cpp fitbezier.cpp
 
 clean:
 	rm -f $(OBJS)

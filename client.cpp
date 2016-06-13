@@ -103,8 +103,9 @@ bool gui_mouse_occupied;
 bool gui_mouse_hover;
 bool gui_fake_pressure;
 bool gui_fancy_brush;
-bool gui_simplify;
-bool gui_smooth;
+bool gui_draw_simplify;
+i32 gui_draw_smooth;
+i32 gui_present_smooth;
 float gui_background_color[3];
 float gui_grid_bg_color[3];
 float gui_grid_fg_color[3];
@@ -203,8 +204,10 @@ void setup(kernel_services *services)
     gui_mouse_hover = false;
     gui_fake_pressure = false;
     gui_fancy_brush = false;
-    gui_simplify = true;
-    gui_smooth = true;
+
+    gui_draw_simplify = false;
+    gui_draw_smooth = static_cast<i32>(Vandalism::NONE);
+    gui_present_smooth = static_cast<i32>(Vandalism::NONE);
 
     gui_goto_idx = 0;
 }
@@ -389,7 +392,8 @@ void update_and_render(input_data *input, output_data *output)
     ism_input.brushdiameter = gui_brush_diameter_units * cfg_brush_diameter_inches_per_unit;
     ism_input.scrolly = input->scrollY;
     ism_input.scrolling = input->scrolling;
-    ism_input.simplify = gui_simplify;
+    ism_input.simplify = gui_draw_simplify;
+    ism_input.smooth = static_cast<Vandalism::Smooth>(gui_draw_smooth);
 
     ism->update(&ism_input);
 
@@ -421,17 +425,24 @@ void update_and_render(input_data *input, output_data *output)
             const test_transform& tform = transforms[vis.ti];
             const test_stroke& stroke = bake_data.strokes[vis.si];
             const Vandalism::Brush& brush = ism->brushes[stroke.brush_id];
-            if (gui_smooth)
+            if (gui_present_smooth == Vandalism::FITBEZIER ||
+                gui_present_smooth == Vandalism::HERMITE)
             {
                 sampled_points.clear();
-                smooth_stroke(bake_data.points + stroke.pi0, stroke.pi1 - stroke.pi0, sampled_points);
-                fill_quads(bake_quads, sampled_points.data(), sampled_points.size(),
+                smooth_stroke(bake_data.points + stroke.pi0,
+                              stroke.pi1 - stroke.pi0,
+                              sampled_points,
+                              3.0f * pixel_height_in,
+                              gui_present_smooth == Vandalism::FITBEZIER);
+                fill_quads(bake_quads,
+                           sampled_points.data(), sampled_points.size(),
                            vis.si, tform, brush,
                            cfg_depth_step);
             }
             else
             {
-                fill_quads(bake_quads, bake_data.points + stroke.pi0, stroke.pi1 - stroke.pi0,
+                fill_quads(bake_quads,
+                           bake_data.points + stroke.pi0, stroke.pi1 - stroke.pi0,
                            vis.si, tform, brush,
                            cfg_depth_step);
             }
@@ -496,17 +507,24 @@ void update_and_render(input_data *input, output_data *output)
         curr_quads.clear();
 
         const Vandalism::Stroke& stroke = current_data.strokes[0];
-        if (gui_smooth)
+        if (gui_present_smooth == Vandalism::FITBEZIER ||
+            gui_present_smooth == Vandalism::HERMITE)
         {
             sampled_points.clear();
-            smooth_stroke(current_data.points + stroke.pi0, stroke.pi1 - stroke.pi0, sampled_points);
-            fill_quads(curr_quads, sampled_points.data(), sampled_points.size(),
+            smooth_stroke(current_data.points + stroke.pi0,
+                          stroke.pi1 - stroke.pi0,
+                          sampled_points,
+                          currBrush.diameter,
+                          gui_present_smooth == Vandalism::FITBEZIER);
+            fill_quads(curr_quads,
+                       sampled_points.data(), sampled_points.size(),
                        currStrokeId, id_transform(), currBrush,
                        cfg_depth_step);
         }
         else
         {
-            fill_quads(curr_quads, current_data.points + stroke.pi0, stroke.pi1 - stroke.pi0,
+            fill_quads(curr_quads,
+                       current_data.points + stroke.pi0, stroke.pi1 - stroke.pi0,
                        currStrokeId, id_transform(), currBrush,
                        cfg_depth_step);
         }
@@ -615,10 +633,28 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::SliderInt("diameter", &gui_brush_diameter_units,
                      cfg_min_brush_diameter_units, cfg_max_brush_diameter_units);
     ImGui::SliderFloat("eraser", &gui_eraser_alpha, 0.0f, 1.0f);
+    ImGui::Separator();
     ImGui::Checkbox("pressure", &gui_fake_pressure);
     ImGui::Checkbox("fancy", &gui_fancy_brush);
-    ImGui::Checkbox("simplify", &gui_simplify);
-    ImGui::Checkbox("smooth", &gui_smooth);
+    ImGui::Separator();
+    ImGui::Text("drawing");
+    ImGui::Checkbox("simplify", &gui_draw_simplify);
+    ImGui::RadioButton("smooth none", &gui_draw_smooth,
+                       static_cast<i32>(Vandalism::NONE));
+    ImGui::RadioButton("smooth hermite", &gui_draw_smooth,
+                       static_cast<i32>(Vandalism::HERMITE));
+    ImGui::RadioButton("smooth fit bezier", &gui_draw_smooth,
+                       static_cast<i32>(Vandalism::FITBEZIER));
+    ImGui::Separator();
+    ImGui::Text("rendering");
+    ImGui::PushID("rendering");
+    ImGui::RadioButton("smooth none", &gui_present_smooth,
+                       static_cast<i32>(Vandalism::NONE));
+    ImGui::RadioButton("smooth hermite", &gui_present_smooth,
+                       static_cast<i32>(Vandalism::HERMITE));
+    ImGui::RadioButton("smooth fit bezier", &gui_present_smooth,
+                       static_cast<i32>(Vandalism::FITBEZIER));
+    ImGui::PopID();
     ImGui::Separator();
     ImGui::ColorEdit3("grid bg", gui_grid_bg_color);
     ImGui::ColorEdit3("grid fg", gui_grid_fg_color);
