@@ -439,7 +439,7 @@ void update_and_render(input_data *input, output_data *output)
                 smooth_stroke(bake_data.points + stroke.pi0,
                               stroke.pi1 - stroke.pi0,
                               sampled_points,
-                              3.0f * pixel_height_in,
+                              pixel_height_in,
                               gui_present_smooth == Vandalism::FITBEZIER);
                 fill_quads(bake_quads,
                            sampled_points.data(), sampled_points.size(),
@@ -524,7 +524,7 @@ void update_and_render(input_data *input, output_data *output)
             smooth_stroke(current_data.points + stroke.pi0,
                           stroke.pi1 - stroke.pi0,
                           sampled_points,
-                          currBrush.diameter,
+                          pixel_height_in,
                           gui_present_smooth == Vandalism::FITBEZIER);
             fill_quads(curr_quads,
                        sampled_points.data(), sampled_points.size(),

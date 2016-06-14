@@ -339,19 +339,13 @@ struct Vandalism
                 currentPoints = simplified;
             }
 
-            if (input->smooth == FITBEZIER)
+            if (input->smooth == FITBEZIER ||
+                input->smooth == HERMITE)
             {
                 smooth_stroke(currentPoints.data(),
                               currentPoints.size(),
-                              points, 2.0f * input->negligibledistance,
-                              true);
-            }
-            else if (input->smooth == HERMITE)
-            {
-                smooth_stroke(currentPoints.data(),
-                              currentPoints.size(),
-                              points, 2.0f * input->negligibledistance,
-                              false);
+                              points, input->negligibledistance,
+                              input->smooth == FITBEZIER);
             }
             else if (input->smooth == NONE)
             {

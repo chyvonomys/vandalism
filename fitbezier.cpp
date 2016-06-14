@@ -87,24 +87,25 @@ float newton_raphson_root(const bezier4& Q, const float2& P, float u)
 std::vector<float> chord_length_parametrize(const test_point* pts,
                                             size_t from, size_t to)
 {
-    std::vector<float> result;
-    result.reserve(to-from);
+    std::vector<float> r;
+    r.resize(to - from);
+
     float total = 0.0f;
-    result[0] = total;
+    r[0] = total;
     for (size_t i = from + 1; i < to; ++i)
     {
         float2 d = {pts[i].x - pts[i-1].x,
                     pts[i].y - pts[i-1].y};
         total += len(d);
-        result[i-from] = total;
+        r[i-from] = total;
     }
 
     for (size_t i = from + 1; i < to; ++i)
     {
-        result[i-from] /= total;
+        r[i-from] /= total;
     }
 
-    return result;
+    return r;
 }
 
 std::vector<float> reparametrize(const test_point* pts,
@@ -252,7 +253,7 @@ void fit_bezier(const test_point* pts, size_t from, size_t to,
         return;
     }
 
-    if (ep.error < error * error)
+    if (ep.error < error + error)
     {
         for (size_t i = 0; i < MAX_ITERATIONS; ++i)
         {
@@ -272,6 +273,6 @@ void fit_bezier(const test_point* pts, size_t from, size_t to,
                     pts[ep.idx+1].y - pts[ep.idx-1].y};
     t_split = t_split / len(t_split);
 
-    fit_bezier(pts, from, ep.idx + 1, t0, -t_split, pieces, error);
+    fit_bezier(pts, from, ep.idx+1, t0, -t_split, pieces, error);
     fit_bezier(pts, ep.idx, to, t_split, t1, pieces, error);
 }
