@@ -152,7 +152,8 @@ struct Vandalism
     void append_new_view(const test_transition& tr)
     {
         auto& prev = views[currentViewIdx];
-        if (autoOptimizeViews && prev.pin_index == NPOS && prev.si0 == prev.si1 &&
+        if (autoOptimizeViews && prev.pin_index == NPOS &&
+            prev.si0 == prev.si1 &&
             prev.tr.type == tr.type)
         {
             prev.si0 = strokes.size();
@@ -280,7 +281,8 @@ struct Vandalism
         currentBrush.r = input->brushred;
         currentBrush.g = input->brushgreen;
         currentBrush.b = input->brushblue;
-        currentBrush.a = (input->tool == ERASE ? input->eraseralpha : input->brushalpha);
+        currentBrush.a = (input->tool == ERASE ?
+                          input->eraseralpha : input->brushalpha);
         currentBrush.type = (input->tool == ERASE ? 1 : 0);
         currentBrush.diameter = input->brushdiameter;
     }
@@ -328,7 +330,8 @@ struct Vandalism
             {
                 std::vector<test_point> simplified;
                 ramer_douglas_peucker(currentPoints.data(),
-                                      currentPoints.data() + currentPoints.size() - 1,
+                                      currentPoints.data() +
+                                      currentPoints.size() - 1,
                                       simplified,
                                       0.1f * currentBrush.diameter);
                 ::printf("simplify %lu -> %lu\n",
@@ -781,19 +784,22 @@ struct Vandalism
         }
         for (size_t i = 0; i < strokes.size(); ++i)
         {
-            os << "s " << strokes[i].pi0 << ' ' << strokes[i].pi1 << ' ' << strokes[i].brush_id << ' ' << '\n';
+            os << "s " << strokes[i].pi0 << ' ' << strokes[i].pi1
+               << ' ' << strokes[i].brush_id << ' ' << '\n';
         }
         for (size_t i = 0; i < views.size(); ++i)
         {
             os << "v " << (views[i].tr.type == TZOOM ? "zoom" :
                           (views[i].tr.type == TPAN ? "pan" :
                            (views[i].tr.type == TROTATE ? "rotate" : "error")))
-               << ' ' << views[i].tr.a << ' ' << views[i].tr.b << ' ' << views[i].si0 << ' ' << views[i].si1 << '\n';
+               << ' ' << views[i].tr.a << ' ' << views[i].tr.b
+               << ' ' << views[i].si0 << ' ' << views[i].si1 << '\n';
         }
         for (size_t i = 0; i < brushes.size(); ++i)
         {
             os << "b " << brushes[i].type << ' ' << brushes[i].diameter << ' '
-               << brushes[i].r << ' ' << brushes[i].g << ' ' << brushes[i].b << ' ' << brushes[i].a << '\n';
+               << brushes[i].r << ' ' << brushes[i].g << ' '
+               << brushes[i].b << ' ' << brushes[i].a << '\n';
         }
     }
 
@@ -898,11 +904,12 @@ struct Vandalism
         // calculate bboxes of strokes
         for (size_t si = 0; si < newStrokes.size(); ++si)
         {
-            for (size_t pi = newStrokes[si].pi0; pi < newStrokes[si].pi1; ++pi)
+            Stroke& ns = newStrokes[si];
+            for (size_t pi = ns.pi0; pi < ns.pi1; ++pi)
             {
-                newStrokes[si].bbox.add(newPoints[pi]);
+                ns.bbox.add(newPoints[pi]);
             }
-            newStrokes[si].bbox.grow(0.5f * newBrushes[newStrokes[si].brush_id].diameter);
+            ns.bbox.grow(0.5f * newBrushes[ns.brush_id].diameter);
         }
 
         // calculate bboxes of views

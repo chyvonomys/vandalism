@@ -42,8 +42,10 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
 
         if (ui_meshes.size() <= li)
         {
-            ui_meshes.push_back(current_services->create_mesh(*current_services->ui_vertex_layout,
-                                                              vtxCount, idxCount));
+            kernel_services::MeshID mid =
+            current_services->create_mesh(*current_services->ui_vertex_layout,
+                                          vtxCount, idxCount);
+            ui_meshes.push_back(mid);
         }
 
         current_services->update_mesh(ui_meshes[li],
@@ -153,7 +155,8 @@ void setup(kernel_services *services)
                                                static_cast<u32>(height),
                                                4);
     services->update_texture(font_texture_id, pixels);
-    io.Fonts->TexID = reinterpret_cast<void *>(static_cast<size_t>(font_texture_id));
+    io.Fonts->TexID =
+    reinterpret_cast<void *>(static_cast<size_t>(font_texture_id));
 
     current_services = services;
 
@@ -163,11 +166,14 @@ void setup(kernel_services *services)
     bake_quads.reserve(BAKE_QUADS_CNT * 4);
     curr_quads.reserve(CURR_QUADS_CNT * 4);
 
-    bake_mesh = current_services->create_quad_mesh(*current_services->stroke_vertex_layout,
-                                                   BAKE_QUADS_CNT * 4);
-    curr_mesh = current_services->create_quad_mesh(*current_services->stroke_vertex_layout,
-                                                   CURR_QUADS_CNT * 4);
-    lines_mesh = current_services->create_quad_mesh(*current_services->ui_vertex_layout, 16);
+    bake_mesh =
+    current_services->create_quad_mesh(*current_services->stroke_vertex_layout,
+                                       BAKE_QUADS_CNT * 4);
+    curr_mesh =
+    current_services->create_quad_mesh(*current_services->stroke_vertex_layout,
+                                       CURR_QUADS_CNT * 4);
+    lines_mesh =
+    current_services->create_quad_mesh(*current_services->ui_vertex_layout, 16);
 
     io.Fonts->ClearInputData();
     io.Fonts->ClearTexData();
@@ -389,7 +395,8 @@ void update_and_render(input_data *input, output_data *output)
     ism_input.brushblue = gui_brush_color[2];
     ism_input.brushalpha = gui_brush_color[3];
     ism_input.eraseralpha = gui_eraser_alpha;
-    ism_input.brushdiameter = gui_brush_diameter_units * cfg_brush_diameter_inches_per_unit;
+    ism_input.brushdiameter =
+    gui_brush_diameter_units * cfg_brush_diameter_inches_per_unit;
     ism_input.scrolly = input->scrollY;
     ism_input.scrolling = input->scrolling;
     ism_input.simplify = gui_draw_simplify;
@@ -442,7 +449,8 @@ void update_and_render(input_data *input, output_data *output)
             else
             {
                 fill_quads(bake_quads,
-                           bake_data.points + stroke.pi0, stroke.pi1 - stroke.pi0,
+                           bake_data.points + stroke.pi0,
+                           stroke.pi1 - stroke.pi0,
                            vis.si, tform, brush,
                            cfg_depth_step);
             }
@@ -470,18 +478,20 @@ void update_and_render(input_data *input, output_data *output)
 
             bool isPinned = (view.pin_index != NPOS);
             bool isCurrent = (vi == ism->currentViewIdx);
-            viewsBuf->append("%c %c %d: %s  %f/%f  (%ld..%ld)\n", (isCurrent ? '>' : ' '), (isPinned ? '*' : ' '),
-                            vi, typestr, view.tr.a, view.tr.b, view.si0, view.si1);
+            viewsBuf->append("%c %c %d: %s  %f/%f  (%ld..%ld)\n",
+                             (isCurrent ? '>' : ' '), (isPinned ? '*' : ' '),
+                             vi, typestr, view.tr.a, view.tr.b,
+                             view.si0, view.si1);
         }
         scrollViewsDown = true;
     }
 
-    output->preTranslateX = ism->preShiftX;
-    output->preTranslateY = ism->preShiftY;
+    output->preTranslateX  = ism->preShiftX;
+    output->preTranslateY  = ism->preShiftY;
     output->postTranslateX = ism->postShiftX;
     output->postTranslateY = ism->postShiftY;
-    output->scale      = ism->zoomCoeff;
-    output->rotate     = ism->rotateAngle;
+    output->scale          = ism->zoomCoeff;
+    output->rotate         = ism->rotateAngle;
 
     output->bg_red   = gui_background_color[0];
     output->bg_green = gui_background_color[1];
@@ -524,7 +534,8 @@ void update_and_render(input_data *input, output_data *output)
         else
         {
             fill_quads(curr_quads,
-                       current_data.points + stroke.pi0, stroke.pi1 - stroke.pi0,
+                       current_data.points + stroke.pi0,
+                       stroke.pi1 - stroke.pi0,
                        currStrokeId, id_transform(), currBrush,
                        cfg_depth_step);
         }
@@ -587,8 +598,8 @@ void update_and_render(input_data *input, output_data *output)
 	{
 		static float time_getter(void *data, int idx)
 		{
-			const double *pValues = static_cast<input_data *>(data)->pTimeIntervals;
-			return static_cast<float>(pValues[idx]);
+			const double *ts = static_cast<input_data*>(data)->pTimeIntervals;
+			return static_cast<float>(ts[idx]);
 		}
 	};
 
@@ -715,7 +726,8 @@ void update_and_render(input_data *input, output_data *output)
 
     ImGui::SetNextWindowSize(ImVec2(200, 300), ImGuiSetCond_FirstUseEver);
     ImGui::Begin("views");
-    ImGui::SliderInt("view", &gui_goto_idx, 0, static_cast<i32>(bake_data.nviews-1));
+    ImGui::SliderInt("view", &gui_goto_idx, 0,
+                     static_cast<i32>(bake_data.nviews-1));
     if (ImGui::Button("Goto view"))
     {
         ism->set_view(static_cast<size_t>(gui_goto_idx));
@@ -767,9 +779,12 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::Text("vp size %d x %d pt", input->vpWidthPt, input->vpHeightPt);
     ImGui::Text("vp size %d x %d px", input->vpWidthPx, input->vpHeightPx);
     ImGui::Text("vp size %g x %g in", input->vpWidthIn, input->vpHeightIn);
-    ImGui::Text("win size %d x %d pt", input->windowWidthPt, input->windowHeightPt);
-    ImGui::Text("win size %d x %d px", input->windowWidthPx, input->windowHeightPx);
-    ImGui::Text("win pos %d, %d pt", input->windowPosXPt, input->windowPosYPt);
+    ImGui::Text("win size %d x %d pt",
+                input->windowWidthPt, input->windowHeightPt);
+    ImGui::Text("win size %d x %d px",
+                input->windowWidthPx, input->windowHeightPx);
+    ImGui::Text("win pos %d, %d pt",
+                input->windowPosXPt, input->windowPosYPt);
 
     ImGui::End();
 
