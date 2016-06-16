@@ -105,6 +105,7 @@ bool gui_mouse_occupied;
 bool gui_mouse_hover;
 bool gui_fake_pressure;
 bool gui_fancy_brush;
+bool gui_debug_smoothing;
 bool gui_draw_simplify;
 i32 gui_draw_smooth;
 i32 gui_present_smooth;
@@ -112,6 +113,7 @@ float gui_background_color[3];
 float gui_grid_bg_color[3];
 float gui_grid_fg_color[3];
 float gui_eraser_alpha;
+float gui_smooth_error_order;
 i32 gui_goto_idx;
 
 const i32 cfg_min_brush_diameter_units = 1;
@@ -205,11 +207,13 @@ void setup(kernel_services *services)
     gui_brush_diameter_units = cfg_def_brush_diameter_units;
 
     gui_eraser_alpha = 1.0f;
+    gui_smooth_error_order = -3.0f;
 
     gui_mouse_occupied = false;
     gui_mouse_hover = false;
     gui_fake_pressure = false;
     gui_fancy_brush = false;
+    gui_debug_smoothing = false;
 
     gui_draw_simplify = false;
     gui_draw_smooth = static_cast<i32>(Vandalism::NONE);
@@ -372,14 +376,29 @@ void stroke_to_quads(const test_point* begin, const test_point* end,
                      size_t stroke_id, const test_transform& tform,
                      const Vandalism::Brush& brush)
 {
+    static Vandalism::Brush debug_brush
+    {
+        0.02f,
+        1.0f, 0.0f, 0.0f, 1.0f,
+        0
+    };
+
     if (gui_present_smooth == Vandalism::FITBEZIER ||
         gui_present_smooth == Vandalism::HERMITE)
     {
         s_sampled_points.clear();
         smooth_stroke(begin, static_cast<size_t>(end - begin),
                       s_sampled_points,
-                      0.01f,
+                      si_powf(10.0f, gui_smooth_error_order),
                       gui_present_smooth == Vandalism::FITBEZIER);
+
+        if (gui_debug_smoothing)
+        {
+            fill_quads(quads, begin, static_cast<size_t>(end - begin),
+                       stroke_id, tform, debug_brush,
+                       cfg_depth_step);
+        }
+
         fill_quads(quads,
                    s_sampled_points.data(), s_sampled_points.size(),
                    stroke_id, tform, brush,
@@ -657,6 +676,11 @@ void update_and_render(input_data *input, output_data *output)
                        static_cast<i32>(Vandalism::HERMITE));
     ImGui::RadioButton("smooth fit bezier", &gui_present_smooth,
                        static_cast<i32>(Vandalism::FITBEZIER));
+    if (gui_present_smooth == static_cast<i32>(Vandalism::FITBEZIER))
+    {
+        ImGui::Checkbox("debug smoothing", &gui_debug_smoothing);
+        ImGui::SliderFloat("error order", &gui_smooth_error_order, -7.0f, 0.0f);
+    }
     ImGui::PopID();
     ImGui::Separator();
     ImGui::ColorEdit3("grid bg", gui_grid_bg_color);

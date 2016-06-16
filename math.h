@@ -30,6 +30,11 @@ inline float si_atan2(float y, float x)
     return ::atan2f(y, x);
 }
 
+inline float si_powf(float x, float p)
+{
+    return ::powf(x, p);
+}
+
 inline float lerp(float a, float b, float t)
 {
     return a * (1.0f - t) + b * t;
