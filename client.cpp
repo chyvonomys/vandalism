@@ -128,9 +128,9 @@ std::vector<output_data::Vertex> bake_quads;
 std::vector<output_data::Vertex> curr_quads;
 
 // temp vectors, reuse to avoid reallocations
-std::vector<test_point> sampled_points;
-std::vector<test_visible> visibles;
-std::vector<test_transform> transforms;
+std::vector<test_point> s_sampled_points;
+std::vector<test_visible> s_visibles;
+std::vector<test_transform> s_transforms;
 
 void setup(kernel_services *services)
 {
@@ -367,6 +367,33 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
     }
 }
 
+void stroke_to_quads(const test_point* begin, const test_point* end,
+                     std::vector<output_data::Vertex>& quads,
+                     size_t stroke_id, const test_transform& tform,
+                     const Vandalism::Brush& brush)
+{
+    if (gui_present_smooth == Vandalism::FITBEZIER ||
+        gui_present_smooth == Vandalism::HERMITE)
+    {
+        s_sampled_points.clear();
+        smooth_stroke(begin, static_cast<size_t>(end - begin),
+                      s_sampled_points,
+                      0.01f,
+                      gui_present_smooth == Vandalism::FITBEZIER);
+        fill_quads(quads,
+                   s_sampled_points.data(), s_sampled_points.size(),
+                   stroke_id, tform, brush,
+                   cfg_depth_step);
+    }
+    else
+    {
+        fill_quads(quads, begin, static_cast<size_t>(end - begin),
+                   stroke_id, tform, brush,
+                   cfg_depth_step);
+    }
+}
+
+
 void update_and_render(input_data *input, output_data *output)
 {
     output->quit_flag = false;
@@ -415,45 +442,27 @@ void update_and_render(input_data *input, output_data *output)
         ism->visiblesChanged = false;
 
         bake_quads.clear();
-        visibles.clear();
-        transforms.clear();
+        s_visibles.clear();
+        s_transforms.clear();
         test_box viewbox = {-0.5f * input->rtWidthIn,
                             +0.5f * input->rtWidthIn,
                             -0.5f * input->rtHeightIn,
                             +0.5f * input->rtHeightIn};
 
         query(bake_data, ism->currentViewIdx,
-              viewbox, visibles, transforms,
+              viewbox, s_visibles, s_transforms,
               pixel_height_in);
 
-        for (u32 visIdx = 0; visIdx < visibles.size(); ++visIdx)
+        for (u32 visIdx = 0; visIdx < s_visibles.size(); ++visIdx)
         {
-            const test_visible& vis = visibles[visIdx];
-            const test_transform& tform = transforms[vis.ti];
+            const test_visible& vis = s_visibles[visIdx];
+            const test_transform& tform = s_transforms[vis.ti];
             const test_stroke& stroke = bake_data.strokes[vis.si];
             const Vandalism::Brush& brush = ism->brushes[stroke.brush_id];
-            if (gui_present_smooth == Vandalism::FITBEZIER ||
-                gui_present_smooth == Vandalism::HERMITE)
-            {
-                sampled_points.clear();
-                smooth_stroke(bake_data.points + stroke.pi0,
-                              stroke.pi1 - stroke.pi0,
-                              sampled_points,
-                              pixel_height_in,
-                              gui_present_smooth == Vandalism::FITBEZIER);
-                fill_quads(bake_quads,
-                           sampled_points.data(), sampled_points.size(),
-                           vis.si, tform, brush,
-                           cfg_depth_step);
-            }
-            else
-            {
-                fill_quads(bake_quads,
-                           bake_data.points + stroke.pi0,
-                           stroke.pi1 - stroke.pi0,
-                           vis.si, tform, brush,
-                           cfg_depth_step);
-            }
+
+            stroke_to_quads(bake_data.points + stroke.pi0,
+                            bake_data.points + stroke.pi1,
+                            bake_quads, vis.si, tform, brush);
         }
 
         u32 vtxCnt = static_cast<u32>(bake_quads.size());
@@ -465,7 +474,7 @@ void update_and_render(input_data *input, output_data *output)
         output->bgmesh = bake_mesh;
         output->bgmeshCnt = idxCnt;
 
-        ::printf("update mesh: %lu visibles\n", visibles.size());
+        ::printf("update mesh: %lu visibles\n", s_visibles.size());
 
         viewsBuf->clear();
         for (u32 vi = 0; vi < bake_data.nviews; ++vi)
@@ -517,28 +526,11 @@ void update_and_render(input_data *input, output_data *output)
         curr_quads.clear();
 
         const Vandalism::Stroke& stroke = current_data.strokes[0];
-        if (gui_present_smooth == Vandalism::FITBEZIER ||
-            gui_present_smooth == Vandalism::HERMITE)
-        {
-            sampled_points.clear();
-            smooth_stroke(current_data.points + stroke.pi0,
-                          stroke.pi1 - stroke.pi0,
-                          sampled_points,
-                          pixel_height_in,
-                          gui_present_smooth == Vandalism::FITBEZIER);
-            fill_quads(curr_quads,
-                       sampled_points.data(), sampled_points.size(),
-                       currStrokeId, id_transform(), currBrush,
-                       cfg_depth_step);
-        }
-        else
-        {
-            fill_quads(curr_quads,
-                       current_data.points + stroke.pi0,
-                       stroke.pi1 - stroke.pi0,
-                       currStrokeId, id_transform(), currBrush,
-                       cfg_depth_step);
-        }
+
+        stroke_to_quads(current_data.points + stroke.pi0,
+                        current_data.points + stroke.pi1,
+                        curr_quads,
+                        currStrokeId, id_transform(), currBrush);
 
         u32 vtxCnt = static_cast<u32>(curr_quads.size());
         u32 idxCnt = vtxCnt / 4 * 6;
