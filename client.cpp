@@ -258,7 +258,7 @@ void add_quad(std::vector<output_data::Vertex> &quads,
 
     v.z = zindex;
     v.e = ec;
-    v.r = rc; v.g = gc; v.b = bc; v.a = ac; v.w = 0.0f;
+    v.r = rc; v.g = gc; v.b = bc; v.a = ac; v.w = 1.0f;
 
     v.x = a.x; v.y = a.y; v.u = u0; v.v = 0.0f; quads.push_back(v);
     v.x = b.x; v.y = b.y; v.u = u0; v.v = 1.0f; quads.push_back(v);
@@ -365,6 +365,7 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
 
         for (size_t i = v0idx; i < v1idx; ++i)
         {
+            quads[i].w = 0.0f;
             quads.push_back(quads[i]);
             quads.back().w = 1.0f;
         }

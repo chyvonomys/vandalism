@@ -275,6 +275,7 @@ struct Vandalism
         currentPoints.push_back(point);
         currentStroke.pi0 = 0;
         currentStroke.pi1 = 1;
+        currentStroke.bbox = test_box();
         currentStroke.bbox.add(point);
         currentStroke.brush_id = NPOS;
 
@@ -320,10 +321,10 @@ struct Vandalism
                 brushes.push_back(currentBrush);
             }
 
+            currentStroke.bbox.grow(0.5f * currentBrush.diameter);
+
             strokes.push_back(currentStroke);
             strokes.back().brush_id = brushes.size() - 1;
-            strokes.back().bbox.grow(0.5f * currentBrush.diameter);
-
             strokes.back().pi0 = points.size();
 
             if (input->simplify)
@@ -361,6 +362,7 @@ struct Vandalism
 
         currentStroke.pi0 = 0;
         currentStroke.pi1 = 0;
+        currentStroke.bbox = test_box();
 
         common_done();
     }
