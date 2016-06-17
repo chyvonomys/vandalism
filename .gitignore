@@ -25,3 +25,5 @@ vs/*.vcxproj.user
 vs/*.suo
 vs/*.sdf
 vs/*.opensdf
+vs/*.VC.db
+vs/.vs

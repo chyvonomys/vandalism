@@ -1,4 +1,5 @@
 #include <vector>
+#include <iterator>
 #include <fstream>
 #include <sstream>
 #include "cascade.cpp"
