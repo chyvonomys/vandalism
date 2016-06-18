@@ -104,7 +104,6 @@ i32 gui_brush_diameter_units;
 bool gui_mouse_occupied;
 bool gui_mouse_hover;
 bool gui_fake_pressure;
-bool gui_fancy_brush;
 bool gui_debug_smoothing;
 bool gui_draw_simplify;
 i32 gui_draw_smooth;
@@ -212,7 +211,6 @@ void setup(kernel_services *services)
     gui_mouse_occupied = false;
     gui_mouse_hover = false;
     gui_fake_pressure = false;
-    gui_fancy_brush = false;
     gui_debug_smoothing = false;
 
     gui_draw_simplify = false;
@@ -258,7 +256,7 @@ void add_quad(std::vector<output_data::Vertex> &quads,
 
     v.z = zindex;
     v.e = ec;
-    v.r = rc; v.g = gc; v.b = bc; v.a = ac; v.w = 1.0f;
+    v.r = rc; v.g = gc; v.b = bc; v.a = ac; v.p = 0.0f;
 
     v.x = a.x; v.y = a.y; v.u = u0; v.v = 0.0f; quads.push_back(v);
     v.x = b.x; v.y = b.y; v.u = u0; v.v = 1.0f; quads.push_back(v);
@@ -277,98 +275,77 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
 
     size_t v0idx = quads.size();
 
-    if (N > 0)
+	// rectangles between points
+	for (size_t i = 1; i < N; ++i)
+	{
+		float2 prev = {points[i-1].x, points[i-1].y};
+		float2 curr = {points[i].x, points[i].y};
+		float2 dir = curr - prev;
+
+		Vandalism::Brush cb0 = brush.modified(points[i-1].w);
+
+		if (len(dir) > 0.001f)
+		{
+			Vandalism::Brush cb1 = brush.modified(points[i].w);
+
+			float2 side = perp(dir * (1.0f / len(dir)));
+
+			float2 side0 = 0.5f * cb0.diameter * side;
+			float2 side1 = 0.5f * cb1.diameter * side;
+
+			// x -ccw-> y
+			float2 p0l = prev + side0;
+			float2 p0r = prev - side0;
+			float2 p1l = curr + side1;
+			float2 p1r = curr - side1;
+
+			test_point a = apply_transform_pt(tform, {p0r.x, p0r.y});
+			test_point b = apply_transform_pt(tform, {p0l.x, p0l.y});
+			test_point c = apply_transform_pt(tform, {p1l.x, p1l.y});
+			test_point d = apply_transform_pt(tform, {p1r.x, p1r.y});
+
+			bool eraser = (cb1.type == 1);
+
+			// TODO: interpolate color/erase/alpha across quad
+			add_quad(quads,
+				a, b, c, d, zindex, (eraser ? cb1.a : 0.0f),
+				cb1.r, cb1.g, cb1.b, (eraser ? 0.0f : cb1.a),
+				0.5f, 0.5f);
+		}
+	}
+
+	// disks at points
+	for (size_t i = 0; i < N; ++i)
+	{
+		Vandalism::Brush cb = brush.modified(points[i].w);
+
+		float2 curr = {points[i].x, points[i].y};
+		float2 right = {0.5f * cb.diameter, 0.0f};
+		float2 up = {0.0, 0.5f * cb.diameter};
+		float2 bl = curr - right - up;
+		float2 br = curr + right - up;
+		float2 tl = curr - right + up;
+		float2 tr = curr + right + up;
+
+		test_point a = apply_transform_pt(tform, {bl.x, bl.y});
+		test_point b = apply_transform_pt(tform, {tl.x, tl.y});
+		test_point c = apply_transform_pt(tform, {tr.x, tr.y});
+		test_point d = apply_transform_pt(tform, {br.x, br.y});
+
+		bool eraser = (cb.type == 1);
+
+		add_quad(quads,
+			a, b, c, d, zindex, (eraser ? cb.a : 0.0f),
+			cb.r, cb.g, cb.b, (eraser ? 0.0f : cb.a),
+			0.0f, 1.0f);
+	}
+
+    size_t v1idx = quads.size();
+
+    for (size_t i = v0idx; i < v1idx; ++i)
     {
-        Vandalism::Brush cb = brush.modified(points[0].w);
-
-        float2 curr = {points[0].x, points[0].y};
-        float2 right = {0.5f * cb.diameter, 0.0f};
-        float2 up = {0.0, 0.5f * cb.diameter};
-        float2 bl = curr - right - up;
-        float2 br = curr + right - up;
-        float2 tl = curr - right + up;
-        float2 tr = curr + right + up;
-
-        test_point a = apply_transform_pt(tform, {bl.x, bl.y});
-        test_point b = apply_transform_pt(tform, {tl.x, tl.y});
-        test_point c = apply_transform_pt(tform, {tr.x, tr.y});
-        test_point d = apply_transform_pt(tform, {br.x, br.y});
-
-        bool eraser = (cb.type == 1);
-
-        add_quad(quads,
-                 a, b, c, d, zindex, (eraser ? cb.a : 0.0f),
-                 cb.r, cb.g, cb.b, (eraser ? 0.0f: cb.a),
-                 0.0f, 1.0f);
-    }
-
-    for (size_t i = 1; i < N; ++i)
-    {
-        float2 prev = {points[i-1].x, points[i-1].y};
-        float2 curr = {points[i].x, points[i].y};
-        float2 dir = curr - prev;
-
-        Vandalism::Brush cb0 = brush.modified(points[i-1].w);
-
-        float2 right = {0.5f * cb0.diameter, 0.0f};
-        float2 up = {0.0, 0.5f * cb0.diameter};
-        float2 bl = curr - right - up;
-        float2 br = curr + right - up;
-        float2 tl = curr - right + up;
-        float2 tr = curr + right + up;
-
-        test_point a0 = apply_transform_pt(tform, {bl.x, bl.y});
-        test_point b0 = apply_transform_pt(tform, {tl.x, tl.y});
-        test_point c0 = apply_transform_pt(tform, {tr.x, tr.y});
-        test_point d0 = apply_transform_pt(tform, {br.x, br.y});
-
-        bool eraser0 = (cb0.type == 1);
-
-        add_quad(quads,
-                 a0, b0, c0, d0, zindex, (eraser0 ? cb0.a : 0.0f),
-                 cb0.r, cb0.g, cb0.b, (eraser0 ? 0.0f: cb0.a),
-                 0.0f, 1.0f);
-
-        if (len(dir) > 0.001f)
-        {
-            Vandalism::Brush cb1 = brush.modified(points[i].w);
-
-            float2 side = perp(dir * (1.0f / len(dir)));
-
-            float2 side0 = 0.5f * cb0.diameter * side;
-            float2 side1 = 0.5f * cb1.diameter * side;
-
-            // x -ccw-> y
-            float2 p0l = prev + side0;
-            float2 p0r = prev - side0;
-            float2 p1l = curr + side1;
-            float2 p1r = curr - side1;
-
-            test_point a = apply_transform_pt(tform, {p0r.x, p0r.y});
-            test_point b = apply_transform_pt(tform, {p0l.x, p0l.y});
-            test_point c = apply_transform_pt(tform, {p1l.x, p1l.y});
-            test_point d = apply_transform_pt(tform, {p1r.x, p1r.y});
-
-            bool eraser = (cb1.type == 1);
-
-            // TODO: interpolate color/erase/alpha across quad
-            add_quad(quads,
-                     a, b, c, d, zindex, (eraser ? cb1.a : 0.0f),
-                     cb1.r, cb1.g, cb1.b, (eraser ? 0.0f : cb1.a),
-                     0.5f, 0.5f);
-        }
-    }
-
-    if (gui_fancy_brush)
-    {
-        size_t v1idx = quads.size();
-
-        for (size_t i = v0idx; i < v1idx; ++i)
-        {
-            quads[i].w = 0.0f;
-            quads.push_back(quads[i]);
-            quads.back().w = 1.0f;
-        }
+        quads.push_back(quads[i]);
+        quads.back().p = 1.0f;
     }
 }
 
@@ -658,7 +635,6 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::SliderFloat("eraser", &gui_eraser_alpha, 0.0f, 1.0f);
     ImGui::Separator();
     ImGui::Checkbox("pressure", &gui_fake_pressure);
-    ImGui::Checkbox("fancy", &gui_fancy_brush);
     ImGui::Separator();
     ImGui::Text("drawing");
     ImGui::Checkbox("simplify", &gui_draw_simplify);

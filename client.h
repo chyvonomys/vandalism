@@ -68,7 +68,7 @@ struct output_data
     struct Vertex
     {
         float x, y, z;
-        float u, v, e, w;
+        float u, v, e, p;
         float r, g, b, a;
     };
 
