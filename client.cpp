@@ -105,6 +105,9 @@ bool gui_mouse_occupied;
 bool gui_mouse_hover;
 bool gui_fake_pressure;
 bool gui_debug_smoothing;
+bool gui_debug_draw_rects;
+bool gui_debug_draw_disks;
+bool gui_debug_antialiasing;
 bool gui_draw_simplify;
 i32 gui_draw_smooth;
 i32 gui_present_smooth;
@@ -213,6 +216,10 @@ void setup(kernel_services *services)
     gui_fake_pressure = false;
     gui_debug_smoothing = false;
 
+    gui_debug_draw_disks = true;
+    gui_debug_draw_rects = true;
+    gui_debug_antialiasing = true;
+
     gui_draw_simplify = false;
     gui_draw_smooth = static_cast<i32>(Vandalism::NONE);
     gui_present_smooth = static_cast<i32>(Vandalism::NONE);
@@ -275,6 +282,7 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
 
     size_t v0idx = quads.size();
 
+    if (gui_debug_draw_rects)
 	// rectangles between points
 	for (size_t i = 1; i < N; ++i)
 	{
@@ -314,6 +322,7 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
 		}
 	}
 
+    if (gui_debug_draw_disks)
 	// disks at points
 	for (size_t i = 0; i < N; ++i)
 	{
@@ -346,6 +355,18 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
     {
         quads.push_back(quads[i]);
         quads.back().p = 1.0f;
+    }
+
+    size_t v2idx = quads.size();
+
+    if (gui_debug_antialiasing)
+    {
+        for (size_t i = v1idx; i < v2idx; ++i)
+        {
+            quads[i].r = 1.0f;
+            quads[i].g = 0.2f;
+            quads[i].b = 0.2f;
+        }
     }
 }
 
@@ -635,6 +656,9 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::SliderFloat("eraser", &gui_eraser_alpha, 0.0f, 1.0f);
     ImGui::Separator();
     ImGui::Checkbox("pressure", &gui_fake_pressure);
+    ImGui::Checkbox("rects", &gui_debug_draw_rects);
+    ImGui::Checkbox("disks", &gui_debug_draw_disks);
+    ImGui::Checkbox("antialiasing", &gui_debug_antialiasing);
     ImGui::Separator();
     ImGui::Text("drawing");
     ImGui::Checkbox("simplify", &gui_draw_simplify);
