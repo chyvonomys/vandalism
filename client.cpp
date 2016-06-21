@@ -730,6 +730,10 @@ void update_and_render(input_data *input, output_data *output)
         {
             ism->clear();
         }
+        if (ImGui::Button("Place image"))
+        {
+            ism->place_image(0, 1.0f, 1.0f);
+        }
         ImGui::SameLine();
         output->quit_flag = ImGui::Button("Quit");
     }
