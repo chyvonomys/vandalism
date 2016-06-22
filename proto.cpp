@@ -921,11 +921,15 @@ int main(int argc, char *argv[])
                               &input.windowWidthPt,
                               &input.windowHeightPt);
 
-            input.vpWidthPt = input.windowWidthPt - 2 * vpPaddingPt;
-            input.vpHeightPt = input.windowHeightPt - 2 * vpPaddingPt;
+            input.vpWidthPt = (input.windowWidthPt == 0 ? 0 :
+                input.windowWidthPt - 2 * vpPaddingPt);
+            input.vpHeightPt = (input.windowHeightPt == 0 ? 0 :
+                input.windowHeightPt - 2 * vpPaddingPt);
 
-            input.vpWidthPx = (input.windowWidthPx * input.vpWidthPt) / input.windowWidthPt;
-            input.vpHeightPx = (input.windowHeightPx * input.vpHeightPt) / input.windowHeightPt;
+            input.vpWidthPx = (input.windowWidthPt == 0 ? 0 :
+                (input.windowWidthPx * input.vpWidthPt) / input.windowWidthPt);
+            input.vpHeightPx = (input.windowHeightPt == 0 ? 0 :
+                (input.windowHeightPx * input.vpHeightPt) / input.windowHeightPt);
 
             input.vpWidthIn = input.vpWidthPt / monitorHorDPI;
             input.vpHeightIn = input.vpHeightPt / monitorVerDPI;
