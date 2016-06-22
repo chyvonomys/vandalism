@@ -1416,6 +1416,11 @@ void FSGrid::cleanup()
 
 void MeshPresenter::setup()
 {
+    // TODO: many fields are duplicated in each vertex
+    //       they are basically constant per stroke
+    //       maybe it makes sense to keep them elsewhere and pass stroke id
+    //       then do fetch in vertex shader
+    //       such fields are: basecolor, zoffset, alpha, eraser
     const char *vertex_src =
         "  #version 330 core                               \n"
         "  layout (location = 0) in vec3 i_msPosition;     \n"
