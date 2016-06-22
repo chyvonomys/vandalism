@@ -87,6 +87,17 @@ struct test_transition
     float b;
 };
 
+// TODO: refine this
+struct test_image
+{
+    size_t texid;
+    float tx;
+    float ty;
+    float xx;
+    float xy;
+    float yl;
+};
+
 const size_t NPOS = static_cast<size_t>(-1);
 
 struct test_view
@@ -94,10 +105,11 @@ struct test_view
     test_transition tr;
     size_t si0;
     size_t si1;
+    size_t img;
     size_t pin_index;
     test_box bbox;
-    test_view(const test_transition& t, size_t s0, size_t s1)
-        : tr(t), si0(s0), si1(s1), pin_index(NPOS)
+    test_view(const test_transition& t, size_t s0, size_t s1, size_t i = NPOS)
+        : tr(t), si0(s0), si1(s1), img(i), pin_index(NPOS)
     {}
 };
 
@@ -105,6 +117,7 @@ struct test_data
 {
     const test_point *points;
     const test_stroke *strokes;
+    const test_image *images;
     const test_view *views;
     size_t nviews;
 };

@@ -11,6 +11,7 @@ struct Vandalism
     std::vector<Point> points;
 
     typedef test_stroke Stroke;
+    typedef test_image Image;
 
     struct Brush
     {
@@ -31,6 +32,7 @@ struct Vandalism
         }
     };
 
+    std::vector<Image> images;
     std::vector<Stroke> strokes;
     std::vector<Brush> brushes;
 
@@ -166,7 +168,9 @@ struct Vandalism
         else
         {
             currentViewIdx = views.size();
-            views.push_back(test_view(tr, strokes.size(), strokes.size()));
+            views.push_back(test_view(tr,
+                                      strokes.size(), strokes.size(),
+                                      NPOS));
         }
     }
 
@@ -483,6 +487,24 @@ struct Vandalism
         common_done();
     }
 
+    void place_image(size_t imageId, float imageW, float imageH)
+    {
+        if (append_allowed())
+        {
+            currentViewIdx = views.size();
+            test_transition t = {TPAN, 0.0f, 0.0f};
+            views.push_back(test_view(t, strokes.size(), strokes.size(),
+                                      images.size()));
+            test_image i = {imageId,
+                            -0.5f * imageW, -0.5f * imageH,
+                            imageW, 0.0f,
+                            imageH};
+            images.push_back(i);
+        }
+
+        set_dirty();
+    }
+
     void common_done()
     {
         remove_alterations();
@@ -623,6 +645,7 @@ struct Vandalism
         {
             points.data(),
             strokes.data(),
+            images.data(),
             views.data(),
             views.size()
         };
@@ -636,6 +659,7 @@ struct Vandalism
         {
             currentPoints.data(),
             &currentStroke,
+            nullptr,
             nullptr,
             0
         };
