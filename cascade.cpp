@@ -585,10 +585,10 @@ void smooth_stroke_1(const test_point* input, size_t N,
         float2 p1 = {input[i+0].x, input[i+0].y};
         float2 p2 = {input[i+1].x, input[i+1].y};
         float2 p3 = {input[i+2].x, input[i+2].y};
-        float t0 = i-1;//input[i-1].w;
-        float t1 = i+0;//input[i+0].w;
-        float t2 = i+1;//input[i+1].w;
-        float t3 = i+2;//input[i+2].w;
+        float t0 = i-1.0f;//input[i-1].w;
+        float t1 = i+0.0f;//input[i+0].w;
+        float t2 = i+1.0f;//input[i+1].w;
+        float t3 = i+2.0f;//input[i+2].w;
         float2 m1 = tangent2(p0, t0, p1, t1, p2, t2);
         float2 m2 = tangent2(p1, t1, p2, t2, p3, t3);
 
@@ -608,9 +608,9 @@ void smooth_stroke_1(const test_point* input, size_t N,
         float2 p0 = {input[N-3].x, input[N-3].y};
         float2 p1 = {input[N-2].x, input[N-2].y};
         float2 p2 = {input[N-1].x, input[N-1].y};
-        float t0 = N-3;//input[N-3].t;
-        float t1 = N-2;//input[N-2].t;
-        float t2 = N-1;//input[N-1].t;
+        float t0 = N-3.0f;//input[N-3].t;
+        float t1 = N-2.0f;//input[N-2].t;
+        float t2 = N-1.0f;//input[N-1].t;
         float2 m1 = tangent2(p0, t0, p1, t1, p2, t2);
         float2 m2 = tangent(p1, t1, p2, t2);
 

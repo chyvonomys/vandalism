@@ -492,7 +492,7 @@ void update_and_render(input_data *input, output_data *output)
         output->bgmesh = bake_mesh;
         output->bgmeshCnt = idxCnt;
 
-        ::printf("update mesh: %lu visibles\n", s_visibles.size());
+        std::cout << "update mesh: " << s_visibles.size() << " visibles" << std::endl;
 
         viewsBuf->clear();
         for (u32 vi = 0; vi < bake_data.nviews; ++vi)

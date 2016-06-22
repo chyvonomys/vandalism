@@ -2,6 +2,7 @@
 #include <iterator>
 #include <fstream>
 #include <sstream>
+#include <iostream>
 #include "cascade.cpp"
 
 struct Vandalism
@@ -340,8 +341,7 @@ struct Vandalism
                                       currentPoints.size() - 1,
                                       simplified,
                                       0.1f * currentBrush.diameter);
-                ::printf("simplify %lu -> %lu\n",
-                         currentPoints.size(), simplified.size());
+                std::cout << "simplify " << currentPoints.size() << " -> " << simplified.size() << std::endl;
                 currentPoints = simplified;
             }
 
