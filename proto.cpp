@@ -301,24 +301,6 @@ struct QuadIndexes
     GLuint m_ibuf;
 };
 
-struct BufferPresenter
-{
-    void setup(FSQuad *quad, u32 width, u32 height);
-    void draw(const u8 *pixels, float pX, float pY);
-    void cleanup();
-
-    GLuint m_pbo[2];
-    GLuint m_tex;
-    FSQuad *m_quad;
-    GLuint m_fullscreenProgram;
-    GLint m_scaleLoc;
-
-    u32 m_width;
-    u32 m_height;
-
-    u32 m_writeIdx;
-};
-
 struct FSTexturePresenter
 {
     void setup(FSQuad *quad);
@@ -1090,114 +1072,6 @@ int main(int argc, char *argv[])
     glfwTerminate();
 
     return 0;
-}
-
-void BufferPresenter::setup(FSQuad *quad, u32 width, u32 height)
-{
-    m_width = width;
-    m_height = height;
-
-    m_quad = quad;
-
-    const char *vertex_src =
-        "  #version 330 core                                     \n"
-        "  uniform vec2 u_scale;                                 \n"
-        "  out vec2 l_textureUV;                                 \n"
-        "  void main()                                           \n"
-        "  {                                                     \n"
-        "      vec2 uv = vec2(gl_VertexID % 2, gl_VertexID / 2); \n"
-        "      gl_Position.xy = 2.0f * uv - 1.0f;                \n"
-        "      gl_Position.zw = vec2(0.0f, 1.0f);                \n"
-        "      l_textureUV.x = u_scale.x * uv.x;                 \n"
-        "      l_textureUV.y = u_scale.y * (1.0f - uv.y);        \n"
-        "  }                                                     \n";
-
-    const char *fragment_src =
-        "  #version 330 core                                 \n"
-        "  uniform sampler2D sampler;                        \n"
-        "  in vec2 l_textureUV;                              \n"
-        "  layout (location = 0) out vec4 o_color;           \n"
-        "  void main()                                       \n"
-        "  {                                                 \n"
-        "      o_color = texture(sampler, l_textureUV);      \n"
-        "  }                                                 \n";
-
-    m_fullscreenProgram = ::create_program(vertex_src, nullptr, fragment_src);
-    m_scaleLoc = glGetUniformLocation(m_fullscreenProgram, "u_scale");
-
-    
-    glGenBuffers(2, m_pbo);
-    for (u32 i = 0; i < 2; ++i)
-    {
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo[i]);
-        glBufferData(GL_PIXEL_UNPACK_BUFFER, 4 * m_width * m_height,
-                     nullptr, GL_DYNAMIC_DRAW);
-
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-    }
-
-    glGenTextures(1, &m_tex);
-    glBindTexture(GL_TEXTURE_2D, m_tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-                 static_cast<GLsizei>(m_width),
-                 static_cast<GLsizei>(m_height),
-                 0, GL_BGRA, GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glBindTexture(GL_TEXTURE_2D, 0);
-
-    m_writeIdx = 0;
-}
-
-void BufferPresenter::cleanup()
-{
-    glDeleteTextures(1, &m_tex);
-    glDeleteBuffers(2, m_pbo);
-    glDeleteProgram(m_fullscreenProgram);
-}
-
-void BufferPresenter::draw(const u8* pixels, float portionX, float portionY)
-{
-    // PBO -dma-> texture --------------------------------------------------
-
-    // tell texture to use pixels from `read` pixel buffer
-    // written on previous frame
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo[(m_writeIdx + 1) % 2]);
-
-    glBindTexture(GL_TEXTURE_2D, m_tex);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
-                    static_cast<GLsizei>(m_width),
-                    static_cast<GLsizei>(m_height),
-                    GL_BGRA, GL_UNSIGNED_BYTE, 0);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-
-    // PBO update ----------------------------------------------------------
-
-    // update `write` pixel buffer
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo[m_writeIdx]);
-    u8 *mappedPixels = static_cast<u8*>(glMapBuffer(GL_PIXEL_UNPACK_BUFFER,
-                                                          GL_WRITE_ONLY));
-    if (mappedPixels)
-    {
-        ::memcpy(mappedPixels, pixels, 4 * m_width * m_height);
-        glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-    }
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-
-    m_writeIdx = (m_writeIdx + 1) % 2;
-            
-    // drawcall ------------------------------------------------------------
-
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glUseProgram(m_fullscreenProgram);
-    glUniform2f(m_scaleLoc, portionX, portionY);
-    glBindTexture(GL_TEXTURE_2D, m_tex);
-    m_quad->draw();
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glUseProgram(0);
-    glDisable(GL_BLEND);
 }
 
 void RenderTarget::setup(u32 width, u32 height)
