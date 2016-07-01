@@ -68,7 +68,7 @@ struct output_data
     struct Vertex
     {
         float x, y, z;
-        float u, v, e, p;
+        float u, v, e;
         float r, g, b, a;
     };
 
@@ -97,6 +97,8 @@ struct output_data
     float grid_fg_color[3];
     float grid_translation[2];
     float grid_zoom;
+
+    float zbandwidth;
 
     struct drawcall
     {

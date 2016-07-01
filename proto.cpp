@@ -368,7 +368,7 @@ struct RenderTarget
     u32 m_height;
 };
 
-struct MeshPresenter
+struct MarkerBatchTech
 {
     void setup();
     void cleanup();
@@ -470,7 +470,7 @@ VertexLayoutN<3> ui_vertex_layout =
 VertexLayoutN<3> stroke_vertex_layout =
 {
     {"msPosition", 0, 3, 4, GL_FLOAT, false},
-    {"uvep",       1, 4, 4, GL_FLOAT, false},
+    {"uve",        1, 3, 4, GL_FLOAT, false},
     {"color",      2, 4, 4, GL_FLOAT, false}
 };
 
@@ -814,7 +814,7 @@ int main(int argc, char *argv[])
         RenderTarget currRT;
         currRT.setup(rtWidthPx, rtHeightPx);
         
-        MeshPresenter render;
+        MarkerBatchTech render;
         render.setup();
 
         UIPresenter uirender;
@@ -1414,7 +1414,7 @@ void FSGrid::cleanup()
     glDeleteProgram(m_fullscreenProgram);
 }
 
-void MeshPresenter::setup()
+void MarkerBatchTech::setup()
 {
     // TODO: many fields are duplicated in each vertex
     //       they are basically constant per stroke
@@ -1424,17 +1424,18 @@ void MeshPresenter::setup()
     const char *vertex_src =
         "  #version 330 core                               \n"
         "  layout (location = 0) in vec3 i_msPosition;     \n"
-        "  layout (location = 1) in vec4 i_uvep;           \n"
+        "  layout (location = 1) in vec3 i_uve;            \n"
         "  layout (location = 2) in vec4 i_color;          \n"
         "  uniform vec2 u_scale;                           \n"
-        "  out vec4 l_uvep;                                \n"
+        "  out vec3 l_uve;                                 \n"
         "  out vec4 l_color;                               \n"
         "  void main()                                     \n"
         "  {                                               \n"
         "      gl_Position.xy = i_msPosition.xy * u_scale; \n"
-        "      gl_Position.z = i_msPosition.z;             \n"
+        "      float zindex = i_msPosition.z;              \n"
+        "      gl_Position.z = 2.0f * zindex - 1.0f;       \n"
         "      gl_Position.w = 1.0f;                       \n"
-        "      l_uvep = i_uvep;                            \n"
+        "      l_uve = i_uve;                              \n"
         "      l_color = i_color;                          \n"
         "  }                                               \n";
 
@@ -1442,18 +1443,14 @@ void MeshPresenter::setup()
         "  #version 330 core                                        \n"
         "  layout (location = 0) out vec4 o_color;                  \n"
         "  layout (location = 1) out vec4 o_color1;                 \n"
-        "  in vec4 l_uvep;                                          \n"
+        "  in vec3 l_uve;                                           \n"
         "  in vec4 l_color;                                         \n"
         "  void main()                                              \n"
         "  {                                                        \n"
-        "      float rho = length(l_uvep.xy - vec2(0.5f, 0.5f));    \n"
-        "      float pass = l_uvep.w;                               \n"
-        "      float delta = fwidth(rho);                           \n"
-        "      float radius = mix(0.5f - delta, 0.5f, pass);        \n"
-        "      if (rho > radius) discard;                           \n"
-        "      float s = 1.0f - smoothstep(0.5f - delta, 0.5f, rho);\n"
-        "      float A = l_color.a * s;                             \n"
-        "      float E = l_uvep.z * s;                              \n"
+        "      float rho = length(l_uve.xy - vec2(0.5f, 0.5f));     \n"
+        "      if (rho > 0.5f) discard;                             \n"
+        "      float A = l_color.a;                                 \n"
+        "      float E = l_uve.z;                                   \n"
         "      float SRCa = (1.0f - A) * E;                         \n"
         "      float SRC1a = (1.0f - A) * (1.0f - E);               \n"
         "      o_color.rgb = l_color.rgb * A;                       \n"
@@ -1465,13 +1462,13 @@ void MeshPresenter::setup()
     m_scaleLoc = glGetUniformLocation(m_program, "u_scale");
 }
 
-void MeshPresenter::cleanup()
+void MarkerBatchTech::cleanup()
 {
     glDeleteProgram(m_program);
 }
 
-void MeshPresenter::draw(kernel_services::MeshID mi, u32 offset, u32 count,
-                         float scaleX, float scaleY)
+void MarkerBatchTech::draw(kernel_services::MeshID mi, u32 offset, u32 count,
+                           float scaleX, float scaleY)
 {
     if (count == 0)
     {
@@ -1498,7 +1495,6 @@ void MeshPresenter::draw(kernel_services::MeshID mi, u32 offset, u32 count,
     glDisable(GL_BLEND);
     glDisable(GL_DEPTH_TEST);
 }
-
 
 // TODO: make this more generic by introducing scale translate
 // TODO: then it will be a reusable piece, refactor

@@ -107,7 +107,6 @@ bool gui_fake_pressure;
 bool gui_debug_smoothing;
 bool gui_debug_draw_rects;
 bool gui_debug_draw_disks;
-bool gui_debug_antialiasing;
 bool gui_draw_simplify;
 i32 gui_draw_smooth;
 i32 gui_present_smooth;
@@ -122,7 +121,8 @@ const i32 cfg_min_brush_diameter_units = 1;
 const i32 cfg_max_brush_diameter_units = 64;
 const i32 cfg_def_brush_diameter_units = 4;
 const float cfg_brush_diameter_inches_per_unit = 1.0f / 64.0f;
-const float cfg_depth_step = 1.0f / 10000.0f;
+const i32 cfg_max_strokes_per_buffer = 8192;
+const float cfg_depth_step = 1.0f / cfg_max_strokes_per_buffer;
 const char* cfg_font_path = "Roboto_Condensed/RobotoCondensed-Regular.ttf";
 const char* cfg_default_file = "default.ism";
 
@@ -218,7 +218,6 @@ void setup(kernel_services *services)
 
     gui_debug_draw_disks = true;
     gui_debug_draw_rects = true;
-    gui_debug_antialiasing = true;
 
     gui_draw_simplify = false;
     gui_draw_smooth = static_cast<i32>(Vandalism::NONE);
@@ -263,7 +262,7 @@ void add_quad(std::vector<output_data::Vertex> &quads,
 
     v.z = zindex;
     v.e = ec;
-    v.r = rc; v.g = gc; v.b = bc; v.a = ac; v.p = 0.0f;
+    v.r = rc; v.g = gc; v.b = bc; v.a = ac;
 
     v.x = a.x; v.y = a.y; v.u = u0; v.v = 0.0f; quads.push_back(v);
     v.x = b.x; v.y = b.y; v.u = u0; v.v = 1.0f; quads.push_back(v);
@@ -278,9 +277,7 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
                 const Vandalism::Brush& brush,
                 float depthStep)
 {
-    float zindex = depthStep * si;
-
-    size_t v0idx = quads.size();
+    float zindex = depthStep * (si + 1);
 
     if (gui_debug_draw_rects)
 	// rectangles between points
@@ -348,26 +345,6 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
 			cb.r, cb.g, cb.b, (eraser ? 0.0f : cb.a),
 			0.0f, 1.0f);
 	}
-
-    size_t v1idx = quads.size();
-
-    for (size_t i = v0idx; i < v1idx; ++i)
-    {
-        quads.push_back(quads[i]);
-        quads.back().p = 1.0f;
-    }
-
-    size_t v2idx = quads.size();
-
-    if (gui_debug_antialiasing)
-    {
-        for (size_t i = v1idx; i < v2idx; ++i)
-        {
-            quads[i].r = 1.0f;
-            quads[i].g = 0.2f;
-            quads[i].b = 0.2f;
-        }
-    }
 }
 
 void stroke_to_quads(const test_point* begin, const test_point* end,
@@ -532,6 +509,8 @@ void update_and_render(input_data *input, output_data *output)
     output->grid_fg_color[1] = gui_grid_fg_color[1];
     output->grid_fg_color[2] = gui_grid_fg_color[2];
 
+    output->zbandwidth = cfg_depth_step;
+
     if (ism->currentChanged)
     {
         // TODO: flag processed, improve this
@@ -658,7 +637,6 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::Checkbox("pressure", &gui_fake_pressure);
     ImGui::Checkbox("rects", &gui_debug_draw_rects);
     ImGui::Checkbox("disks", &gui_debug_draw_disks);
-    ImGui::Checkbox("antialiasing", &gui_debug_antialiasing);
     ImGui::Separator();
     ImGui::Text("drawing");
     ImGui::Checkbox("simplify", &gui_draw_simplify);
