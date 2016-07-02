@@ -100,16 +100,24 @@ struct output_data
 
     float zbandwidth;
 
+    enum techid
+    {
+        UI,
+        IMAGE,
+        STROKES
+    };
+
     struct drawcall
     {
+        techid id;
         kernel_services::TexID texture_id;
         kernel_services::MeshID mesh_id;
         u32 offset;
         u32 count;
     };
 
-    drawcall *ui_drawcalls;
-    u32 ui_drawcall_cnt;
+    drawcall *drawcalls;
+    u32 drawcall_cnt;
 };
 
 void update_and_render(input_data *input, output_data *output);

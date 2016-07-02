@@ -1049,14 +1049,16 @@ int main(int argc, char *argv[])
                     input.vpWidthIn, input.vpHeightIn,
                     input.rtWidthIn, input.rtHeightIn);
 
-            for (u32 i = 0; i < output.ui_drawcall_cnt; ++i)
+            for (u32 i = 0; i < output.drawcall_cnt; ++i)
             {
-                uirender.draw(output.ui_drawcalls[i].texture_id,
-                              output.ui_drawcalls[i].mesh_id,
-                              output.ui_drawcalls[i].offset,
-                              output.ui_drawcalls[i].count,
-							  static_cast<float>(input.vpWidthPt),
-							  static_cast<float>(input.vpHeightPt));
+                const auto &dc = output.drawcalls[i];
+                if (dc.id == output_data::UI)
+                {
+                    uirender.draw(dc.texture_id, dc.mesh_id,
+                                  dc.offset, dc.count,
+                                  static_cast<float>(input.vpWidthPt),
+                                  static_cast<float>(input.vpHeightPt));
+                }
             }
 
             if (gamma_enabled)

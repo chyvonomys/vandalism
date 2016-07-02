@@ -21,13 +21,12 @@
 #pragma warning(pop)
 
 kernel_services *current_services = 0;
-output_data *current_output = 0;
 
 kernel_services::TexID font_texture_id;
 
 std::vector<kernel_services::MeshID> ui_meshes;
-std::vector<output_data::drawcall> ui_drawcalls;
 std::vector<kernel_services::TexID> images;
+std::vector<output_data::drawcall> drawcalls;
 
 kernel_services::MeshID lines_mesh;
 kernel_services::MeshID bake_mesh;
@@ -82,8 +81,9 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
                 drawcall.mesh_id = ui_meshes[li];
                 drawcall.offset = idxOffs;
                 drawcall.count = idxCnt;
+                drawcall.id = output_data::UI;
 
-                ui_drawcalls.push_back(drawcall);
+                drawcalls.push_back(drawcall);
 
                 /*
                 float xmin = cmd.ClipRect.x;
@@ -97,8 +97,6 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
         }
     }
 
-    current_output->ui_drawcalls = ui_drawcalls.data();
-    current_output->ui_drawcall_cnt = static_cast<u32>(ui_drawcalls.size());
 }
 
 #include "vandalism.cpp"
@@ -251,7 +249,7 @@ void cleanup()
     current_services->delete_mesh(lines_mesh);
 
     ui_meshes.clear();
-    ui_drawcalls.clear();
+    drawcalls.clear();
 
     current_services->delete_texture(font_texture_id);
 
@@ -584,15 +582,16 @@ void update_and_render(input_data *input, output_data *output)
 
     current_services->update_mesh_vb(lines_mesh, lines_vb.data(), 8);
 
-    ui_drawcalls.clear();
+    drawcalls.clear();
 
     output_data::drawcall lines_drawcall;
     lines_drawcall.texture_id = font_texture_id;
     lines_drawcall.mesh_id = lines_mesh;
     lines_drawcall.offset = 0;
     lines_drawcall.count = 12;
+    lines_drawcall.id = output_data::UI;
 
-    ui_drawcalls.push_back(lines_drawcall);
+    drawcalls.push_back(lines_drawcall);
 
     // Draw ImGui --------------------------------------------------------------
 
@@ -819,10 +818,11 @@ void update_and_render(input_data *input, output_data *output)
                 input->windowPosXPt, input->windowPosYPt);
 
     ImGui::End();
-
-    current_output = output;
     ImGui::Render();
 
     gui_mouse_occupied = ImGui::IsAnyItemActive();
     gui_mouse_hover = ImGui::IsMouseHoveringAnyWindow();
+
+    output->drawcalls = drawcalls.data();
+    output->drawcall_cnt = static_cast<u32>(drawcalls.size());
 }
