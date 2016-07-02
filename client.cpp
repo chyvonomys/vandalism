@@ -405,8 +405,8 @@ void stroke_to_quads(const test_point* begin, const test_point* end,
 void update_and_render(input_data *input, output_data *output)
 {
     output->quit_flag = false;
-    output->bake_flag = false;
-    output->change_flag = false;
+
+    drawcalls.clear();
 
     float mxnorm = input->vpMouseXPt / input->vpWidthPt - 0.5f;
     float mynorm = input->vpMouseYPt / input->vpHeightPt - 0.5f;
@@ -478,9 +478,15 @@ void update_and_render(input_data *input, output_data *output)
 
         current_services->update_mesh_vb(bake_mesh,
                                          bake_quads.data(), vtxCnt);
-        output->bake_flag = true;
-        output->bgmesh = bake_mesh;
-        output->bgmeshCnt = idxCnt;
+
+        output_data::drawcall dc;
+        dc.id = output_data::BAKEBATCH;
+        dc.mesh_id = bake_mesh;
+        dc.texture_id = 0; // not used
+        dc.offset = 0;
+        dc.count = idxCnt;
+        
+        drawcalls.push_back(dc);
 
         std::cout << "update mesh: " << s_visibles.size() << " visibles" << std::endl;
 
@@ -551,10 +557,15 @@ void update_and_render(input_data *input, output_data *output)
 
         current_services->update_mesh_vb(curr_mesh,
                                          curr_quads.data(), vtxCnt);
-        output->fgmesh = curr_mesh;
-        output->fgmeshCnt = idxCnt;
 
-        output->change_flag = true;
+        output_data::drawcall dc;
+        dc.id = output_data::CURRENTSTROKE;
+        dc.mesh_id = curr_mesh;
+        dc.texture_id = 0; // not used
+        dc.offset = 0;
+        dc.count = idxCnt;
+
+        drawcalls.push_back(dc);
     }
 
     // Draw UI -----------------------------------------------------------------
@@ -581,8 +592,6 @@ void update_and_render(input_data *input, output_data *output)
     vtx.pos = ImVec2(fXPx-0.5f, fYPx+5.0f); lines_vb.push_back(vtx);
 
     current_services->update_mesh_vb(lines_mesh, lines_vb.data(), 8);
-
-    drawcalls.clear();
 
     output_data::drawcall lines_drawcall;
     lines_drawcall.texture_id = font_texture_id;
@@ -791,15 +800,13 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::Text("ism points: %lu", ism->points.size());
     ImGui::Text("ism brushes: %lu", ism->brushes.size());
 
-    ImGui::Text("bake_quads v: (%lu/%lu) %d",
+    ImGui::Text("bake_quads v: (%lu/%lu)",
                 bake_quads.size(),
-                bake_quads.capacity(),
-                output->bake_flag);
+                bake_quads.capacity());
 
-    ImGui::Text("curr_quads v: (%lu/%lu) %d",
+    ImGui::Text("curr_quads v: (%lu/%lu)",
                 curr_quads.size(),
-                curr_quads.capacity(),
-                output->change_flag);
+                curr_quads.capacity());
 
     ImGui::Text("mode: %d", ism->currentMode);
 

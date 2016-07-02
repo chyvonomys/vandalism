@@ -72,14 +72,7 @@ struct output_data
         float r, g, b, a;
     };
 
-    bool bake_flag;
-    bool change_flag;
     bool quit_flag;
-
-    kernel_services::MeshID fgmesh;
-    kernel_services::MeshID bgmesh;
-    u32 fgmeshCnt;
-    u32 bgmeshCnt;
 
     // baked texture quad manipulations
     float preTranslateX;
@@ -104,7 +97,8 @@ struct output_data
     {
         UI,
         IMAGE,
-        STROKES
+        BAKEBATCH,
+        CURRENTSTROKE
     };
 
     struct drawcall

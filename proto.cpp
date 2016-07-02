@@ -989,17 +989,42 @@ int main(int argc, char *argv[])
                 break;
             }
 
-            if (output.bake_flag)
+            bool has_anything_to_bake = false;
+            for (u32 i = 0; i < output.drawcall_cnt; ++i)
             {
-                output.bake_flag = false;
+                if (output.drawcalls[i].id == output_data::BAKEBATCH ||
+                    output.drawcalls[i].id == output_data::IMAGE)
+                {
+                    has_anything_to_bake = true;
+                    break;
+                }
+            }
 
+            if (has_anything_to_bake)
+            {
                 bakeRTMS.begin_receive();
                 glClearColor(0.0, 0.0, 0.0, 1.0);
                 glClearDepth(0.0);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-                render.draw(output.bgmesh, 0, output.bgmeshCnt,
-                            2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
+                for (u32 i = 0; i < output.drawcall_cnt; ++i)
+                {
+                    const auto &dc = output.drawcalls[i];
+                    if (dc.id == output_data::BAKEBATCH)
+                    {
+                        render.draw(dc.mesh_id, dc.offset, dc.count,
+                                    2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
+                    }
+                    else if (dc.id == output_data::IMAGE)
+                    {
+                        fs.draw(dc.texture_id, GL_ONE, GL_ZERO,
+                            0.0f, 0.0f,
+                            0.0f, 0.0f,
+                            1.0f, 0.0f,
+                            input.rtWidthIn, input.rtHeightIn,
+                            input.rtWidthIn, input.rtHeightIn);
+                    }
+                }
                 bakeRTMS.end_receive();
 
                 bakeRT.begin_receive();
@@ -1007,24 +1032,39 @@ int main(int argc, char *argv[])
                 bakeRT.end_receive();
             }
 
-            if (output.change_flag)
+            bool has_current_stroke = false;
+            for (u32 i = 0; i < output.drawcall_cnt; ++i)
             {
-                output.change_flag = false;
+                if (output.drawcalls[i].id == output_data::CURRENTSTROKE)
+                {
+                    has_current_stroke = true;
+                    break;
+                }
+            }
 
+            if (has_current_stroke)
+            {
                 currRT.begin_receive();
                 glClearColor(0.0, 0.0, 0.0, 1.0);
                 glClearDepth(0.0);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
                 fs.draw(bakeRT.m_tex, GL_ONE, GL_ZERO,
-                        output.preTranslateX, output.preTranslateY,
-                        output.postTranslateX, output.postTranslateY,
-                        output.scale, output.rotate,
-                        input.rtWidthIn, input.rtHeightIn,
-                        input.rtWidthIn, input.rtHeightIn);
+                    output.preTranslateX, output.preTranslateY,
+                    output.postTranslateX, output.postTranslateY,
+                    output.scale, output.rotate,
+                    input.rtWidthIn, input.rtHeightIn,
+                    input.rtWidthIn, input.rtHeightIn);
 
-                render.draw(output.fgmesh, 0, output.fgmeshCnt,
-                            2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
+                for (u32 i = 0; i < output.drawcall_cnt; ++i)
+                {
+                    const auto &dc = output.drawcalls[i];
+                    if (dc.id == output_data::CURRENTSTROKE)
+                    {
+                        render.draw(dc.mesh_id, dc.offset, dc.count,
+                                    2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
+                    }
+                }
                 currRT.end_receive();
             }
 
