@@ -12,6 +12,14 @@
 #include "imgui/imgui.h"
 #endif
 
+#define STB_IMAGE_IMPLEMENTATION
+#pragma warning(push)
+#pragma warning(disable: 4242)
+#pragma warning(disable: 4244)
+#pragma warning(disable: 4365)
+#include "stb_image.h"
+#pragma warning(pop)
+
 kernel_services *current_services = 0;
 output_data *current_output = 0;
 
@@ -19,6 +27,7 @@ kernel_services::TexID font_texture_id;
 
 std::vector<kernel_services::MeshID> ui_meshes;
 std::vector<output_data::drawcall> ui_drawcalls;
+std::vector<kernel_services::TexID> images;
 
 kernel_services::MeshID lines_mesh;
 kernel_services::MeshID bake_mesh;
@@ -124,6 +133,7 @@ const float cfg_brush_diameter_inches_per_unit = 1.0f / 64.0f;
 const i32 cfg_max_strokes_per_buffer = 8192;
 const float cfg_depth_step = 1.0f / cfg_max_strokes_per_buffer;
 const char* cfg_font_path = "Roboto_Condensed/RobotoCondensed-Regular.ttf";
+const char* cfg_default_image_file = "default_image.jpg";
 const char* cfg_default_file = "default.ism";
 
 ImGuiTextBuffer *viewsBuf;
@@ -228,7 +238,7 @@ void setup(kernel_services *services)
 
 void cleanup()
 {
-    ism->cleanup();
+    ism->clear();
     delete ism;
 
     for (size_t i = 0; i < ui_meshes.size(); ++i)
@@ -244,6 +254,11 @@ void cleanup()
     ui_drawcalls.clear();
 
     current_services->delete_texture(font_texture_id);
+
+    for (size_t i = 0; i < images.size(); ++i)
+    {
+        current_services->delete_texture(images[i]);
+    }
 
     delete viewsBuf;
 
@@ -482,10 +497,14 @@ void update_and_render(input_data *input, output_data *output)
 
             bool isPinned = (view.pin_index != NPOS);
             bool isCurrent = (vi == ism->currentViewIdx);
-            viewsBuf->append("%c %c %d: %s  %f/%f  (%ld..%ld)\n",
+            viewsBuf->append("%c %c %d: %s  %f/%f  (%ld..%ld)",
                              (isCurrent ? '>' : ' '), (isPinned ? '*' : ' '),
                              vi, typestr, view.tr.a, view.tr.b,
                              view.si0, view.si1);
+            if (view.img == NPOS)
+                viewsBuf->append("\n");
+            else
+                viewsBuf->append(" i:%ld\n", view.img);
         }
         scrollViewsDown = true;
     }
@@ -707,10 +726,24 @@ void update_and_render(input_data *input, output_data *output)
         if (ImGui::Button("Clear"))
         {
             ism->clear();
+            // TODO: clear any created resources! (textures, buffers)
         }
         if (ImGui::Button("Place image"))
         {
-            ism->place_image(0, 1.0f, 1.0f);
+            if (current_services->check_file(cfg_default_image_file))
+            {
+                i32 image_w, image_h, image_comp;
+                u8 *image_data = stbi_load(cfg_default_image_file, &image_w, &image_h, &image_comp, 4);
+                if (image_comp > 0 && image_w > 0 && image_h > 0 && image_data != nullptr)
+                {
+                    kernel_services::TexID imageTex = current_services->create_texture(static_cast<u32>(image_w), static_cast<u32>(image_h), 4);
+                    current_services->update_texture(imageTex, image_data);
+                    stbi_image_free(image_data);
+                    size_t imageIdx = images.size();
+                    images.push_back(imageTex);
+                    ism->place_image(imageIdx, 1.0f, 1.0f);
+                }
+            }
         }
         ImGui::SameLine();
         output->quit_flag = ImGui::Button("Quit");

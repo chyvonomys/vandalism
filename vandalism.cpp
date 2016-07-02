@@ -625,10 +625,6 @@ struct Vandalism
         set_dirty();
     }
 
-    void cleanup()
-    {
-    }
-
     const Brush& get_current_brush() const
     {
         return currentBrush;
@@ -972,6 +968,7 @@ struct Vandalism
         strokes.clear();
         points.clear();
         pins.clear();
+        images.clear();
 
         setup_default_view();
 
