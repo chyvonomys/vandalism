@@ -92,6 +92,7 @@ LOAD(GLGENTEXTURES, glGenTextures)
 LOAD(GLDELETETEXTURES, glDeleteTextures)
 LOAD(GLBINDTEXTURE, glBindTexture)
 LOAD(GLTEXIMAGE2D, glTexImage2D)
+LOAD(GLTEXIMAGE2DMULTISAMPLE, glTexImage2DMultisample)
 LOAD(GLTEXSUBIMAGE2D, glTexSubImage2D)
 LOAD(GLTEXPARAMETERI, glTexParameteri)
 
@@ -100,10 +101,12 @@ LOAD(GLDELETEFRAMEBUFFERS, glDeleteFramebuffers)
 LOAD(GLGENRENDERBUFFERS, glGenRenderbuffers)
 LOAD(GLDELETERENDERBUFFERS, glDeleteRenderbuffers)
 LOAD(GLBINDFRAMEBUFFER, glBindFramebuffer)
+LOAD(GLBLITFRAMEBUFFER, glBlitFramebuffer)
 LOAD(GLBINDRENDERBUFFER, glBindRenderbuffer)
 LOAD(GLCHECKFRAMEBUFFERSTATUS, glCheckFramebufferStatus)
 LOAD(GLFRAMEBUFFERTEXTURE, glFramebufferTexture)
 LOAD(GLRENDERBUFFERSTORAGE, glRenderbufferStorage)
+LOAD(GLRENDERBUFFERSTORAGEMULTISAMPLE, glRenderbufferStorageMultisample)
 LOAD(GLFRAMEBUFFERRENDERBUFFER, glFramebufferRenderbuffer)
 
 LOAD(GLDEPTHFUNC, glDepthFunc)
@@ -339,8 +342,26 @@ struct RenderTarget
     void setup(u32 width, u32 height);
     void cleanup();
 
-    void before();
-    void after();
+    void begin_receive();
+    void end_receive();
+
+    GLuint m_fbo;
+    GLuint m_depth_rbo;
+    GLuint m_tex;
+
+    u32 m_width;
+    u32 m_height;
+};
+
+struct RenderTargetMS
+{
+    void setup(u32 width, u32 height);
+    void cleanup();
+
+    void begin_receive();
+    void end_receive();
+
+    void resolve();
 
     GLuint m_fbo;
     GLuint m_depth_rbo;
@@ -790,12 +811,15 @@ int main(int argc, char *argv[])
         FSTexturePresenter fs;
         fs.setup(&quad);
 
+        RenderTargetMS bakeRTMS;
+        bakeRTMS.setup(rtWidthPx, rtHeightPx);
+
         RenderTarget bakeRT;
         bakeRT.setup(rtWidthPx, rtHeightPx);
 
         RenderTarget currRT;
         currRT.setup(rtWidthPx, rtHeightPx);
-        
+
         MarkerBatchTech render;
         render.setup();
 
@@ -969,21 +993,25 @@ int main(int argc, char *argv[])
             {
                 output.bake_flag = false;
 
-                bakeRT.before();
+                bakeRTMS.begin_receive();
                 glClearColor(0.0, 0.0, 0.0, 1.0);
                 glClearDepth(0.0);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
                 render.draw(output.bgmesh, 0, output.bgmeshCnt,
                             2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
-                bakeRT.after();
+                bakeRTMS.end_receive();
+
+                bakeRT.begin_receive();
+                bakeRTMS.resolve();
+                bakeRT.end_receive();
             }
 
             if (output.change_flag)
             {
                 output.change_flag = false;
 
-                currRT.before();
+                currRT.begin_receive();
                 glClearColor(0.0, 0.0, 0.0, 1.0);
                 glClearDepth(0.0);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -997,7 +1025,7 @@ int main(int argc, char *argv[])
 
                 render.draw(output.fgmesh, 0, output.fgmeshCnt,
                             2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
-                currRT.after();
+                currRT.end_receive();
             }
 
             if (gamma_enabled)
@@ -1119,21 +1147,95 @@ void RenderTarget::setup(u32 width, u32 height)
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void RenderTarget::before()
+void RenderTarget::begin_receive()
 {
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_fbo);
     glViewport(0, 0,
                static_cast<GLsizei>(m_width),
                static_cast<GLsizei>(m_height));
-
 }
 
-void RenderTarget::after()
+void RenderTarget::end_receive()
 {
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 }
 
 void RenderTarget::cleanup()
+{
+    glDeleteFramebuffers(1, &m_fbo);
+    glDeleteRenderbuffers(1, &m_depth_rbo);
+    glDeleteTextures(1, &m_tex);
+}
+
+
+void RenderTargetMS::setup(u32 width, u32 height)
+{
+    m_width = width;
+    m_height = height;
+
+    glGenTextures(1, &m_tex);
+
+    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, m_tex);
+    {
+        glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 4, GL_RGBA,
+                                static_cast<GLsizei>(m_width),
+                                static_cast<GLsizei>(m_height),
+                                true);
+    }
+    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
+
+    glGenRenderbuffers(1, &m_depth_rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, m_depth_rbo);
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, 4, GL_DEPTH_COMPONENT24,
+                                     static_cast<GLsizei>(m_width),
+                                     static_cast<GLsizei>(m_height));
+
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+    glGenFramebuffers(1, &m_fbo);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
+    {
+        glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, m_tex, 0);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                                  GL_RENDERBUFFER, m_depth_rbo);
+
+        GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        bool ok = (status == GL_FRAMEBUFFER_COMPLETE);
+        if (!ok)
+        {
+            ::printf("!! framebuffer incomplete\n");
+        }
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void RenderTargetMS::begin_receive()
+{
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_fbo);
+    glViewport(0, 0,
+               static_cast<GLsizei>(m_width),
+               static_cast<GLsizei>(m_height));
+}
+
+void RenderTargetMS::end_receive()
+{
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+}
+
+void RenderTargetMS::resolve()
+{
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, m_fbo);
+    // TODO: receiving side should have the same dimensions
+    GLint w = static_cast<GLint>(m_width);
+    GLint h = static_cast<GLint>(m_height);
+    glBlitFramebuffer(0, 0, w, h,
+                      0, 0, w, h,
+                      GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+}
+
+void RenderTargetMS::cleanup()
 {
     glDeleteFramebuffers(1, &m_fbo);
     glDeleteRenderbuffers(1, &m_depth_rbo);
