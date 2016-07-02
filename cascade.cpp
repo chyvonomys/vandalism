@@ -124,6 +124,8 @@ struct test_data
 
 struct test_visible
 {
+    enum vis_type {IMAGE, STROKE};
+    vis_type ty;
     size_t si;
     size_t ti;
 };
@@ -186,10 +188,39 @@ void crop(const test_data &data, size_t vi, size_t ti,
           float negligibledist)
 {
     test_view view = data.views[vi];
+
+    if (view.img != NPOS)
+    {
+        test_image image = data.images[view.img];
+
+        test_point oo{ image.tx, image.ty };
+        test_point ox{ image.tx + image.xx, image.ty + image.xy };
+        test_point oy{ image.tx - image.xy * image.yl, image.ty + image.xx * image.yl };
+        test_point xy{ image.tx + image.xx - image.xy * image.yl, image.ty + image.xy + image.xx * image.yl };
+
+        test_box bbox;
+        bbox.add(oo);
+        bbox.add(ox);
+        bbox.add(oy);
+        bbox.add(xy);
+
+        if (overlaps(viewport, bbox) &&
+            bbox.width() > negligibledist &&
+            bbox.height() > negligibledist)
+        {
+            test_visible vis;
+            vis.ty = test_visible::IMAGE;
+            vis.si = view.img;
+            vis.ti = ti;
+            visibles.push_back(vis);
+        }
+    }
+
     if (overlaps(viewport, view.bbox) &&
         view.bbox.width() > negligibledist &&
         view.bbox.height() > negligibledist)
     {
+
         for (size_t si = view.si0; si < view.si1; ++si)
         {
             test_stroke stroke = data.strokes[si];
@@ -198,6 +229,7 @@ void crop(const test_data &data, size_t vi, size_t ti,
                 stroke.bbox.height() > negligibledist)
             {
                 test_visible vis;
+                vis.ty = test_visible::STROKE;
                 vis.si = si;
                 vis.ti = ti;
                 visibles.push_back(vis);

@@ -1017,10 +1017,10 @@ int main(int argc, char *argv[])
                     }
                     else if (dc.id == output_data::IMAGE)
                     {
-                        fs.draw(dc.texture_id, GL_ONE, GL_ZERO,
+                        fs.draw(textures[dc.texture_id].glid, GL_ONE, GL_ZERO,
                             0.0f, 0.0f,
                             0.0f, 0.0f,
-                            1.0f, 0.0f,
+                            -0.25f, 0.0f,
                             input.rtWidthIn, input.rtHeightIn,
                             input.rtWidthIn, input.rtHeightIn);
                     }

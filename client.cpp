@@ -465,28 +465,49 @@ void update_and_render(input_data *input, output_data *output)
         {
             const test_visible& vis = s_visibles[visIdx];
             const test_transform& tform = s_transforms[vis.ti];
-            const test_stroke& stroke = bake_data.strokes[vis.si];
-            const Vandalism::Brush& brush = ism->brushes[stroke.brush_id];
+            if (vis.ty == test_visible::STROKE)
+            {
+                const test_stroke& stroke = bake_data.strokes[vis.si];
+                const Vandalism::Brush& brush = ism->brushes[stroke.brush_id];
 
-            stroke_to_quads(bake_data.points + stroke.pi0,
-                            bake_data.points + stroke.pi1,
-                            bake_quads, vis.si, tform, brush);
+                size_t before = bake_quads.size();
+                if (drawcalls.empty() || drawcalls.back().id != output_data::BAKEBATCH)
+                {
+                    output_data::drawcall dc;
+                    dc.id = output_data::BAKEBATCH;
+                    dc.mesh_id = bake_mesh;
+                    dc.texture_id = 0; // not used
+                    dc.offset = static_cast<u32>(before / 4 * 6);
+                    dc.count = 0;
+
+                    drawcalls.push_back(dc);
+                }
+
+                stroke_to_quads(bake_data.points + stroke.pi0,
+                                bake_data.points + stroke.pi1,
+                                bake_quads, vis.si, tform, brush);
+                size_t after = bake_quads.size();
+
+                size_t idxCnt = (after - before) / 4 * 6;
+                drawcalls.back().count += static_cast<u32>(idxCnt);
+            }
+            else if (vis.ty == test_visible::IMAGE)
+            {
+                output_data::drawcall dc;
+                dc.id = output_data::IMAGE;
+                dc.mesh_id = 0; // not used
+                dc.texture_id = images[vis.si];
+                dc.offset = 0; // not used
+                dc.count = 0; // not used
+
+                drawcalls.push_back(dc);
+            }
         }
 
         u32 vtxCnt = static_cast<u32>(bake_quads.size());
-        u32 idxCnt = vtxCnt / 4 * 6;
 
         current_services->update_mesh_vb(bake_mesh,
                                          bake_quads.data(), vtxCnt);
-
-        output_data::drawcall dc;
-        dc.id = output_data::BAKEBATCH;
-        dc.mesh_id = bake_mesh;
-        dc.texture_id = 0; // not used
-        dc.offset = 0;
-        dc.count = idxCnt;
-        
-        drawcalls.push_back(dc);
 
         std::cout << "update mesh: " << s_visibles.size() << " visibles" << std::endl;
 
