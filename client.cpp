@@ -762,12 +762,21 @@ void update_and_render(input_data *input, output_data *output)
             if (current_services->check_file(cfg_default_image_file))
             {
                 i32 image_w, image_h, image_comp;
-                u8 *image_data = stbi_load(cfg_default_image_file, &image_w, &image_h, &image_comp, 4);
+                float *image_data = stbi_loadf(cfg_default_image_file, &image_w, &image_h, &image_comp, 4);
                 if (image_comp > 0 && image_w > 0 && image_h > 0 && image_data != nullptr)
                 {
-                    kernel_services::TexID imageTex = current_services->create_texture(static_cast<u32>(image_w), static_cast<u32>(image_h), 4);
-                    current_services->update_texture(imageTex, image_data);
+                    size_t pixel_cnt = image_w * image_h * 4;
+                    std::vector<u8> udata(pixel_cnt);
+                    const float *pIn = image_data;
+                    u8 *pOut = udata.data();
+                    for (size_t i = 0; i < pixel_cnt; ++i)
+                    {
+                        *(pOut++) = static_cast<u8>(*(pIn++) * 255.0f);
+                    }
                     stbi_image_free(image_data);
+
+                    kernel_services::TexID imageTex = current_services->create_texture(static_cast<u32>(image_w), static_cast<u32>(image_h), 4);
+                    current_services->update_texture(imageTex, udata.data());
                     size_t imageIdx = images.size();
                     images.push_back(imageTex);
                     ism->place_image(imageIdx, 1.0f, 1.0f);
