@@ -98,7 +98,8 @@ struct output_data
         UI,
         IMAGE,
         BAKEBATCH,
-        CURRENTSTROKE
+        CURRENTSTROKE,
+        GRID
     };
 
     struct drawcall

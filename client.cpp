@@ -120,6 +120,7 @@ i32 gui_present_smooth;
 float gui_background_color[3];
 float gui_grid_bg_color[3];
 float gui_grid_fg_color[3];
+bool gui_grid_enabled;
 float gui_eraser_alpha;
 float gui_smooth_error_order;
 i32 gui_goto_idx;
@@ -213,6 +214,8 @@ void setup(kernel_services *services)
     gui_grid_fg_color[0] = 0.5f;
     gui_grid_fg_color[1] = 0.5f;
     gui_grid_fg_color[2] = 1.0f;
+
+    gui_grid_enabled = false;
 
     gui_brush_diameter_units = cfg_def_brush_diameter_units;
 
@@ -710,8 +713,17 @@ void update_and_render(input_data *input, output_data *output)
     }
     ImGui::PopID();
     ImGui::Separator();
-    ImGui::ColorEdit3("grid bg", gui_grid_bg_color);
-    ImGui::ColorEdit3("grid fg", gui_grid_fg_color);
+    ImGui::Checkbox("grid", &gui_grid_enabled);
+    if (gui_grid_enabled)
+    {
+        ImGui::ColorEdit3("grid bg", gui_grid_bg_color);
+        ImGui::ColorEdit3("grid fg", gui_grid_fg_color);
+
+        output_data::drawcall dc;
+        dc.id = output_data::GRID;
+
+        drawcalls.push_back(dc);
+    }
     ImGui::Separator();
     ImGui::RadioButton("draw", &gui_tool, static_cast<i32>(Vandalism::DRAW));
     ImGui::RadioButton("erase", &gui_tool, static_cast<i32>(Vandalism::ERASE));

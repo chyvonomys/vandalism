@@ -343,12 +343,14 @@ struct StrokeImageTech
 struct FSGrid
 {
     void setup(FSQuad *quad);
-    void draw(const float *bgcolor, const float *fgcolor);
+    void draw(const float *bgcolor, const float *fgcolor,
+              float scaleX, float scaleY);
     void cleanup();
 
     GLuint m_fullscreenProgram;
     GLint m_bgColorLoc;
     GLint m_fgColorLoc;
+    GLint m_scaleLoc;
     FSQuad *m_quad;
 };
 
@@ -829,6 +831,9 @@ int main(int argc, char *argv[])
         StrokeImageTech si;
         si.setup(&quad);
 
+        FSGrid grid;
+        grid.setup(&quad);
+
         RenderTargetMS bakeRTMS;
         bakeRTMS.setup(rtWidthPx, rtHeightPx);
 
@@ -1095,8 +1100,14 @@ int main(int argc, char *argv[])
             glViewport(viewportLeftPx, viewportBottomPx,
                        input.vpWidthPx, input.vpHeightPx);
 
-            // grid.draw(output.grid_bg_color, output.grid_fg_color,
-            //           output.grid_translation, output.grid_zoom);
+            for (u32 i = 0; i < output.drawcall_cnt; ++i)
+            {
+                if (output.drawcalls[i].id == output_data::GRID)
+                {
+                    grid.draw(output.grid_bg_color, output.grid_fg_color,
+                              2.0f / input.vpWidthIn, 2.0f / input.vpHeightIn);
+                }
+            }
 
             fs.draw(currRT.m_tex, GL_ONE, GL_SRC_ALPHA,
                     0.0f, 0.0f,
@@ -1146,7 +1157,8 @@ int main(int argc, char *argv[])
         bakeRT.cleanup();
         currRT.cleanup();
         fs.cleanup();
-        //grid.cleanup();
+        si.cleanup();
+        grid.cleanup();
         quad.cleanup();
         quad_indexes.cleanup();
 
@@ -1404,27 +1416,34 @@ void FSGrid::setup(FSQuad *quad)
     m_quad = quad;
 
     const char *vertex_src =
-        "  #version 330 core                                     \n"
-        "  out vec2 l_textureUV;                                 \n"
-        "  void main()                                           \n"
-        "  {                                                     \n"
-        "      vec2 uv = vec2(gl_VertexID % 2, gl_VertexID / 2); \n"
-        "      gl_Position.xy = 2.0f * uv - 1.0f;                \n"
-        "      gl_Position.zw = vec2(0.0f, 1.0f);                \n"
-        "      l_textureUV = uv;                                 \n"
-        "  }                                                     \n";
+        "  #version 330 core                                    \n"
+        "  uniform vec2 u_scale;                                \n"
+        "  out vec2 l_xy_i;                                     \n"
+        "  void main()                                          \n"
+        "  {                                                    \n"
+        "      vec2 uv = vec2(gl_VertexID % 2,                  \n"
+        "                     gl_VertexID / 2);                 \n"
+        "      vec2 msPos = 2.0f * uv - 1.0f;                   \n"
+        "      gl_Position.xy = msPos;                          \n"
+        "      gl_Position.z = 0.0f;                            \n"
+        "      gl_Position.w = 1.0f;                            \n"
+        "      l_xy_i = msPos / u_scale;                        \n"
+        "  }                                                    \n";
 
     const char *fragment_src =
         "  #version 330 core                                    \n"
-        "  in vec2 l_textureUV;                                 \n"
+        "  in vec2 l_xy_i;                                      \n"
         "  layout (location = 0) out vec4 o_color;              \n"
         "  uniform vec3 u_bgColor;                              \n"
         "  uniform vec3 u_fgColor;                              \n"
         "  void main()                                          \n"
         "  {                                                    \n"
-        "      float isLine = max(                              \n"
-        "          step(abs(l_textureUV.x - 0.5f), 0.004f),     \n"
-        "          step(abs(l_textureUV.y - 0.5f), 0.004f));    \n"
+        "      vec2 dist0 = fract(l_xy_i);                      \n"
+        "      vec2 dist1 = vec2(1.0f, 1.0f) - dist0;           \n"
+        "      vec2 dist = min(dist0, dist1);                   \n"
+        "      float isvert = smoothstep(0.0f, 0.01f, dist.x);  \n"
+        "      float ishorz = smoothstep(0.0f, 0.01f, dist.y);  \n"
+        "      float isLine = 1.0f - min(isvert, ishorz);       \n"
         "      o_color.rgb = mix(u_bgColor, u_fgColor, isLine); \n"
         "      o_color.a = 1.0f;                                \n"
         "  }                                                    \n";
@@ -1432,13 +1451,16 @@ void FSGrid::setup(FSQuad *quad)
     m_fullscreenProgram = ::create_program(vertex_src, nullptr, fragment_src);
     m_bgColorLoc = glGetUniformLocation(m_fullscreenProgram, "u_bgColor");
     m_fgColorLoc = glGetUniformLocation(m_fullscreenProgram, "u_fgColor");
+    m_scaleLoc = glGetUniformLocation(m_fullscreenProgram, "u_scale");
 }
 
-void FSGrid::draw(const float *bgcolor, const float *fgcolor)
+void FSGrid::draw(const float *bgcolor, const float *fgcolor,
+                  float scaleX, float scaleY)
 {
     glUseProgram(m_fullscreenProgram);
     glUniform3f(m_bgColorLoc, bgcolor[0], bgcolor[1], bgcolor[2]);
     glUniform3f(m_fgColorLoc, fgcolor[0], fgcolor[1], fgcolor[2]);
+    glUniform2f(m_scaleLoc, scaleX, scaleY);
     m_quad->draw();
     glUseProgram(0);
 }
