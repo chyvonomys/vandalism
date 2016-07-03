@@ -115,6 +115,7 @@ LOAD(GLGETUNIFORMLOCATION, glGetUniformLocation)
 LOAD(GLUNIFORM1F, glUniform1f)
 LOAD(GLUNIFORM2F, glUniform2f)
 LOAD(GLUNIFORM3F, glUniform3f)
+LOAD(GLUNIFORM4F, glUniform4f)
 
 LOAD(GLFINISH, glFinish)
 LOAD(GLGETERROR, glGetError)
@@ -329,7 +330,7 @@ struct StrokeImageTech
 {
     void setup(FSQuad *quad);
     void draw(GLuint tex, float x, float y,
-              float xx, float xy, float yl,
+              float xx, float xy, float yx, float yy,
               float scaleX, float scaleY);
     void cleanup();
 
@@ -1041,8 +1042,9 @@ int main(int argc, char *argv[])
                     else if (dc.id == output_data::IMAGE)
                     {
                         si.draw(textures[dc.texture_id].glid,
-                            0.0f, 0.0f,
-                            1.0f, 0.0f, 1.0f,
+                            dc.params[0], dc.params[1],
+                            dc.params[2], dc.params[3],
+                            dc.params[4], dc.params[5],
                             2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
                     }
                 }
@@ -1560,22 +1562,20 @@ void StrokeImageTech::setup(FSQuad *quad)
         "  #version 330 core                                  \n"
         "  out vec2 l_textureUV;                              \n"
         "  uniform vec2 u_pos;                                \n"
-        "  uniform vec3 u_axes;                               \n"
+        "  uniform vec4 u_axes;                               \n"
         "  uniform vec2 u_scale;                              \n"
         "  void main()                                        \n"
         "  {                                                  \n"
         "      vec2 uv = vec2(gl_VertexID % 2,                \n"
         "                     gl_VertexID / 2);               \n"
-        "      vec2 msPos = 2.0f * uv - 1.0f;                 \n"
-        "      vec2 xy_i = msPos;                             \n"
         "      vec2 X = vec2(u_axes.x, u_axes.y);             \n"
-        "      vec2 Y = u_axes.z * vec2(-u_axes.y, u_axes.x); \n"
-        "      xy_i = xy_i.x * X + xy_i.y * Y;                \n"
+        "      vec2 Y = vec2(u_axes.z, u_axes.w);             \n"
+        "      vec2 xy_i = uv.x * X + uv.y * Y;               \n"
         "      xy_i += u_pos;                                 \n"
         "      gl_Position.xy = xy_i * u_scale;               \n"
         "      gl_Position.z = 0.0f;                          \n"
         "      gl_Position.w = 1.0f;                          \n"
-        "      l_textureUV = uv;                              \n"
+        "      l_textureUV = vec2(uv.x, -uv.y);               \n"
         "  }                                                  \n";
 
     const char *fragment_src =
@@ -1609,14 +1609,14 @@ void StrokeImageTech::cleanup()
 
 void StrokeImageTech::draw(GLuint tex,
     float x, float y,
-    float xx, float xy, float yl,
+    float xx, float xy, float yx, float yy,
     float scaleX, float scaleY)
 {
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_SRC1_ALPHA);
     glUseProgram(m_fullscreenProgram);
     glUniform2f(m_posLoc, x, y);
-    glUniform3f(m_axesLoc, xx, xy, yl);
+    glUniform4f(m_axesLoc, xx, xy, yx, yy);
     glUniform2f(m_scaleLoc, scaleX, scaleY);
     glBindTexture(GL_TEXTURE_2D, tex);
     m_quad->draw();

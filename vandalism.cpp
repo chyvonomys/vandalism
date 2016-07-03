@@ -156,7 +156,8 @@ struct Vandalism
     void append_new_view(const test_transition& tr)
     {
         auto& prev = views[currentViewIdx];
-        if (autoOptimizeViews && prev.pin_index == NPOS &&
+        if (autoOptimizeViews &&
+            prev.pin_index == NPOS && prev.img == NPOS &&
             prev.si0 == prev.si1 &&
             prev.tr.type == tr.type)
         {
@@ -498,7 +499,7 @@ struct Vandalism
             test_image i = {imageId,
                             -0.5f * imageW, -0.5f * imageH,
                             imageW, 0.0f,
-                            imageH};
+                            0.0f, imageH};
             images.push_back(i);
         }
 

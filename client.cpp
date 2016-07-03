@@ -503,6 +503,26 @@ void update_and_render(input_data *input, output_data *output)
                 dc.offset = 0; // not used
                 dc.count = 0; // not used
 
+                test_image img = bake_data.images[vis.si];
+
+                test_point o{ img.tx, img.ty };
+                test_point x{ img.tx + img.xx, img.ty + img.xy };
+                test_point y{ img.tx + img.yx, img.ty + img.yy };
+
+                test_point pos = apply_transform_pt(tform, o);
+                
+                test_point ox = apply_transform_pt(tform, x);
+                test_point oy = apply_transform_pt(tform, y);
+
+                dc.params[0] = pos.x;
+                dc.params[1] = pos.y;
+
+                dc.params[2] = ox.x - pos.x;
+                dc.params[3] = ox.y - pos.y;
+
+                dc.params[4] = oy.x - pos.x;
+                dc.params[5] = oy.y - pos.y;
+
                 drawcalls.push_back(dc);
             }
         }
@@ -791,7 +811,11 @@ void update_and_render(input_data *input, output_data *output)
                     current_services->update_texture(imageTex, udata.data());
                     size_t imageIdx = images.size();
                     images.push_back(imageTex);
-                    ism->place_image(imageIdx, 1.0f, 1.0f);
+
+                    float image_aspect = static_cast<float>(image_h) / static_cast<float>(image_w);
+                    float place_width = 0.5f * input->vpWidthIn;
+                    float place_height = place_width * image_aspect;
+                    ism->place_image(imageIdx, place_width, place_height);
                 }
             }
         }

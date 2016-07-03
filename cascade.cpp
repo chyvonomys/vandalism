@@ -95,7 +95,8 @@ struct test_image
     float ty;
     float xx;
     float xy;
-    float yl;
+    float yx;
+    float yy;
 };
 
 const size_t NPOS = static_cast<size_t>(-1);
@@ -195,8 +196,8 @@ void crop(const test_data &data, size_t vi, size_t ti,
 
         test_point oo{ image.tx, image.ty };
         test_point ox{ image.tx + image.xx, image.ty + image.xy };
-        test_point oy{ image.tx - image.xy * image.yl, image.ty + image.xx * image.yl };
-        test_point xy{ image.tx + image.xx - image.xy * image.yl, image.ty + image.xy + image.xx * image.yl };
+        test_point oy{ image.tx + image.yx, image.ty + image.yy };
+        test_point xy{ image.tx + image.xx + image.yx, image.ty + image.xy + image.yy };
 
         test_box bbox;
         bbox.add(oo);
