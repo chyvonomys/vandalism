@@ -325,6 +325,21 @@ struct FSTexturePresenter
     GLint m_rtSizeLoc;
 };
 
+struct StrokeImageTech
+{
+    void setup(FSQuad *quad);
+    void draw(GLuint tex, float x, float y,
+              float xx, float xy, float yl,
+              float scaleX, float scaleY);
+    void cleanup();
+
+    FSQuad *m_quad;
+    GLuint m_fullscreenProgram;
+    GLint m_posLoc;
+    GLint m_axesLoc;
+    GLint m_scaleLoc;
+};
+
 struct FSGrid
 {
     void setup(FSQuad *quad);
@@ -811,6 +826,9 @@ int main(int argc, char *argv[])
         FSTexturePresenter fs;
         fs.setup(&quad);
 
+        StrokeImageTech si;
+        si.setup(&quad);
+
         RenderTargetMS bakeRTMS;
         bakeRTMS.setup(rtWidthPx, rtHeightPx);
 
@@ -1017,12 +1035,10 @@ int main(int argc, char *argv[])
                     }
                     else if (dc.id == output_data::IMAGE)
                     {
-                        fs.draw(textures[dc.texture_id].glid, GL_ONE, GL_ZERO,
+                        si.draw(textures[dc.texture_id].glid,
                             0.0f, 0.0f,
-                            0.0f, 0.0f,
-                            -0.25f, 0.0f,
-                            input.rtWidthIn, input.rtHeightIn,
-                            input.rtWidthIn, input.rtHeightIn);
+                            1.0f, 0.0f, 1.0f,
+                            2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
                     }
                 }
                 bakeRTMS.end_receive();
@@ -1513,6 +1529,80 @@ void MarkerBatchTech::draw(kernel_services::MeshID mi, u32 offset, u32 count,
     glDisable(GL_BLEND);
     glDisable(GL_DEPTH_TEST);
 }
+
+void StrokeImageTech::setup(FSQuad *quad)
+{
+    m_quad = quad;
+
+    const char *vertex_src =
+        "  #version 330 core                                  \n"
+        "  out vec2 l_textureUV;                              \n"
+        "  uniform vec2 u_pos;                                \n"
+        "  uniform vec3 u_axes;                               \n"
+        "  uniform vec2 u_scale;                              \n"
+        "  void main()                                        \n"
+        "  {                                                  \n"
+        "      vec2 uv = vec2(gl_VertexID % 2,                \n"
+        "                     gl_VertexID / 2);               \n"
+        "      vec2 msPos = 2.0f * uv - 1.0f;                 \n"
+        "      vec2 xy_i = msPos;                             \n"
+        "      vec2 X = vec2(u_axes.x, u_axes.y);             \n"
+        "      vec2 Y = u_axes.z * vec2(-u_axes.y, u_axes.x); \n"
+        "      xy_i = xy_i.x * X + xy_i.y * Y;                \n"
+        "      xy_i += u_pos;                                 \n"
+        "      gl_Position.xy = xy_i * u_scale;               \n"
+        "      gl_Position.z = 0.0f;                          \n"
+        "      gl_Position.w = 1.0f;                          \n"
+        "      l_textureUV = uv;                              \n"
+        "  }                                                  \n";
+
+    const char *fragment_src =
+        "  #version 330 core                                 \n"
+        "  uniform sampler2D sampler;                        \n"
+        "  in vec2 l_textureUV;                              \n"
+        "  layout (location = 0) out vec4 o_color;           \n"
+        "  layout (location = 1) out vec4 o_color1;          \n"
+        "  void main()                                       \n"
+        "  {                                                 \n"
+        "      vec4 color = texture(sampler, l_textureUV);   \n"
+        "      float A = color.a;                            \n"
+        "      float E = 0.0f;                               \n"
+        "      float SRCa = (1.0f - A) * E;                  \n"
+        "      float SRC1a = (1.0f - A) * (1.0f - E);        \n"
+        "      o_color.rgb = color.rgb * A;                  \n"
+        "      o_color.a = SRCa;                             \n"
+        "      o_color1.a = SRC1a;                           \n"
+        "  }                                                 \n";
+
+    m_fullscreenProgram = ::create_program(vertex_src, nullptr, fragment_src);
+    m_posLoc = glGetUniformLocation(m_fullscreenProgram, "u_pos");
+    m_axesLoc = glGetUniformLocation(m_fullscreenProgram, "u_axes");
+    m_scaleLoc = glGetUniformLocation(m_fullscreenProgram, "u_scale");
+}
+
+void StrokeImageTech::cleanup()
+{
+    glDeleteProgram(m_fullscreenProgram);
+}
+
+void StrokeImageTech::draw(GLuint tex,
+    float x, float y,
+    float xx, float xy, float yl,
+    float scaleX, float scaleY)
+{
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_SRC1_ALPHA);
+    glUseProgram(m_fullscreenProgram);
+    glUniform2f(m_posLoc, x, y);
+    glUniform3f(m_axesLoc, xx, xy, yl);
+    glUniform2f(m_scaleLoc, scaleX, scaleY);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    m_quad->draw();
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glUseProgram(0);
+    glDisable(GL_BLEND);
+}
+
 
 // TODO: make this more generic by introducing scale translate
 // TODO: then it will be a reusable piece, refactor
