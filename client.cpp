@@ -454,7 +454,9 @@ void update_and_render(input_data *input, output_data *output)
 
     ism->update(&ism_input);
 
-    const test_data &bake_data = ism->get_bake_data();
+    // TODO: change this!
+    size_t layerIdx = 0;
+    const test_data &bake_data = ism->get_bake_data(layerIdx);
 
     bool scrollViewsDown = false;
 
@@ -472,7 +474,7 @@ void update_and_render(input_data *input, output_data *output)
                             -0.5f * input->rtHeightIn,
                             +0.5f * input->rtHeightIn};
 
-        query(bake_data, ism->currentViewIdx,
+        query(bake_data, ism->currentPin.viewidx,
               viewbox, s_visibles, s_transforms,
               pixel_height_in);
 
@@ -555,8 +557,9 @@ void update_and_render(input_data *input, output_data *output)
                                    (t == TPAN ? "PAN" :
                                     (t == TROTATE ? "ROTATE" : "ERROR")));
 
+            // TODO: check this pin_index nonsense with multilayers
             bool isPinned = (view.pin_index != NPOS);
-            bool isCurrent = (vi == ism->currentViewIdx);
+            bool isCurrent = (vi == ism->currentPin.viewidx);
             viewsBuf->append("%c %c %d: %s  %f/%f  (%ld..%ld)",
                              (isCurrent ? '>' : ' '), (isPinned ? '*' : ' '),
                              vi, typestr, view.tr.a, view.tr.b,
@@ -874,8 +877,9 @@ void update_and_render(input_data *input, output_data *output)
 
     ImGui::Separator();
 
-    ImGui::Text("ism strokes: %lu", ism->strokes.size());
-    ImGui::Text("ism points: %lu", ism->points.size());
+    // TODO: multilayers support
+    ImGui::Text("ism strokes: %lu", ism->current_layer().strokes.size());
+    ImGui::Text("ism points: %lu", ism->current_layer().points.size());
     ImGui::Text("ism brushes: %lu", ism->brushes.size());
 
     ImGui::Text("bake_quads v: (%lu/%lu)",
