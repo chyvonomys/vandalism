@@ -13,12 +13,24 @@
 #endif
 
 #define STB_IMAGE_IMPLEMENTATION
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wold-style-cast"
+#pragma clang diagnostic ignored "-Wsign-conversion"
+#pragma clang diagnostic ignored "-Wdisabled-macro-expansion"
+#pragma clang diagnostic ignored "-Wcast-align"
+#pragma clang diagnostic ignored "-Wconversion"
+#pragma clang diagnostic ignored "-Wimplicit-fallthrough"
+#include "stb_image.h"
+#pragma clang diagnostic pop
+#else
 #pragma warning(push)
 #pragma warning(disable: 4242)
 #pragma warning(disable: 4244)
 #pragma warning(disable: 4365)
 #include "stb_image.h"
 #pragma warning(pop)
+#endif
 
 kernel_services *current_services = 0;
 
@@ -797,7 +809,7 @@ void update_and_render(input_data *input, output_data *output)
                 float *image_data = stbi_loadf(cfg_default_image_file, &image_w, &image_h, &image_comp, 4);
                 if (image_comp > 0 && image_w > 0 && image_h > 0 && image_data != nullptr)
                 {
-                    size_t pixel_cnt = image_w * image_h * 4;
+                    size_t pixel_cnt = static_cast<size_t>(image_w) * static_cast<size_t>(image_h) * 4;
                     std::vector<u8> udata(pixel_cnt);
                     const float *pIn = image_data;
                     u8 *pOut = udata.data();
