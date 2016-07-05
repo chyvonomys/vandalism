@@ -46,6 +46,11 @@ kernel_services::MeshID curr_mesh;
 
 std::vector<ImDrawVert> lines_vb;
 
+bool image_fitting;
+kernel_services::TexID image_tex;
+float image_width_in;
+float image_height_in;
+
 // TODO: ImDrawIdx vs u16 in proto.cpp
 
 void RenderImGuiDrawLists(ImDrawData *drawData)
@@ -247,6 +252,10 @@ void setup(kernel_services *services)
     gui_present_smooth = static_cast<i32>(Vandalism::NONE);
 
     gui_goto_idx = 0;
+
+    image_tex = 0;
+    image_width_in = 0.0f;
+    image_height_in = 0.0f;
 }
 
 void cleanup()
@@ -804,34 +813,75 @@ void update_and_render(input_data *input, output_data *output)
             ism->clear();
             // TODO: clear any created resources! (textures, buffers)
         }
-        if (ImGui::Button("Place image"))
+        if (!image_fitting)
         {
-            if (current_services->check_file(cfg_default_image_file))
+            if (ImGui::Button("Fit image"))
             {
-                i32 image_w, image_h, image_comp;
-                float *image_data = stbi_loadf(cfg_default_image_file, &image_w, &image_h, &image_comp, 4);
-                if (image_comp > 0 && image_w > 0 && image_h > 0 && image_data != nullptr)
+                if (current_services->check_file(cfg_default_image_file))
                 {
-                    size_t pixel_cnt = static_cast<size_t>(image_w) * static_cast<size_t>(image_h) * 4;
-                    std::vector<u8> udata(pixel_cnt);
-                    const float *pIn = image_data;
-                    u8 *pOut = udata.data();
-                    for (size_t i = 0; i < pixel_cnt; ++i)
+                    i32 image_w, image_h, image_comp;
+                    float *image_data = stbi_loadf(cfg_default_image_file, &image_w, &image_h, &image_comp, 4);
+                    if (image_comp > 0 && image_w > 0 && image_h > 0 && image_data != nullptr)
                     {
-                        *(pOut++) = static_cast<u8>(*(pIn++) * 255.0f);
+                        u32 w = static_cast<u32>(image_w);
+                        u32 h = static_cast<u32>(image_h);
+                        size_t pixel_cnt = w * h * 4;
+                        std::vector<u8> udata(pixel_cnt);
+                        const float *pIn = image_data;
+                        u8 *pOut = udata.data();
+                        for (size_t i = 0; i < pixel_cnt; ++i)
+                        {
+                            *(pOut++) = static_cast<u8>(*(pIn++) * 255.0f);
+                        }
+                        stbi_image_free(image_data);
+
+                        image_tex = current_services->create_texture(w, h, 4);
+                        current_services->update_texture(image_tex, udata.data());
+
+                        float image_aspect = static_cast<float>(image_h) / static_cast<float>(image_w);
+                        image_width_in = 0.5f * input->vpWidthIn;
+                        image_height_in = image_width_in * image_aspect;
+
+                        image_fitting = true;
                     }
-                    stbi_image_free(image_data);
-
-                    kernel_services::TexID imageTex = current_services->create_texture(static_cast<u32>(image_w), static_cast<u32>(image_h), 4);
-                    current_services->update_texture(imageTex, udata.data());
-                    size_t imageIdx = images.size();
-                    images.push_back(imageTex);
-
-                    float image_aspect = static_cast<float>(image_h) / static_cast<float>(image_w);
-                    float place_width = 0.5f * input->vpWidthIn;
-                    float place_height = place_width * image_aspect;
-                    ism->place_image(imageIdx, place_width, place_height);
                 }
+            }
+        }
+        else
+        {
+            output_data::drawcall dc;
+            dc.texture_id = image_tex;
+            dc.id = output_data::IMAGEFIT;
+
+            dc.params[0] = -0.5f * image_width_in;
+            dc.params[1] = -0.5f * image_height_in;
+
+            dc.params[2] = image_width_in;
+            dc.params[3] = 0.0f;
+
+            dc.params[4] = 0.0f;
+            dc.params[5] = image_height_in;
+
+            drawcalls.push_back(dc);
+
+            if (ImGui::Button("Cancel image"))
+            {
+                current_services->delete_texture(image_tex);
+                image_tex = 0;
+                image_width_in = 0.0f;
+                image_height_in = 0.0f;
+
+                image_fitting = false;
+            }
+
+            if (ImGui::Button("Place image"))
+            {
+                size_t imageIdx = images.size();
+                images.push_back(image_tex);
+
+                ism->place_image(imageIdx, image_width_in, image_height_in);
+
+                image_fitting = false;
             }
         }
         ImGui::SameLine();

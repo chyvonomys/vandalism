@@ -99,7 +99,8 @@ struct output_data
         IMAGE,
         BAKEBATCH,
         CURRENTSTROKE,
-        GRID
+        GRID,
+        IMAGEFIT
     };
 
     struct drawcall
