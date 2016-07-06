@@ -51,6 +51,8 @@ kernel_services::TexID image_tex;
 float image_width_in;
 float image_height_in;
 
+bool image_capturing;
+
 // TODO: ImDrawIdx vs u16 in proto.cpp
 
 void RenderImGuiDrawLists(ImDrawData *drawData)
@@ -151,6 +153,9 @@ const float cfg_depth_step = 1.0f / cfg_max_strokes_per_buffer;
 const char* cfg_font_path = "Roboto_Condensed/RobotoCondensed-Regular.ttf";
 const char* cfg_default_image_file = "default_image.jpg";
 const char* cfg_default_file = "default.ism";
+
+const float cfg_capture_width_in = 5.0f;
+const float cfg_capture_height_in = 4.0f;
 
 ImGuiTextBuffer *viewsBuf;
 
@@ -256,6 +261,9 @@ void setup(kernel_services *services)
     image_tex = 0;
     image_width_in = 0.0f;
     image_height_in = 0.0f;
+
+    image_fitting = false;
+    image_capturing = false;
 }
 
 void cleanup()
@@ -644,6 +652,7 @@ void update_and_render(input_data *input, output_data *output)
     float fXPx = (ism->firstX / input->vpWidthIn + 0.5f) * uiResHor;
     float fYPx = (0.5f - ism->firstY / input->vpHeightIn) * uiResVer;
 
+    // TODO: do not update this each frame
     ImDrawVert vtx;
     vtx.col = 0xFF5555FF;
     vtx.uv = ImGui::GetIO().Fonts->TexUvWhitePixel;
@@ -659,7 +668,34 @@ void update_and_render(input_data *input, output_data *output)
     vtx.pos = ImVec2(fXPx+0.5f, fYPx+5.0f); lines_vb.push_back(vtx);
     vtx.pos = ImVec2(fXPx-0.5f, fYPx+5.0f); lines_vb.push_back(vtx);
 
-    current_services->update_mesh_vb(lines_mesh, lines_vb.data(), 8);
+    float cX0 = (0.5f - 0.5f * cfg_capture_width_in / input->vpWidthIn) * uiResHor;
+    float cX1 = (0.5f + 0.5f * cfg_capture_width_in / input->vpWidthIn) * uiResHor;
+
+    float cY0 = (0.5f + 0.5f * cfg_capture_height_in / input->vpHeightIn) * uiResVer;
+    float cY1 = (0.5f - 0.5f * cfg_capture_height_in / input->vpHeightIn) * uiResVer;
+
+    vtx.col = 0xFF0000FF;
+    vtx.pos = ImVec2(cX0-0.5f, cY0); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX0+0.5f, cY0); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX0+0.5f, cY1); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX0-0.5f, cY1); lines_vb.push_back(vtx);
+
+    vtx.pos = ImVec2(cX1-0.5f, cY0); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1+0.5f, cY0); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1+0.5f, cY1); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1-0.5f, cY1); lines_vb.push_back(vtx);
+
+    vtx.pos = ImVec2(cX0, cY0-0.5f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX0, cY0+0.5f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1, cY0+0.5f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1, cY0-0.5f); lines_vb.push_back(vtx);
+
+    vtx.pos = ImVec2(cX0, cY1-0.5f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX0, cY1+0.5f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1, cY1+0.5f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1, cY1-0.5f); lines_vb.push_back(vtx);
+
+    current_services->update_mesh_vb(lines_mesh, lines_vb.data(), 24);
 
     output_data::drawcall lines_drawcall;
     lines_drawcall.texture_id = font_texture_id;
@@ -813,6 +849,31 @@ void update_and_render(input_data *input, output_data *output)
             ism->clear();
             // TODO: clear any created resources! (textures, buffers)
         }
+
+        if (!image_capturing)
+        {
+            if (ImGui::Button("Capture image"))
+            {
+                image_capturing = true;
+            }
+        }
+        else
+        {
+            output_data::drawcall dc;
+            dc.texture_id = font_texture_id;
+            dc.mesh_id = lines_mesh;
+            dc.offset = 12;
+            dc.count = 24;
+            dc.id = output_data::UI;
+
+            drawcalls.push_back(dc);
+
+            if (ImGui::Button("Cancel capture"))
+            {
+                image_capturing = false;
+            }
+        }
+
         if (!image_fitting)
         {
             if (ImGui::Button("Fit image"))
