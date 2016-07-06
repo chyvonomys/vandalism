@@ -534,6 +534,18 @@ void update_and_render(input_data *input, output_data *output)
 
         std::cout << "update mesh: " << s_visibles.size() << " visibles" << std::endl;
 
+        if (s_visibles.empty())
+        {
+            output_data::drawcall dc;
+            dc.id = output_data::BAKEBATCH;
+            dc.mesh_id = bake_mesh;
+            dc.texture_id = 0; // not used
+            dc.offset = 0;
+            dc.count = 0;
+
+            drawcalls.push_back(dc);
+        }
+
         viewsBuf->clear();
         for (u32 vi = 0; vi < bake_data.nviews; ++vi)
         {
