@@ -32,6 +32,8 @@ struct kernel_services
     void delete_mesh(MeshID);
 
     bool check_file(const char* path);
+
+    const u8 *get_capture_data(u32&, u32&);
 };
 
 struct input_data
@@ -100,7 +102,8 @@ struct output_data
         BAKEBATCH,
         CURRENTSTROKE,
         GRID,
-        IMAGEFIT
+        IMAGEFIT,
+        CAPTURE
     };
 
     struct drawcall

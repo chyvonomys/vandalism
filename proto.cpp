@@ -663,6 +663,14 @@ void kernel_services::delete_texture(kernel_services::TexID ti)
     glDeleteTextures(1, &textures[ti].glid);
 }
 
+const u8 *kernel_services::get_capture_data(u32 &w, u32 &h)
+{
+    // TODO: implement
+    w = 0;
+    h = 0;
+    return nullptr;
+}
+
 bool scroll_updated = false;
 float scroll_y = 0.0f;
 float cfg_fixed_scroll_step = 0.1f;

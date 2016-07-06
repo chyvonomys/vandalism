@@ -13,6 +13,7 @@
 #endif
 
 #define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
 #ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wold-style-cast"
@@ -22,6 +23,7 @@
 #pragma clang diagnostic ignored "-Wconversion"
 #pragma clang diagnostic ignored "-Wimplicit-fallthrough"
 #include "stb_image.h"
+#include "stb_image_write.h"
 #pragma clang diagnostic pop
 #else
 #pragma warning(push)
@@ -29,8 +31,10 @@
 #pragma warning(disable: 4244)
 #pragma warning(disable: 4365)
 #include "stb_image.h"
+#include "stb_image_write.h"
 #pragma warning(pop)
 #endif
+
 
 kernel_services *current_services = 0;
 
@@ -51,7 +55,14 @@ kernel_services::TexID image_tex;
 float image_width_in;
 float image_height_in;
 
-bool image_capturing;
+enum CapturingStage
+{
+    INACTIVE,
+    SELECTION,
+    CAPTURE
+};
+
+CapturingStage image_capturing;
 
 // TODO: ImDrawIdx vs u16 in proto.cpp
 
@@ -152,6 +163,7 @@ const i32 cfg_max_strokes_per_buffer = 8192;
 const float cfg_depth_step = 1.0f / cfg_max_strokes_per_buffer;
 const char* cfg_font_path = "Roboto_Condensed/RobotoCondensed-Regular.ttf";
 const char* cfg_default_image_file = "default_image.jpg";
+const char* cfg_default_capture_file = "default_capture.png";
 const char* cfg_default_file = "default.ism";
 
 const float cfg_capture_width_in = 5.0f;
@@ -164,8 +176,6 @@ std::vector<output_data::Vertex> curr_quads;
 
 // temp vectors, reuse to avoid reallocations
 std::vector<test_point> s_sampled_points;
-std::vector<test_visible> s_visibles;
-std::vector<test_transform> s_transforms;
 
 void setup(kernel_services *services)
 {
@@ -263,7 +273,7 @@ void setup(kernel_services *services)
     image_height_in = 0.0f;
 
     image_fitting = false;
-    image_capturing = false;
+    image_capturing = INACTIVE;
 }
 
 void cleanup()
@@ -433,6 +443,89 @@ void stroke_to_quads(const test_point* begin, const test_point* end,
     }
 }
 
+void collect_bake_data(const test_data& bake_data,
+                       float width_in, float height_in,
+                       float pixel_height_in)
+{
+    static std::vector<test_visible> s_visibles;
+    static std::vector<test_transform> s_transforms;
+
+    bake_quads.clear();
+    s_visibles.clear();
+    s_transforms.clear();
+    test_box viewbox = {-0.5f * width_in,
+                        +0.5f * width_in,
+                        -0.5f * height_in,
+                        +0.5f * height_in};
+
+    query(bake_data, ism->currentPin.viewidx,
+          viewbox, s_visibles, s_transforms,
+          pixel_height_in);
+
+    for (u32 visIdx = 0; visIdx < s_visibles.size(); ++visIdx)
+    {
+        const test_visible& vis = s_visibles[visIdx];
+        const test_transform& tform = s_transforms[vis.ti];
+        if (vis.ty == test_visible::STROKE)
+        {
+            const test_stroke& stroke = bake_data.strokes[vis.si];
+            const Vandalism::Brush& brush = ism->brushes[stroke.brush_id];
+
+            size_t before = bake_quads.size();
+            if (drawcalls.empty() || drawcalls.back().id != output_data::BAKEBATCH)
+            {
+                output_data::drawcall dc;
+                dc.id = output_data::BAKEBATCH;
+                dc.mesh_id = bake_mesh;
+                dc.texture_id = 0; // not used
+                dc.offset = static_cast<u32>(before / 4 * 6);
+                dc.count = 0;
+
+                drawcalls.push_back(dc);
+            }
+
+            stroke_to_quads(bake_data.points + stroke.pi0,
+                            bake_data.points + stroke.pi1,
+                            bake_quads, vis.si, tform, brush);
+            size_t after = bake_quads.size();
+
+            size_t idxCnt = (after - before) / 4 * 6;
+            drawcalls.back().count += static_cast<u32>(idxCnt);
+        }
+        else if (vis.ty == test_visible::IMAGE)
+        {
+            output_data::drawcall dc;
+            dc.id = output_data::IMAGE;
+            dc.mesh_id = 0; // not used
+            dc.texture_id = images[vis.si];
+            dc.offset = 0; // not used
+            dc.count = 0; // not used
+
+            test_image img = bake_data.images[vis.si];
+
+            test_point o{ img.tx, img.ty };
+            test_point x{ img.tx + img.xx, img.ty + img.xy };
+            test_point y{ img.tx + img.yx, img.ty + img.yy };
+
+            test_point pos = apply_transform_pt(tform, o);
+
+            test_point ox = apply_transform_pt(tform, x);
+            test_point oy = apply_transform_pt(tform, y);
+
+            dc.params[0] = pos.x;
+            dc.params[1] = pos.y;
+
+            dc.params[2] = ox.x - pos.x;
+            dc.params[3] = ox.y - pos.y;
+
+            dc.params[4] = oy.x - pos.x;
+            dc.params[5] = oy.y - pos.y;
+
+            drawcalls.push_back(dc);
+        }
+    }
+    std::cout << "update mesh: " << s_visibles.size() << " visibles" << std::endl;
+}
 
 void update_and_render(input_data *input, output_data *output)
 {
@@ -483,87 +576,14 @@ void update_and_render(input_data *input, output_data *output)
         // TODO: make this better
         ism->visiblesChanged = false;
 
-        bake_quads.clear();
-        s_visibles.clear();
-        s_transforms.clear();
-        test_box viewbox = {-0.5f * input->rtWidthIn,
-                            +0.5f * input->rtWidthIn,
-                            -0.5f * input->rtHeightIn,
-                            +0.5f * input->rtHeightIn};
-
-        query(bake_data, ism->currentPin.viewidx,
-              viewbox, s_visibles, s_transforms,
-              pixel_height_in);
-
-        for (u32 visIdx = 0; visIdx < s_visibles.size(); ++visIdx)
-        {
-            const test_visible& vis = s_visibles[visIdx];
-            const test_transform& tform = s_transforms[vis.ti];
-            if (vis.ty == test_visible::STROKE)
-            {
-                const test_stroke& stroke = bake_data.strokes[vis.si];
-                const Vandalism::Brush& brush = ism->brushes[stroke.brush_id];
-
-                size_t before = bake_quads.size();
-                if (drawcalls.empty() || drawcalls.back().id != output_data::BAKEBATCH)
-                {
-                    output_data::drawcall dc;
-                    dc.id = output_data::BAKEBATCH;
-                    dc.mesh_id = bake_mesh;
-                    dc.texture_id = 0; // not used
-                    dc.offset = static_cast<u32>(before / 4 * 6);
-                    dc.count = 0;
-
-                    drawcalls.push_back(dc);
-                }
-
-                stroke_to_quads(bake_data.points + stroke.pi0,
-                                bake_data.points + stroke.pi1,
-                                bake_quads, vis.si, tform, brush);
-                size_t after = bake_quads.size();
-
-                size_t idxCnt = (after - before) / 4 * 6;
-                drawcalls.back().count += static_cast<u32>(idxCnt);
-            }
-            else if (vis.ty == test_visible::IMAGE)
-            {
-                output_data::drawcall dc;
-                dc.id = output_data::IMAGE;
-                dc.mesh_id = 0; // not used
-                dc.texture_id = images[vis.si];
-                dc.offset = 0; // not used
-                dc.count = 0; // not used
-
-                test_image img = bake_data.images[vis.si];
-
-                test_point o{ img.tx, img.ty };
-                test_point x{ img.tx + img.xx, img.ty + img.xy };
-                test_point y{ img.tx + img.yx, img.ty + img.yy };
-
-                test_point pos = apply_transform_pt(tform, o);
-                
-                test_point ox = apply_transform_pt(tform, x);
-                test_point oy = apply_transform_pt(tform, y);
-
-                dc.params[0] = pos.x;
-                dc.params[1] = pos.y;
-
-                dc.params[2] = ox.x - pos.x;
-                dc.params[3] = ox.y - pos.y;
-
-                dc.params[4] = oy.x - pos.x;
-                dc.params[5] = oy.y - pos.y;
-
-                drawcalls.push_back(dc);
-            }
-        }
+        collect_bake_data(bake_data,
+                          input->rtWidthIn, input->rtHeightIn,
+                          pixel_height_in);
 
         u32 vtxCnt = static_cast<u32>(bake_quads.size());
 
         current_services->update_mesh_vb(bake_mesh,
                                          bake_quads.data(), vtxCnt);
-
-        std::cout << "update mesh: " << s_visibles.size() << " visibles" << std::endl;
 
         viewsBuf->clear();
         for (u32 vi = 0; vi < bake_data.nviews; ++vi)
@@ -850,14 +870,14 @@ void update_and_render(input_data *input, output_data *output)
             // TODO: clear any created resources! (textures, buffers)
         }
 
-        if (!image_capturing)
+        if (image_capturing == INACTIVE)
         {
             if (ImGui::Button("Capture image"))
             {
-                image_capturing = true;
+                image_capturing = SELECTION;
             }
         }
-        else
+        if (image_capturing == SELECTION)
         {
             output_data::drawcall dc;
             dc.texture_id = font_texture_id;
@@ -870,8 +890,35 @@ void update_and_render(input_data *input, output_data *output)
 
             if (ImGui::Button("Cancel capture"))
             {
-                image_capturing = false;
+                image_capturing = INACTIVE;
             }
+
+            if (ImGui::Button("Save image"))
+            {
+                drawcalls.clear();
+                collect_bake_data(bake_data,
+                                  cfg_capture_width_in, cfg_capture_height_in,
+                                  pixel_height_in);
+
+                output_data::drawcall captdc;
+                captdc.id = output_data::CAPTURE;
+                captdc.params[0] = cfg_capture_width_in;
+                captdc.params[1] = cfg_capture_height_in;
+
+                drawcalls.push_back(dc);
+
+                image_capturing = CAPTURE;
+            }
+        }
+        if (image_capturing == CAPTURE)
+        {
+            u32 width, height;
+            const u8 *data = current_services->get_capture_data(width, height);
+            stbi_write_png(cfg_default_capture_file,
+                           static_cast<i32>(width),
+                           static_cast<i32>(height),
+                           4, data, 0);
+            image_capturing = INACTIVE;
         }
 
         if (!image_fitting)
