@@ -331,6 +331,7 @@ struct StrokeImageTech
     void setup(FSQuad *quad);
     void draw(GLuint tex, float x, float y,
               float xx, float xy, float yx, float yy,
+              float alpha,
               float scaleX, float scaleY);
     void cleanup();
 
@@ -339,6 +340,7 @@ struct StrokeImageTech
     GLint m_posLoc;
     GLint m_axesLoc;
     GLint m_scaleLoc;
+    GLint m_alphaLoc;
 };
 
 struct FSGrid
@@ -659,6 +661,14 @@ void kernel_services::update_texture(kernel_services::TexID ti, const u8 *pixels
 void kernel_services::delete_texture(kernel_services::TexID ti)
 {
     glDeleteTextures(1, &textures[ti].glid);
+}
+
+const u8 *kernel_services::get_capture_data(u32 &w, u32 &h)
+{
+    // TODO: implement
+    w = 0;
+    h = 0;
+    return nullptr;
 }
 
 bool scroll_updated = false;
@@ -1042,10 +1052,11 @@ int main(int argc, char *argv[])
                     else if (dc.id == output_data::IMAGE)
                     {
                         si.draw(textures[dc.texture_id].glid,
-                            dc.params[0], dc.params[1],
-                            dc.params[2], dc.params[3],
-                            dc.params[4], dc.params[5],
-                            2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
+                                dc.params[0], dc.params[1],
+                                dc.params[2], dc.params[3],
+                                dc.params[4], dc.params[5],
+                                1.0f,
+                                2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
                     }
                 }
                 bakeRTMS.end_receive();
@@ -1055,17 +1066,18 @@ int main(int argc, char *argv[])
                 bakeRT.end_receive();
             }
 
-            bool has_current_stroke = false;
+            bool has_current_object = false;
             for (u32 i = 0; i < output.drawcall_cnt; ++i)
             {
-                if (output.drawcalls[i].id == output_data::CURRENTSTROKE)
+                if (output.drawcalls[i].id == output_data::CURRENTSTROKE ||
+                    output.drawcalls[i].id == output_data::IMAGEFIT)
                 {
-                    has_current_stroke = true;
+                    has_current_object = true;
                     break;
                 }
             }
 
-            if (has_current_stroke)
+            if (has_current_object)
             {
                 currRT.begin_receive();
                 glClearColor(0.0, 0.0, 0.0, 1.0);
@@ -1086,6 +1098,15 @@ int main(int argc, char *argv[])
                     {
                         render.draw(dc.mesh_id, dc.offset, dc.count,
                                     2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
+                    }
+                    if (dc.id == output_data::IMAGEFIT)
+                    {
+                        si.draw(textures[dc.texture_id].glid,
+                                dc.params[0], dc.params[1],
+                                dc.params[2], dc.params[3],
+                                dc.params[4], dc.params[5],
+                                0.5f,
+                                2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
                     }
                 }
                 currRT.end_receive();
@@ -1581,13 +1602,14 @@ void StrokeImageTech::setup(FSQuad *quad)
     const char *fragment_src =
         "  #version 330 core                                 \n"
         "  uniform sampler2D sampler;                        \n"
+        "  uniform float u_alpha;                            \n"
         "  in vec2 l_textureUV;                              \n"
         "  layout (location = 0) out vec4 o_color;           \n"
         "  layout (location = 1) out vec4 o_color1;          \n"
         "  void main()                                       \n"
         "  {                                                 \n"
         "      vec4 color = texture(sampler, l_textureUV);   \n"
-        "      float A = color.a;                            \n"
+        "      float A = color.a * u_alpha;                  \n"
         "      float E = 0.0f;                               \n"
         "      float SRCa = (1.0f - A) * E;                  \n"
         "      float SRC1a = (1.0f - A) * (1.0f - E);        \n"
@@ -1600,6 +1622,7 @@ void StrokeImageTech::setup(FSQuad *quad)
     m_posLoc = glGetUniformLocation(m_fullscreenProgram, "u_pos");
     m_axesLoc = glGetUniformLocation(m_fullscreenProgram, "u_axes");
     m_scaleLoc = glGetUniformLocation(m_fullscreenProgram, "u_scale");
+    m_alphaLoc = glGetUniformLocation(m_fullscreenProgram, "u_alpha");
 }
 
 void StrokeImageTech::cleanup()
@@ -1608,9 +1631,10 @@ void StrokeImageTech::cleanup()
 }
 
 void StrokeImageTech::draw(GLuint tex,
-    float x, float y,
-    float xx, float xy, float yx, float yy,
-    float scaleX, float scaleY)
+                           float x, float y,
+                           float xx, float xy, float yx, float yy,
+                           float alpha,
+                           float scaleX, float scaleY)
 {
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_SRC1_ALPHA);
@@ -1618,6 +1642,7 @@ void StrokeImageTech::draw(GLuint tex,
     glUniform2f(m_posLoc, x, y);
     glUniform4f(m_axesLoc, xx, xy, yx, yy);
     glUniform2f(m_scaleLoc, scaleX, scaleY);
+    glUniform1f(m_alphaLoc, alpha);
     glBindTexture(GL_TEXTURE_2D, tex);
     m_quad->draw();
     glBindTexture(GL_TEXTURE_2D, 0);

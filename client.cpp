@@ -13,12 +13,28 @@
 #endif
 
 #define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wold-style-cast"
+#pragma clang diagnostic ignored "-Wsign-conversion"
+#pragma clang diagnostic ignored "-Wdisabled-macro-expansion"
+#pragma clang diagnostic ignored "-Wcast-align"
+#pragma clang diagnostic ignored "-Wconversion"
+#pragma clang diagnostic ignored "-Wimplicit-fallthrough"
+#include "stb_image.h"
+#include "stb_image_write.h"
+#pragma clang diagnostic pop
+#else
 #pragma warning(push)
 #pragma warning(disable: 4242)
 #pragma warning(disable: 4244)
 #pragma warning(disable: 4365)
 #include "stb_image.h"
+#include "stb_image_write.h"
 #pragma warning(pop)
+#endif
+
 
 kernel_services *current_services = 0;
 
@@ -33,6 +49,20 @@ kernel_services::MeshID bake_mesh;
 kernel_services::MeshID curr_mesh;
 
 std::vector<ImDrawVert> lines_vb;
+
+bool image_fitting;
+kernel_services::TexID image_tex;
+float image_width_in;
+float image_height_in;
+
+enum CapturingStage
+{
+    INACTIVE,
+    SELECTION,
+    CAPTURE
+};
+
+CapturingStage image_capturing;
 
 // TODO: ImDrawIdx vs u16 in proto.cpp
 
@@ -133,7 +163,11 @@ const i32 cfg_max_strokes_per_buffer = 8192;
 const float cfg_depth_step = 1.0f / cfg_max_strokes_per_buffer;
 const char* cfg_font_path = "Roboto_Condensed/RobotoCondensed-Regular.ttf";
 const char* cfg_default_image_file = "default_image.jpg";
+const char* cfg_default_capture_file = "default_capture.png";
 const char* cfg_default_file = "default.ism";
+
+const float cfg_capture_width_in = 5.0f;
+const float cfg_capture_height_in = 4.0f;
 
 ImGuiTextBuffer *viewsBuf;
 
@@ -142,8 +176,6 @@ std::vector<output_data::Vertex> curr_quads;
 
 // temp vectors, reuse to avoid reallocations
 std::vector<test_point> s_sampled_points;
-std::vector<test_visible> s_visibles;
-std::vector<test_transform> s_transforms;
 
 void setup(kernel_services *services)
 {
@@ -235,6 +267,13 @@ void setup(kernel_services *services)
     gui_present_smooth = static_cast<i32>(Vandalism::NONE);
 
     gui_goto_idx = 0;
+
+    image_tex = 0;
+    image_width_in = 0.0f;
+    image_height_in = 0.0f;
+
+    image_fitting = false;
+    image_capturing = INACTIVE;
 }
 
 void cleanup()
@@ -404,6 +443,102 @@ void stroke_to_quads(const test_point* begin, const test_point* end,
     }
 }
 
+void collect_bake_data(const test_data& bake_data,
+                       float width_in, float height_in,
+                       float pixel_height_in)
+{
+    static std::vector<test_visible> s_visibles;
+    static std::vector<test_transform> s_transforms;
+
+    bake_quads.clear();
+    s_visibles.clear();
+    s_transforms.clear();
+    test_box viewbox = {-0.5f * width_in,
+                        +0.5f * width_in,
+                        -0.5f * height_in,
+                        +0.5f * height_in};
+
+    query(bake_data, ism->currentPin.viewidx,
+          viewbox, s_visibles, s_transforms,
+          pixel_height_in);
+
+    for (u32 visIdx = 0; visIdx < s_visibles.size(); ++visIdx)
+    {
+        const test_visible& vis = s_visibles[visIdx];
+        const test_transform& tform = s_transforms[vis.ti];
+        if (vis.ty == test_visible::STROKE)
+        {
+            const test_stroke& stroke = bake_data.strokes[vis.si];
+            const Vandalism::Brush& brush = ism->brushes[stroke.brush_id];
+
+            size_t before = bake_quads.size();
+            if (drawcalls.empty() || drawcalls.back().id != output_data::BAKEBATCH)
+            {
+                output_data::drawcall dc;
+                dc.id = output_data::BAKEBATCH;
+                dc.mesh_id = bake_mesh;
+                dc.texture_id = 0; // not used
+                dc.offset = static_cast<u32>(before / 4 * 6);
+                dc.count = 0;
+
+                drawcalls.push_back(dc);
+            }
+
+            stroke_to_quads(bake_data.points + stroke.pi0,
+                            bake_data.points + stroke.pi1,
+                            bake_quads, vis.si, tform, brush);
+            size_t after = bake_quads.size();
+
+            size_t idxCnt = (after - before) / 4 * 6;
+            drawcalls.back().count += static_cast<u32>(idxCnt);
+        }
+        else if (vis.ty == test_visible::IMAGE)
+        {
+            output_data::drawcall dc;
+            dc.id = output_data::IMAGE;
+            dc.mesh_id = 0; // not used
+            dc.texture_id = images[vis.si];
+            dc.offset = 0; // not used
+            dc.count = 0; // not used
+
+            test_image img = bake_data.images[vis.si];
+
+            test_point o{ img.tx, img.ty };
+            test_point x{ img.tx + img.xx, img.ty + img.xy };
+            test_point y{ img.tx + img.yx, img.ty + img.yy };
+
+            test_point pos = apply_transform_pt(tform, o);
+
+            test_point ox = apply_transform_pt(tform, x);
+            test_point oy = apply_transform_pt(tform, y);
+
+            dc.params[0] = pos.x;
+            dc.params[1] = pos.y;
+
+            dc.params[2] = ox.x - pos.x;
+            dc.params[3] = ox.y - pos.y;
+
+            dc.params[4] = oy.x - pos.x;
+            dc.params[5] = oy.y - pos.y;
+
+            drawcalls.push_back(dc);
+        }
+    }
+
+    if (s_visibles.empty())
+    {
+        output_data::drawcall dc;
+        dc.id = output_data::BAKEBATCH;
+        dc.mesh_id = bake_mesh;
+        dc.texture_id = 0; // not used
+        dc.offset = 0;
+        dc.count = 0;
+
+        drawcalls.push_back(dc);
+    }
+
+    std::cout << "update mesh: " << s_visibles.size() << " visibles" << std::endl;
+}
 
 void update_and_render(input_data *input, output_data *output)
 {
@@ -442,7 +577,9 @@ void update_and_render(input_data *input, output_data *output)
 
     ism->update(&ism_input);
 
-    const test_data &bake_data = ism->get_bake_data();
+    // TODO: change this!
+    size_t layerIdx = 0;
+    const test_data &bake_data = ism->get_bake_data(layerIdx);
 
     bool scrollViewsDown = false;
 
@@ -452,99 +589,14 @@ void update_and_render(input_data *input, output_data *output)
         // TODO: make this better
         ism->visiblesChanged = false;
 
-        bake_quads.clear();
-        s_visibles.clear();
-        s_transforms.clear();
-        test_box viewbox = {-0.5f * input->rtWidthIn,
-                            +0.5f * input->rtWidthIn,
-                            -0.5f * input->rtHeightIn,
-                            +0.5f * input->rtHeightIn};
-
-        query(bake_data, ism->currentViewIdx,
-              viewbox, s_visibles, s_transforms,
-              pixel_height_in);
-
-        for (u32 visIdx = 0; visIdx < s_visibles.size(); ++visIdx)
-        {
-            const test_visible& vis = s_visibles[visIdx];
-            const test_transform& tform = s_transforms[vis.ti];
-            if (vis.ty == test_visible::STROKE)
-            {
-                const test_stroke& stroke = bake_data.strokes[vis.si];
-                const Vandalism::Brush& brush = ism->brushes[stroke.brush_id];
-
-                size_t before = bake_quads.size();
-                if (drawcalls.empty() || drawcalls.back().id != output_data::BAKEBATCH)
-                {
-                    output_data::drawcall dc;
-                    dc.id = output_data::BAKEBATCH;
-                    dc.mesh_id = bake_mesh;
-                    dc.texture_id = 0; // not used
-                    dc.offset = static_cast<u32>(before / 4 * 6);
-                    dc.count = 0;
-
-                    drawcalls.push_back(dc);
-                }
-
-                stroke_to_quads(bake_data.points + stroke.pi0,
-                                bake_data.points + stroke.pi1,
-                                bake_quads, vis.si, tform, brush);
-                size_t after = bake_quads.size();
-
-                size_t idxCnt = (after - before) / 4 * 6;
-                drawcalls.back().count += static_cast<u32>(idxCnt);
-            }
-            else if (vis.ty == test_visible::IMAGE)
-            {
-                output_data::drawcall dc;
-                dc.id = output_data::IMAGE;
-                dc.mesh_id = 0; // not used
-                dc.texture_id = images[vis.si];
-                dc.offset = 0; // not used
-                dc.count = 0; // not used
-
-                test_image img = bake_data.images[vis.si];
-
-                test_point o{ img.tx, img.ty };
-                test_point x{ img.tx + img.xx, img.ty + img.xy };
-                test_point y{ img.tx + img.yx, img.ty + img.yy };
-
-                test_point pos = apply_transform_pt(tform, o);
-                
-                test_point ox = apply_transform_pt(tform, x);
-                test_point oy = apply_transform_pt(tform, y);
-
-                dc.params[0] = pos.x;
-                dc.params[1] = pos.y;
-
-                dc.params[2] = ox.x - pos.x;
-                dc.params[3] = ox.y - pos.y;
-
-                dc.params[4] = oy.x - pos.x;
-                dc.params[5] = oy.y - pos.y;
-
-                drawcalls.push_back(dc);
-            }
-        }
+        collect_bake_data(bake_data,
+                          input->rtWidthIn, input->rtHeightIn,
+                          pixel_height_in);
 
         u32 vtxCnt = static_cast<u32>(bake_quads.size());
 
         current_services->update_mesh_vb(bake_mesh,
                                          bake_quads.data(), vtxCnt);
-
-        std::cout << "update mesh: " << s_visibles.size() << " visibles" << std::endl;
-
-        if (s_visibles.empty())
-        {
-            output_data::drawcall dc;
-            dc.id = output_data::BAKEBATCH;
-            dc.mesh_id = bake_mesh;
-            dc.texture_id = 0; // not used
-            dc.offset = 0;
-            dc.count = 0;
-
-            drawcalls.push_back(dc);
-        }
 
         viewsBuf->clear();
         for (u32 vi = 0; vi < bake_data.nviews; ++vi)
@@ -555,8 +607,9 @@ void update_and_render(input_data *input, output_data *output)
                                    (t == TPAN ? "PAN" :
                                     (t == TROTATE ? "ROTATE" : "ERROR")));
 
+            // TODO: check this pin_index nonsense with multilayers
             bool isPinned = (view.pin_index != NPOS);
-            bool isCurrent = (vi == ism->currentViewIdx);
+            bool isCurrent = (vi == ism->currentPin.viewidx);
             viewsBuf->append("%c %c %d: %s  %f/%f  (%ld..%ld)",
                              (isCurrent ? '>' : ' '), (isPinned ? '*' : ' '),
                              vi, typestr, view.tr.a, view.tr.b,
@@ -632,6 +685,7 @@ void update_and_render(input_data *input, output_data *output)
     float fXPx = (ism->firstX / input->vpWidthIn + 0.5f) * uiResHor;
     float fYPx = (0.5f - ism->firstY / input->vpHeightIn) * uiResVer;
 
+    // TODO: do not update this each frame
     ImDrawVert vtx;
     vtx.col = 0xFF5555FF;
     vtx.uv = ImGui::GetIO().Fonts->TexUvWhitePixel;
@@ -647,7 +701,34 @@ void update_and_render(input_data *input, output_data *output)
     vtx.pos = ImVec2(fXPx+0.5f, fYPx+5.0f); lines_vb.push_back(vtx);
     vtx.pos = ImVec2(fXPx-0.5f, fYPx+5.0f); lines_vb.push_back(vtx);
 
-    current_services->update_mesh_vb(lines_mesh, lines_vb.data(), 8);
+    float cX0 = (0.5f - 0.5f * cfg_capture_width_in / input->vpWidthIn) * uiResHor;
+    float cX1 = (0.5f + 0.5f * cfg_capture_width_in / input->vpWidthIn) * uiResHor;
+
+    float cY0 = (0.5f + 0.5f * cfg_capture_height_in / input->vpHeightIn) * uiResVer;
+    float cY1 = (0.5f - 0.5f * cfg_capture_height_in / input->vpHeightIn) * uiResVer;
+
+    vtx.col = 0xFF0000FF;
+    vtx.pos = ImVec2(cX0-0.5f, cY0); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX0+0.5f, cY0); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX0+0.5f, cY1); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX0-0.5f, cY1); lines_vb.push_back(vtx);
+
+    vtx.pos = ImVec2(cX1-0.5f, cY0); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1+0.5f, cY0); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1+0.5f, cY1); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1-0.5f, cY1); lines_vb.push_back(vtx);
+
+    vtx.pos = ImVec2(cX0, cY0-0.5f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX0, cY0+0.5f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1, cY0+0.5f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1, cY0-0.5f); lines_vb.push_back(vtx);
+
+    vtx.pos = ImVec2(cX0, cY1-0.5f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX0, cY1+0.5f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1, cY1+0.5f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1, cY1-0.5f); lines_vb.push_back(vtx);
+
+    current_services->update_mesh_vb(lines_mesh, lines_vb.data(), 24);
 
     output_data::drawcall lines_drawcall;
     lines_drawcall.texture_id = font_texture_id;
@@ -801,34 +882,127 @@ void update_and_render(input_data *input, output_data *output)
             ism->clear();
             // TODO: clear any created resources! (textures, buffers)
         }
-        if (ImGui::Button("Place image"))
+
+        if (image_capturing == INACTIVE)
         {
-            if (current_services->check_file(cfg_default_image_file))
+            if (ImGui::Button("Capture image"))
             {
-                i32 image_w, image_h, image_comp;
-                float *image_data = stbi_loadf(cfg_default_image_file, &image_w, &image_h, &image_comp, 4);
-                if (image_comp > 0 && image_w > 0 && image_h > 0 && image_data != nullptr)
+                image_capturing = SELECTION;
+            }
+        }
+        if (image_capturing == SELECTION)
+        {
+            output_data::drawcall dc;
+            dc.texture_id = font_texture_id;
+            dc.mesh_id = lines_mesh;
+            dc.offset = 12;
+            dc.count = 24;
+            dc.id = output_data::UI;
+
+            drawcalls.push_back(dc);
+
+            if (ImGui::Button("Cancel capture"))
+            {
+                image_capturing = INACTIVE;
+            }
+
+            if (ImGui::Button("Save image"))
+            {
+                drawcalls.clear();
+                collect_bake_data(bake_data,
+                                  cfg_capture_width_in, cfg_capture_height_in,
+                                  pixel_height_in);
+
+                output_data::drawcall captdc;
+                captdc.id = output_data::CAPTURE;
+                captdc.params[0] = cfg_capture_width_in;
+                captdc.params[1] = cfg_capture_height_in;
+
+                drawcalls.push_back(dc);
+
+                image_capturing = CAPTURE;
+            }
+        }
+        if (image_capturing == CAPTURE)
+        {
+            u32 width, height;
+            const u8 *data = current_services->get_capture_data(width, height);
+            stbi_write_png(cfg_default_capture_file,
+                           static_cast<i32>(width),
+                           static_cast<i32>(height),
+                           4, data, 0);
+            image_capturing = INACTIVE;
+        }
+
+        if (!image_fitting)
+        {
+            if (ImGui::Button("Fit image"))
+            {
+                if (current_services->check_file(cfg_default_image_file))
                 {
-                    size_t pixel_cnt = image_w * image_h * 4;
-                    std::vector<u8> udata(pixel_cnt);
-                    const float *pIn = image_data;
-                    u8 *pOut = udata.data();
-                    for (size_t i = 0; i < pixel_cnt; ++i)
+                    i32 image_w, image_h, image_comp;
+                    float *image_data = stbi_loadf(cfg_default_image_file, &image_w, &image_h, &image_comp, 4);
+                    if (image_comp > 0 && image_w > 0 && image_h > 0 && image_data != nullptr)
                     {
-                        *(pOut++) = static_cast<u8>(*(pIn++) * 255.0f);
+                        u32 w = static_cast<u32>(image_w);
+                        u32 h = static_cast<u32>(image_h);
+                        size_t pixel_cnt = w * h * 4;
+                        std::vector<u8> udata(pixel_cnt);
+                        const float *pIn = image_data;
+                        u8 *pOut = udata.data();
+                        for (size_t i = 0; i < pixel_cnt; ++i)
+                        {
+                            *(pOut++) = static_cast<u8>(*(pIn++) * 255.0f);
+                        }
+                        stbi_image_free(image_data);
+
+                        image_tex = current_services->create_texture(w, h, 4);
+                        current_services->update_texture(image_tex, udata.data());
+
+                        float image_aspect = static_cast<float>(image_h) / static_cast<float>(image_w);
+                        image_width_in = 0.5f * input->vpWidthIn;
+                        image_height_in = image_width_in * image_aspect;
+
+                        image_fitting = true;
                     }
-                    stbi_image_free(image_data);
-
-                    kernel_services::TexID imageTex = current_services->create_texture(static_cast<u32>(image_w), static_cast<u32>(image_h), 4);
-                    current_services->update_texture(imageTex, udata.data());
-                    size_t imageIdx = images.size();
-                    images.push_back(imageTex);
-
-                    float image_aspect = static_cast<float>(image_h) / static_cast<float>(image_w);
-                    float place_width = 0.5f * input->vpWidthIn;
-                    float place_height = place_width * image_aspect;
-                    ism->place_image(imageIdx, place_width, place_height);
                 }
+            }
+        }
+        else
+        {
+            output_data::drawcall dc;
+            dc.texture_id = image_tex;
+            dc.id = output_data::IMAGEFIT;
+
+            dc.params[0] = -0.5f * image_width_in;
+            dc.params[1] = -0.5f * image_height_in;
+
+            dc.params[2] = image_width_in;
+            dc.params[3] = 0.0f;
+
+            dc.params[4] = 0.0f;
+            dc.params[5] = image_height_in;
+
+            drawcalls.push_back(dc);
+
+            if (ImGui::Button("Cancel image"))
+            {
+                current_services->delete_texture(image_tex);
+                image_tex = 0;
+                image_width_in = 0.0f;
+                image_height_in = 0.0f;
+
+                image_fitting = false;
+            }
+
+            if (ImGui::Button("Place image"))
+            {
+                size_t imageIdx = images.size();
+                images.push_back(image_tex);
+
+                ism->place_image(imageIdx, image_width_in, image_height_in);
+
+                image_fitting = false;
             }
         }
         ImGui::SameLine();
@@ -874,8 +1048,9 @@ void update_and_render(input_data *input, output_data *output)
 
     ImGui::Separator();
 
-    ImGui::Text("ism strokes: %lu", ism->strokes.size());
-    ImGui::Text("ism points: %lu", ism->points.size());
+    // TODO: multilayers support
+    ImGui::Text("ism strokes: %lu", ism->current_layer().strokes.size());
+    ImGui::Text("ism points: %lu", ism->current_layer().points.size());
     ImGui::Text("ism brushes: %lu", ism->brushes.size());
 
     ImGui::Text("bake_quads v: (%lu/%lu)",
