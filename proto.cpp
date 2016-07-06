@@ -92,6 +92,7 @@ LOAD(GLGENTEXTURES, glGenTextures)
 LOAD(GLDELETETEXTURES, glDeleteTextures)
 LOAD(GLBINDTEXTURE, glBindTexture)
 LOAD(GLTEXIMAGE2D, glTexImage2D)
+LOAD(GLGETTEXIMAGE, glGetTexImage)
 LOAD(GLTEXIMAGE2DMULTISAMPLE, glTexImage2DMultisample)
 LOAD(GLTEXSUBIMAGE2D, glTexSubImage2D)
 LOAD(GLTEXPARAMETERI, glTexParameteri)
@@ -365,6 +366,8 @@ struct RenderTarget
     void begin_receive();
     void end_receive();
 
+    void store_image(u8 *storage);
+
     GLuint m_fbo;
     GLuint m_depth_rbo;
     GLuint m_tex;
@@ -498,6 +501,10 @@ VertexLayoutN<3> stroke_vertex_layout =
 };
 
 QuadIndexes quad_indexes;
+
+u32 capture_data_width_px = 0;
+u32 capture_data_height_px = 0;
+std::vector<u8> capture_data;
 
 kernel_services::MeshID create_mesh_common(const VertexLayout& layout,
                                            u32 initialVCount,
@@ -665,10 +672,9 @@ void kernel_services::delete_texture(kernel_services::TexID ti)
 
 const u8 *kernel_services::get_capture_data(u32 &w, u32 &h)
 {
-    // TODO: implement
-    w = 0;
-    h = 0;
-    return nullptr;
+    w = capture_data_width_px;
+    h = capture_data_height_px;
+    return capture_data.data();
 }
 
 bool scroll_updated = false;
@@ -850,6 +856,10 @@ int main(int argc, char *argv[])
 
         RenderTarget bakeRT;
         bakeRT.setup(rtWidthPx, rtHeightPx);
+
+        capture_data_width_px = rtWidthPx;
+        capture_data_height_px = rtHeightPx;
+        capture_data.resize(rtWidthPx * rtHeightPx * 4);
 
         RenderTarget currRT;
         currRT.setup(rtWidthPx, rtHeightPx);
@@ -1064,6 +1074,13 @@ int main(int argc, char *argv[])
                 bakeRT.begin_receive();
                 bakeRTMS.resolve();
                 bakeRT.end_receive();
+                for (size_t i = 0; i < output.drawcall_cnt; ++i)
+                {
+                    if (output.drawcalls[i].id == output_data::CAPTURE)
+                    {
+                        bakeRT.store_image(capture_data.data());
+                    }
+                }
             }
 
             bool has_current_object = false;
@@ -1251,6 +1268,13 @@ void RenderTarget::begin_receive()
 void RenderTarget::end_receive()
 {
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+}
+
+void RenderTarget::store_image(u8 *storage)
+{
+    glBindTexture(GL_TEXTURE_2D, m_tex);
+    glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA8, GL_UNSIGNED_BYTE, storage);
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 void RenderTarget::cleanup()
