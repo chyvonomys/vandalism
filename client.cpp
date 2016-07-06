@@ -31,6 +31,7 @@
 #pragma warning(disable: 4244)
 #pragma warning(disable: 4365)
 #include "stb_image.h"
+#pragma warning(disable: 4996)
 #include "stb_image_write.h"
 #pragma warning(pop)
 #endif
