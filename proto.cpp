@@ -1034,13 +1034,18 @@ int main(int argc, char *argv[])
             }
 
             bool has_anything_to_bake = false;
+            bool has_current_object = false;
             for (u32 i = 0; i < output.drawcall_cnt; ++i)
             {
-                if (output.drawcalls[i].id == output_data::BAKEBATCH ||
-                    output.drawcalls[i].id == output_data::IMAGE)
+                output_data::techid id = output.drawcalls[i].id;
+
+                if (id == output_data::BAKEBATCH || id == output_data::IMAGE)
                 {
                     has_anything_to_bake = true;
-                    break;
+                }
+                if (id == output_data::CURRENTSTROKE || id == output_data::IMAGEFIT)
+                {
+                    has_current_object = true;
                 }
             }
 
@@ -1074,23 +1079,21 @@ int main(int argc, char *argv[])
                 bakeRT.begin_receive();
                 bakeRTMS.resolve();
                 bakeRT.end_receive();
+
                 for (size_t i = 0; i < output.drawcall_cnt; ++i)
                 {
                     if (output.drawcalls[i].id == output_data::CAPTURE)
                     {
                         bakeRT.store_image(capture_data.data());
+                        u8 *start = capture_data.data();
+                        u8 *finish = start + capture_data.size();
+                        u8 *pixel = start;
+                        while (pixel != finish)
+                        {
+                            pixel[3] = 255 - pixel[3];
+                            pixel += 4;
+                        }
                     }
-                }
-            }
-
-            bool has_current_object = false;
-            for (u32 i = 0; i < output.drawcall_cnt; ++i)
-            {
-                if (output.drawcalls[i].id == output_data::CURRENTSTROKE ||
-                    output.drawcalls[i].id == output_data::IMAGEFIT)
-                {
-                    has_current_object = true;
-                    break;
                 }
             }
 
@@ -1273,7 +1276,7 @@ void RenderTarget::end_receive()
 void RenderTarget::store_image(u8 *storage)
 {
     glBindTexture(GL_TEXTURE_2D, m_tex);
-    glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA8, GL_UNSIGNED_BYTE, storage);
+    glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, storage);
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 

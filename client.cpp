@@ -891,7 +891,7 @@ void update_and_render(input_data *input, output_data *output)
                 image_capturing = SELECTION;
             }
         }
-        if (image_capturing == SELECTION)
+        else if (image_capturing == SELECTION)
         {
             output_data::drawcall dc;
             dc.texture_id = font_texture_id;
@@ -919,12 +919,12 @@ void update_and_render(input_data *input, output_data *output)
                 captdc.params[0] = cfg_capture_width_in;
                 captdc.params[1] = cfg_capture_height_in;
 
-                drawcalls.push_back(dc);
+                drawcalls.push_back(captdc);
 
                 image_capturing = CAPTURE;
             }
         }
-        if (image_capturing == CAPTURE)
+        else if (image_capturing == CAPTURE)
         {
             u32 width, height;
             const u8 *data = current_services->get_capture_data(width, height);
