@@ -1090,9 +1090,35 @@ int main(int argc, char *argv[])
                         u8 *pixel = start;
                         while (pixel != finish)
                         {
-                            pixel[3] = 255 - pixel[3];
+                            // NOTE: alpha channel contains amount of bg to add
+                            // 1-that is alpha value of the drawing
+                            u8 transparency = pixel[3];
+                            u8 opacity = 255 - transparency;
+                            if (opacity > 0)
+                            {
+                                // Unpremultiply
+                                float alpha = opacity / 255.0f;
+                                pixel[0] = (pixel[0] / 255.0f) / alpha * 255;
+                                pixel[1] = (pixel[1] / 255.0f) / alpha * 255;
+                                pixel[2] = (pixel[2] / 255.0f) / alpha * 255;
+                            }
+                            pixel[3] = opacity;
                             pixel += 4;
                         }
+                        // Flip
+                        const size_t rowpitch = capture_data_width_px * 4;
+                        std::vector<u8> swapbuffer(rowpitch);
+                        u8 *swaprow = swapbuffer.data();
+                        for (size_t row = 0; row < capture_data_height_px / 2; ++row)
+                        {
+                            u8 *thisrow = capture_data.data() + row * rowpitch;
+                            u8 *thatrow = capture_data.data() + (capture_data_height_px - row - 1) * rowpitch;
+                            ::memcpy(swaprow, thisrow, rowpitch);
+                            ::memcpy(thisrow, thatrow, rowpitch);
+                            ::memcpy(thatrow, swaprow, rowpitch);
+                        }
+                        // Crop
+                        // TODO:
                     }
                 }
             }
