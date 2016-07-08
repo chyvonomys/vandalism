@@ -97,6 +97,22 @@ struct test_image
     float xy;
     float yx;
     float yy;
+
+    test_box get_bbox() const
+    {
+        test_point p00{ tx,           ty };
+        test_point p10{ tx + xx,      ty + xy };
+        test_point p01{ tx +      yx, ty +      yy };
+        test_point p11{ tx + xx + yx, ty + xy + yy };
+
+        test_box bbox;
+        bbox.add(p00);
+        bbox.add(p10);
+        bbox.add(p01);
+        bbox.add(p11);
+
+        return bbox;
+    }
 };
 
 const size_t NPOS = static_cast<size_t>(-1);

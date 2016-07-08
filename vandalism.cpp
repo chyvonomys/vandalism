@@ -564,18 +564,7 @@ struct Vandalism
                             imageW, 0.0f,
                             0.0f, imageH};
 
-            test_point oo{ i.tx,               i.ty };
-            test_point ox{ i.tx + i.xx,        i.ty + i.xy };
-            test_point oy{ i.tx +        i.yx, i.ty +        i.yy };
-            test_point xy{ i.tx + i.xx + i.yx, i.ty + i.xy + i.yy };
-
-            test_box bbox;
-            bbox.add(oo);
-            bbox.add(ox);
-            bbox.add(oy);
-            bbox.add(xy);
-
-            cl.views.back().imgbbox = bbox;
+            cl.views.back().imgbbox = i.get_bbox();
 
             images.push_back(i);
         }
@@ -1024,11 +1013,13 @@ struct Vandalism
                     while (firstq < line.size())
                     {
                         if (line[firstq] == '\"') break;
+                        ++firstq;
                     }
                     size_t secondq = firstq + 1;
                     while (secondq < line.size())
                     {
                         if (line[secondq] == '\"') break;
+                        ++secondq;
                     }
 
                     if (firstq < line.size() && secondq < line.size())
@@ -1089,6 +1080,10 @@ struct Vandalism
             for (size_t si = newViews[vi].si0; si < newViews[vi].si1; ++si)
             {
                 newViews[vi].bbox.add_box(newStrokes[si].bbox);
+            }
+            if (newViews[vi].img != NPOS)
+            {
+                newViews[vi].imgbbox = newImages[newViews[vi].img].get_bbox();
             }
         }
 

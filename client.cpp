@@ -564,7 +564,7 @@ bool load_image(const char *filename, ImageDesc &desc)
     if (current_services->check_file(filename))
     {
         i32 image_w, image_h, image_comp;
-        float *image_data = stbi_loadf(cfg_default_image_file, &image_w, &image_h, &image_comp, 4);
+        float *image_data = stbi_loadf(filename, &image_w, &image_h, &image_comp, 4);
         if (image_comp > 0 && image_w > 0 && image_h > 0 && image_data != nullptr)
         {
             desc.width = static_cast<u32>(image_w);
@@ -925,7 +925,8 @@ void update_and_render(input_data *input, output_data *output)
                     }
                     else
                     {
-                        ImageDesc invalid_desc{ 0xFFFF, 0, 0 };
+                        // TODO: some indication of missing file
+                        ImageDesc invalid_desc{ font_texture_id, 0, 0 };
                         loaded_images.push_back(invalid_desc);
                     }
                 }
@@ -1028,6 +1029,7 @@ void update_and_render(input_data *input, output_data *output)
                     ImageDesc desc;
                     if (load_image(fit_img.name.c_str(), desc))
                     {
+                        loaded_images.push_back(desc);
                         float image_aspect = static_cast<float>(desc.height) / static_cast<float>(desc.width);
 
                         fit_img.texid = desc.texid;
