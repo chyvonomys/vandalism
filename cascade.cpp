@@ -143,8 +143,8 @@ struct test_visible
 {
     enum vis_type {IMAGE, STROKE};
     vis_type ty;
-    size_t si;
-    size_t ti;
+    size_t obj_id;
+    size_t tform_id;
 };
 
 bool liang_barsky(float L, float R, float B, float T,
@@ -215,8 +215,8 @@ void crop(const test_data &data, size_t vi, size_t ti,
         {
             test_visible vis;
             vis.ty = test_visible::IMAGE;
-            vis.si = view.img;
-            vis.ti = ti;
+            vis.obj_id = view.img;
+            vis.tform_id = ti;
             visibles.push_back(vis);
         }
     }
@@ -237,8 +237,8 @@ void crop(const test_data &data, size_t vi, size_t ti,
             {
                 test_visible vis;
                 vis.ty = test_visible::STROKE;
-                vis.si = si;
-                vis.ti = ti;
+                vis.obj_id = si;
+                vis.tform_id = ti;
                 visibles.push_back(vis);
             }
         }

@@ -484,10 +484,10 @@ void collect_bake_data(const test_data& bake_data,
     for (u32 visIdx = 0; visIdx < s_visibles.size(); ++visIdx)
     {
         const test_visible& vis = s_visibles[visIdx];
-        const test_transform& tform = s_transforms[vis.ti];
+        const test_transform& tform = s_transforms[vis.tform_id];
         if (vis.ty == test_visible::STROKE)
         {
-            const test_stroke& stroke = bake_data.strokes[vis.si];
+            const test_stroke& stroke = bake_data.strokes[vis.obj_id];
             const Vandalism::Brush& brush = ism->brushes[stroke.brush_id];
 
             size_t before = bake_quads.size();
@@ -505,7 +505,7 @@ void collect_bake_data(const test_data& bake_data,
 
             stroke_to_quads(bake_data.points + stroke.pi0,
                             bake_data.points + stroke.pi1,
-                            bake_quads, vis.si, tform, brush);
+                            bake_quads, vis.obj_id, tform, brush);
             size_t after = bake_quads.size();
 
             size_t idxCnt = (after - before) / 4 * 6;
@@ -513,14 +513,14 @@ void collect_bake_data(const test_data& bake_data,
         }
         else if (vis.ty == test_visible::IMAGE)
         {
+            const test_image &img = ism->images[vis.obj_id];
+
             output_data::drawcall dc;
             dc.id = output_data::IMAGE;
             dc.mesh_id = 0; // not used
-            dc.texture_id = loaded_images[ism->images[vis.si].nameidx].texid;
+            dc.texture_id = loaded_images[img.nameidx].texid;
             dc.offset = 0; // not used
             dc.count = 0; // not used
-
-            test_image img = ism->images[vis.si];
 
             test_point o{ img.tx, img.ty };
             test_point x{ img.tx + img.xx, img.ty + img.xy };
