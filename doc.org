@@ -1,0 +1,54 @@
+* General Blending formula *
+
+[RGB]* -- background color, unknown
+[RGB]i -- i-th stroke color
+Ai -- i-th stroke opacity
+Ei -- i-th stroke erase amount, i.e. amount of background color to mix in
+
+draw  --> Ai -> [0 .. 1],  Ei == 0
+erase --> Ai == 0, Ei == [0 .. 1]
+
+[ (                                                                       )                    ]
+[ ( [ ( |R*|            |R*|    )            |R1|    ]            |R*|    )            |R2|    ]
+[ ( [ ( |G*| (1 - E1) + |G*| E1 ) (1 - A1) + |G1| A1 ] (1 - E2) + |G*| E2 ) (1 - A2) + |G2| A2 ] ...
+[ ( [ ( |B*|            |B*|    )            |B1|    ]            |B*|    )            |B2|    ]
+[ (                                                                       )                    ]
+
+[                                                                                                    ]
+[ [ |R*|                    |R*|              |R1|    ]                    |R*|              |R2|    ]
+[ [ |G*| (1 - E1)(1 - A1) + |G*| E1(1 - A1) + |G1| A1 ] (1 - E2)(1 - A2) + |G*| E2(1 - A2) + |G2| A2 ] ...
+[ [ |B*|                    |B*|              |B1|    ]                    |B*|              |B2|    ]
+[                                                                                                    ]
+                                                        \______________/        \________/   \_____/
+                                                             SRC1a                 SRCa        SRCc 
+
+* Stroke batch rendering into intermediate buffer *
+
+DSTrgb -- accumulated premultiplied color
+DSTa   -- amount of background to *add*
+
+DSTr   0    DSTr'   DSTr           SRCr	   
+DSTg = 0    DSTg' = DSTg * SRC1a + SRCg * 1
+DSTb   0    DSTb'   DSTb           SRCb	   
+	                                   
+DSTa = 1    DSTa' = DSTa * SRC1a + SRCa * 1
+
+glBlendFunc(GL_ONE, GL_SRC1_ALPHA)
+
+* Save capture *
+
+rgb -- take from save buffer and unpremultiply
+a   -- 1-amount of background to add
+
+* Blit intermediate buffer *
+
+SRCrgb -- premultiplied color
+SRCa   -- amount of (unknown) background
+
+DSTr'   DSTr          SRCr	 
+DSTg' = DSTg * SRCa + SRCg * 1
+DSTb'   DSTb          SRCb	 
+                              
+DSTa' = DSTa * SRCa + SRCa * 1   <--- don't care what is in FB's alpha for now
+
+glBlendFunc(GL_ONE, GL_SRC_ALPHA)
