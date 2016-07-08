@@ -47,6 +47,10 @@ struct Vandalism
 
     std::vector<Layer> layers;
 
+    std::vector<std::string> imageNames;
+
+    // One image name can be referenced by many images
+    // Image is actually an image + placement.
     std::vector<Image> images;
     std::vector<Brush> brushes;
 
@@ -842,18 +846,24 @@ struct Vandalism
         }
     }
 
+    const char *tr_type_str(transition_type tt) const
+    {
+        if (tt == TZOOM) return "zoom";
+        if (tt == TPAN) return "pan";
+        if (tt == TROTATE) return "rotate";
+        return "error";
+    }
+
     void save_data(const char *filename) const
     {
         // TODO: saves only current layer!
-        // TODO: save _all_ info from points
-        // TODO: save images, keep eye on indexes!
         std::ofstream os(filename);
 
         const Layer &cl = current_layer();
 
         for (size_t i = 0; i < cl.points.size(); ++i)
         {
-            os << "p " << cl.points[i].x << ' ' << cl.points[i].y << '\n';
+            os << "p " << cl.points[i].x << ' ' << cl.points[i].y << ' ' << cl.points[i].w << '\n';
         }
         for (size_t i = 0; i < cl.strokes.size(); ++i)
         {
@@ -862,17 +872,26 @@ struct Vandalism
         }
         for (size_t i = 0; i < cl.views.size(); ++i)
         {
-            os << "v " << (cl.views[i].tr.type == TZOOM ? "zoom" :
-                          (cl.views[i].tr.type == TPAN ? "pan" :
-                           (cl.views[i].tr.type == TROTATE ? "rotate" : "error")))
-               << ' ' << cl.views[i].tr.a << ' ' << cl.views[i].tr.b
-               << ' ' << cl.views[i].si0 << ' ' << cl.views[i].si1 << '\n';
+            os << "v " << tr_type_str(cl.views[i].tr.type)
+                << ' ' << cl.views[i].tr.a << ' ' << cl.views[i].tr.b
+                << ' ' << cl.views[i].si0 << ' ' << cl.views[i].si1
+                << ' ' << (cl.views[i].img == NPOS ? -1 : static_cast<i32>(cl.views[i].img))
+                << '\n';
         }
+        // TODO: maybe separate codes for regular brush, eraser, etc
         for (size_t i = 0; i < brushes.size(); ++i)
         {
             os << "b " << brushes[i].type << ' ' << brushes[i].diameter << ' '
                << brushes[i].r << ' ' << brushes[i].g << ' '
                << brushes[i].b << ' ' << brushes[i].a << '\n';
+        }
+        // TODO: maybe reuse 'basis' vectors approach here and in views
+        for (size_t i = 0; i < images.size(); ++i)
+        {
+            os << "i \"" << imageNames[images[i].nameidx] << '\"'
+                << ' ' << images[i].tx << ' ' << images[i].ty
+                << ' ' << images[i].xx << ' ' << images[i].xy
+                << ' ' << images[i].yx << ' ' << images[i].yy << '\n';
         }
     }
 
@@ -884,6 +903,8 @@ struct Vandalism
         std::vector<test_stroke> newStrokes;
         std::vector<test_view> newViews;
         std::vector<Brush> newBrushes;
+        std::vector<std::string> newImageNames;
+        std::vector<Image> newImages;
 
         bool ok = true;
         size_t lineNum = 0;
@@ -902,7 +923,7 @@ struct Vandalism
                     std::istringstream ss(line);
                     ss.seekg(2);
                     test_point pt;
-                    ok = !(ss >> pt.x >> pt.y).fail();
+                    ok = !(ss >> pt.x >> pt.y >> pt.w).fail();
                     if (ok)
                     {
                         newPoints.push_back(pt);
@@ -925,8 +946,9 @@ struct Vandalism
                     ss.seekg(2);
                     test_view vi({TPAN, 0.0f, 0.0f}, 0, 0);
                     std::string ttype;
+                    i32 imgidx;
                     ok = !(ss >> ttype >> vi.tr.a >> vi.tr.b
-                           >> vi.si0 >> vi.si1).fail();
+                           >> vi.si0 >> vi.si1 >> imgidx).fail();
                     if (ok)
                     {
                         if (ttype == "pan")
@@ -946,6 +968,7 @@ struct Vandalism
                             ok = false;
                             break;
                         }
+                        vi.img = (imgidx == -1 ? NPOS : imgidx);
                         newViews.push_back(vi);
                     }
                 }
@@ -964,6 +987,51 @@ struct Vandalism
                 else if (*line.c_str() == '#')
                 {
                     // skip
+                }
+                else if (*line.c_str() == 'i')
+                {
+                    size_t firstq = 0;
+                    while (firstq < line.size())
+                    {
+                        if (line[firstq] == '\"') break;
+                    }
+                    size_t secondq = firstq + 1;
+                    while (secondq < line.size())
+                    {
+                        if (line[secondq] == '\"') break;
+                    }
+
+                    if (firstq < line.size() && secondq < line.size())
+                    {
+                        std::string name;
+                        name.assign(line.begin() + firstq + 1, line.begin() + secondq);
+
+                        std::istringstream ss(line);
+                        ss.seekg(secondq + 1);
+
+                        Image img;
+                        ok = !(ss >> img.tx >> img.ty
+                               >> img.xx >> img.xy >> img.yx >> img.yy).fail();
+                        if (ok)
+                        {
+                            img.nameidx = 0;
+                            for (; img.nameidx < newImageNames.size(); ++img.nameidx)
+                            {
+                                if (newImageNames[img.nameidx] == name)
+                                    break;
+                            }
+                            if (img.nameidx == newImageNames.size())
+                            {
+                                // 'did not found'
+                                newImageNames.push_back(name);
+                            }
+                            newImages.push_back(img);
+                        }
+                    }
+                    else
+                    {
+                        ok = false;
+                    }
                 }
                 else
                 {
@@ -1001,6 +1069,8 @@ struct Vandalism
 
             Layer &cl = current_layer();
 
+            imageNames = newImageNames;
+            images = newImages;
             brushes = newBrushes;
             cl.views = newViews;
             cl.strokes = newStrokes;

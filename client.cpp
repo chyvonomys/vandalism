@@ -42,7 +42,15 @@ kernel_services *current_services = 0;
 kernel_services::TexID font_texture_id;
 
 std::vector<kernel_services::MeshID> ui_meshes;
-std::vector<kernel_services::TexID> images;
+// TODO: these images must reflect 1-to-1 imageNames from ism
+// NOTE: ism doesn't need to know abount any texid or dimensions
+struct ImageDesc
+{
+    kernel_services::TexID texid;
+    u32 width;
+    u32 height;
+};
+std::vector<ImageDesc> loaded_images;
 std::vector<output_data::drawcall> drawcalls;
 
 kernel_services::MeshID lines_mesh;
@@ -51,10 +59,21 @@ kernel_services::MeshID curr_mesh;
 
 std::vector<ImDrawVert> lines_vb;
 
-bool image_fitting;
-kernel_services::TexID image_tex;
-float image_width_in;
-float image_height_in;
+struct CurrentImage
+{
+    std::string name;
+    float width_in;
+    float height_in;
+    kernel_services::TexID texid;
+    // TODO: think of better approach to avoiding texture deletion than this flag
+    bool reuse;
+    CurrentImage() :
+        width_in(0.0f),
+        height_in(0.0f),
+        texid(0xFFFF),
+        reuse(true)
+    {}
+} fit_img;
 
 enum CapturingStage
 {
@@ -63,6 +82,7 @@ enum CapturingStage
     CAPTURE
 };
 
+bool image_fitting;
 CapturingStage image_capturing;
 
 // TODO: ImDrawIdx vs u16 in proto.cpp
@@ -269,10 +289,6 @@ void setup(kernel_services *services)
 
     gui_goto_idx = 0;
 
-    image_tex = 0;
-    image_width_in = 0.0f;
-    image_height_in = 0.0f;
-
     image_fitting = false;
     image_capturing = INACTIVE;
 }
@@ -296,10 +312,11 @@ void cleanup()
 
     current_services->delete_texture(font_texture_id);
 
-    for (size_t i = 0; i < images.size(); ++i)
+    for (size_t i = 0; i < loaded_images.size(); ++i)
     {
-        current_services->delete_texture(images[i]);
+        current_services->delete_texture(loaded_images[i].texid);
     }
+    loaded_images.clear();
 
     delete viewsBuf;
 
@@ -498,11 +515,11 @@ void collect_bake_data(const test_data& bake_data,
             output_data::drawcall dc;
             dc.id = output_data::IMAGE;
             dc.mesh_id = 0; // not used
-            dc.texture_id = images[vis.si];
+            dc.texture_id = loaded_images[ism->images[vis.si].nameidx].texid;
             dc.offset = 0; // not used
             dc.count = 0; // not used
 
-            test_image img = bake_data.images[vis.si];
+            test_image img = ism->images[vis.si];
 
             test_point o{ img.tx, img.ty };
             test_point x{ img.tx + img.xx, img.ty + img.xy };
@@ -539,6 +556,34 @@ void collect_bake_data(const test_data& bake_data,
     }
 
     std::cout << "update mesh: " << s_visibles.size() << " visibles" << std::endl;
+}
+
+bool load_image(const char *filename, ImageDesc &desc)
+{
+    if (current_services->check_file(filename))
+    {
+        i32 image_w, image_h, image_comp;
+        float *image_data = stbi_loadf(cfg_default_image_file, &image_w, &image_h, &image_comp, 4);
+        if (image_comp > 0 && image_w > 0 && image_h > 0 && image_data != nullptr)
+        {
+            desc.width = static_cast<u32>(image_w);
+            desc.height = static_cast<u32>(image_h);
+            size_t pixel_cnt = desc.width * desc.height * 4;
+            std::vector<u8> udata(pixel_cnt);
+            const float *pIn = image_data;
+            u8 *pOut = udata.data();
+            for (size_t i = 0; i < pixel_cnt; ++i)
+            {
+                *(pOut++) = static_cast<u8>(*(pIn++) * 255.0f);
+            }
+            stbi_image_free(image_data);
+
+            desc.texid = current_services->create_texture(desc.width, desc.height, 4);
+            current_services->update_texture(desc.texid, udata.data());
+            return true;
+        }
+    }
+    return false;
 }
 
 void update_and_render(input_data *input, output_data *output)
@@ -858,7 +903,31 @@ void update_and_render(input_data *input, output_data *output)
         {
             if (current_services->check_file(cfg_default_file))
             {
+                for (size_t i = 0; i < loaded_images.size(); ++i)
+                {
+                    // TODO: better way of checking validness of texid
+                    if (loaded_images[i].height > 0 && loaded_images[i].width > 0)
+                    {
+                        current_services->delete_texture(loaded_images[i].texid);
+                    }
+                }
+                loaded_images.clear();
+
                 ism->load_data(cfg_default_file);
+
+                for (size_t i = 0; i < ism->imageNames.size(); ++i)
+                {
+                    ImageDesc desc;
+                    if (load_image(ism->imageNames[i].c_str(), desc))
+                    {
+                        loaded_images.push_back(desc);
+                    }
+                    else
+                    {
+                        ImageDesc invalid_desc{ 0xFFFF, 0, 0 };
+                        loaded_images.push_back(invalid_desc);
+                    }
+                }
             }
             else
             {
@@ -939,30 +1008,31 @@ void update_and_render(input_data *input, output_data *output)
         {
             if (ImGui::Button("Fit image"))
             {
-                if (current_services->check_file(cfg_default_image_file))
+                fit_img.name = cfg_default_image_file;
+                size_t ism_img_name_idx = ism->image_name_idx(fit_img.name);
+                if (ism_img_name_idx < ism->imageNames.size())
                 {
-                    i32 image_w, image_h, image_comp;
-                    float *image_data = stbi_loadf(cfg_default_image_file, &image_w, &image_h, &image_comp, 4);
-                    if (image_comp > 0 && image_w > 0 && image_h > 0 && image_data != nullptr)
+                    const ImageDesc &desc = loaded_images[ism_img_name_idx];
+                    float image_aspect = static_cast<float>(desc.height) / static_cast<float>(desc.width);
+
+                    fit_img.texid = desc.texid;
+                    fit_img.width_in = 0.5f * input->vpWidthIn;
+                    fit_img.height_in = fit_img.width_in * image_aspect;
+                    fit_img.reuse = true;
+
+                    image_fitting = true;
+                }
+                else
+                {
+                    ImageDesc desc;
+                    if (load_image(fit_img.name.c_str(), desc))
                     {
-                        u32 w = static_cast<u32>(image_w);
-                        u32 h = static_cast<u32>(image_h);
-                        size_t pixel_cnt = w * h * 4;
-                        std::vector<u8> udata(pixel_cnt);
-                        const float *pIn = image_data;
-                        u8 *pOut = udata.data();
-                        for (size_t i = 0; i < pixel_cnt; ++i)
-                        {
-                            *(pOut++) = static_cast<u8>(*(pIn++) * 255.0f);
-                        }
-                        stbi_image_free(image_data);
+                        float image_aspect = static_cast<float>(desc.height) / static_cast<float>(desc.width);
 
-                        image_tex = current_services->create_texture(w, h, 4);
-                        current_services->update_texture(image_tex, udata.data());
-
-                        float image_aspect = static_cast<float>(image_h) / static_cast<float>(image_w);
-                        image_width_in = 0.5f * input->vpWidthIn;
-                        image_height_in = image_width_in * image_aspect;
+                        fit_img.texid = desc.texid;
+                        fit_img.width_in = 0.5f * input->vpWidthIn;
+                        fit_img.height_in = fit_img.width_in * image_aspect;
+                        fit_img.reuse = false;
 
                         image_fitting = true;
                     }
@@ -972,36 +1042,34 @@ void update_and_render(input_data *input, output_data *output)
         else
         {
             output_data::drawcall dc;
-            dc.texture_id = image_tex;
+            dc.texture_id = fit_img.texid;
             dc.id = output_data::IMAGEFIT;
 
-            dc.params[0] = -0.5f * image_width_in;
-            dc.params[1] = -0.5f * image_height_in;
+            dc.params[0] = -0.5f * fit_img.width_in;
+            dc.params[1] = -0.5f * fit_img.height_in;
 
-            dc.params[2] = image_width_in;
+            dc.params[2] = fit_img.width_in;
             dc.params[3] = 0.0f;
 
             dc.params[4] = 0.0f;
-            dc.params[5] = image_height_in;
+            dc.params[5] = fit_img.height_in;
 
             drawcalls.push_back(dc);
 
             if (ImGui::Button("Cancel image"))
             {
-                current_services->delete_texture(image_tex);
-                image_tex = 0;
-                image_width_in = 0.0f;
-                image_height_in = 0.0f;
+                if (!fit_img.reuse)
+                {
+                    current_services->delete_texture(fit_img.texid);
+                }
+                fit_img = CurrentImage();
 
                 image_fitting = false;
             }
 
             if (ImGui::Button("Place image"))
             {
-                size_t imageIdx = images.size();
-                images.push_back(image_tex);
-
-                ism->place_image(imageIdx, image_width_in, image_height_in);
+                ism->place_image(fit_img.name, fit_img.width_in, fit_img.height_in);
 
                 image_fitting = false;
             }
