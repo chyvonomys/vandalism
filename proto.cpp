@@ -1098,9 +1098,9 @@ int main(int argc, char *argv[])
                             {
                                 // Unpremultiply
                                 float alpha = opacity / 255.0f;
-                                pixel[0] = (pixel[0] / 255.0f) / alpha * 255;
-                                pixel[1] = (pixel[1] / 255.0f) / alpha * 255;
-                                pixel[2] = (pixel[2] / 255.0f) / alpha * 255;
+                                pixel[0] = static_cast<u8>((pixel[0] / 255.0f) / alpha * 255.0f);
+                                pixel[1] = static_cast<u8>((pixel[1] / 255.0f) / alpha * 255.0f);
+                                pixel[2] = static_cast<u8>((pixel[2] / 255.0f) / alpha * 255.0f);
                             }
                             pixel[3] = opacity;
                             pixel += 4;

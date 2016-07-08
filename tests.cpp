@@ -99,7 +99,7 @@ test_view t_views1[] =
 const size_t NVIEWS1 = 2;
 const size_t PIN1 = 1;
 
-test_data test1 = {t_points1, t_strokes1, nullptr, t_views1, NVIEWS1};
+test_data test1 = {t_points1, t_strokes1, t_views1, NVIEWS1};
 
 test_point t_points2[] =
 {
@@ -138,7 +138,7 @@ test_view t_views2[] =
 const size_t NVIEWS2 = 7;
 const size_t PIN2 = 6;
 
-test_data test2 = {t_points2, t_strokes2, nullptr, t_views2, NVIEWS2};
+test_data test2 = {t_points2, t_strokes2, t_views2, NVIEWS2};
 
 test_point t_points3[] =
 {
@@ -159,7 +159,7 @@ test_view t_views3[] =
 const size_t NVIEWS3 = 2;
 const size_t PIN3 = 1;
 
-test_data test3 = {t_points3, t_strokes3, nullptr, t_views3, NVIEWS3};
+test_data test3 = {t_points3, t_strokes3, t_views3, NVIEWS3};
 
 bool cfg_run_tests = false;
 

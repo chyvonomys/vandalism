@@ -1,3 +1,4 @@
+#include <string>
 #include <vector>
 #include "client.h"
 #include "math.h"
@@ -1009,7 +1010,7 @@ void update_and_render(input_data *input, output_data *output)
             if (ImGui::Button("Fit image"))
             {
                 fit_img.name = cfg_default_image_file;
-                size_t ism_img_name_idx = ism->image_name_idx(fit_img.name);
+                size_t ism_img_name_idx = ism->image_name_idx(fit_img.name.c_str());
                 if (ism_img_name_idx < ism->imageNames.size())
                 {
                     const ImageDesc &desc = loaded_images[ism_img_name_idx];
@@ -1069,7 +1070,8 @@ void update_and_render(input_data *input, output_data *output)
 
             if (ImGui::Button("Place image"))
             {
-                ism->place_image(fit_img.name, fit_img.width_in, fit_img.height_in);
+                ism->place_image(fit_img.name.c_str(),
+                                 fit_img.width_in, fit_img.height_in);
 
                 image_fitting = false;
             }

@@ -109,6 +109,7 @@ struct test_view
     size_t img;
     size_t pin_index;
     test_box bbox;
+    test_box imgbbox;
     test_view(const test_transition& t, size_t s0, size_t s1, size_t i = NPOS)
         : tr(t), si0(s0), si1(s1), img(i), pin_index(NPOS)
     {}
@@ -191,22 +192,10 @@ void crop(const test_data &data, size_t vi, size_t ti,
 
     if (view.img != NPOS)
     {
-        test_image image = data.images[view.img];
-
-        test_point oo{ image.tx, image.ty };
-        test_point ox{ image.tx + image.xx, image.ty + image.xy };
-        test_point oy{ image.tx + image.yx, image.ty + image.yy };
-        test_point xy{ image.tx + image.xx + image.yx, image.ty + image.xy + image.yy };
-
-        test_box bbox;
-        bbox.add(oo);
-        bbox.add(ox);
-        bbox.add(oy);
-        bbox.add(xy);
-
-        if (overlaps(viewport, bbox) &&
-            bbox.width() > negligibledist &&
-            bbox.height() > negligibledist)
+        // TODO: why do we check with negligibledist here?
+        if (overlaps(viewport, view.imgbbox) &&
+            view.imgbbox.width() > negligibledist &&
+            view.imgbbox.height() > negligibledist)
         {
             test_visible vis;
             vis.ty = test_visible::IMAGE;
@@ -216,6 +205,7 @@ void crop(const test_data &data, size_t vi, size_t ti,
         }
     }
 
+    // TODO: why do we check with negligibledist here?
     if (overlaps(viewport, view.bbox) &&
         view.bbox.width() > negligibledist &&
         view.bbox.height() > negligibledist)
@@ -224,6 +214,7 @@ void crop(const test_data &data, size_t vi, size_t ti,
         for (size_t si = view.si0; si < view.si1; ++si)
         {
             test_stroke stroke = data.strokes[si];
+            // TODO: why do we check with negligibledist here?
             if (overlaps(viewport, stroke.bbox) &&
                 stroke.bbox.width() > negligibledist &&
                 stroke.bbox.height() > negligibledist)

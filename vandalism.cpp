@@ -531,7 +531,18 @@ struct Vandalism
         common_done();
     }
 
-    void place_image(size_t imageId, float imageW, float imageH)
+    size_t image_name_idx(const char *name)
+    {
+        size_t result = 0;
+        for (; result < imageNames.size(); ++result)
+        {
+            if (imageNames[result] == name)
+                break;
+        }
+        return result;
+    }
+    
+    void place_image(const char *name, float imageW, float imageH)
     {
         if (append_allowed())
         {
@@ -541,10 +552,31 @@ struct Vandalism
             test_transition t = {TPAN, 0.0f, 0.0f};
             cl.views.push_back(test_view(t, cl.strokes.size(), cl.strokes.size(),
                                          images.size()));
+
+            size_t imageId = image_name_idx(name);
+            if (imageId == imageNames.size())
+            {
+                imageNames.push_back(name);
+            }
+
             test_image i = {imageId,
                             -0.5f * imageW, -0.5f * imageH,
                             imageW, 0.0f,
                             0.0f, imageH};
+
+            test_point oo{ i.tx,               i.ty };
+            test_point ox{ i.tx + i.xx,        i.ty + i.xy };
+            test_point oy{ i.tx +        i.yx, i.ty +        i.yy };
+            test_point xy{ i.tx + i.xx + i.yx, i.ty + i.xy + i.yy };
+
+            test_box bbox;
+            bbox.add(oo);
+            bbox.add(ox);
+            bbox.add(oy);
+            bbox.add(xy);
+
+            cl.views.back().imgbbox = bbox;
+
             images.push_back(i);
         }
 
@@ -688,7 +720,6 @@ struct Vandalism
         {
             l.points.data(),
             l.strokes.data(),
-            images.data(),
             l.views.data(),
             l.views.size()
         };
@@ -702,7 +733,6 @@ struct Vandalism
         {
             currentPoints.data(),
             &currentStroke,
-            nullptr,
             nullptr,
             0
         };
@@ -968,7 +998,7 @@ struct Vandalism
                             ok = false;
                             break;
                         }
-                        vi.img = (imgidx == -1 ? NPOS : imgidx);
+                        vi.img = (imgidx == -1 ? NPOS : static_cast<u32>(imgidx));
                         newViews.push_back(vi);
                     }
                 }
@@ -1004,10 +1034,10 @@ struct Vandalism
                     if (firstq < line.size() && secondq < line.size())
                     {
                         std::string name;
-                        name.assign(line.begin() + firstq + 1, line.begin() + secondq);
+                        name.assign(&line[firstq + 1], &line[secondq]);
 
                         std::istringstream ss(line);
-                        ss.seekg(secondq + 1);
+                        ss.seekg(static_cast<std::streamoff>(secondq + 1));
 
                         Image img;
                         ok = !(ss >> img.tx >> img.ty
