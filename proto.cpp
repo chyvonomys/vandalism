@@ -506,6 +506,44 @@ u32 capture_data_width_px = 0;
 u32 capture_data_height_px = 0;
 std::vector<u8> capture_data;
 
+void normalize_capture_data()
+{
+    u8 *start = capture_data.data();
+    u8 *finish = start + capture_data.size();
+    u8 *pixel = start;
+    while (pixel != finish)
+    {
+        // NOTE: alpha channel contains amount of bg to add
+        // 1-that is alpha value of the drawing
+        u8 transparency = pixel[3];
+        u8 opacity = 255 - transparency;
+        if (opacity > 0)
+        {
+            // Unpremultiply
+            float alpha = opacity / 255.0f;
+            pixel[0] = static_cast<u8>((pixel[0] / 255.0f) / alpha * 255.0f);
+            pixel[1] = static_cast<u8>((pixel[1] / 255.0f) / alpha * 255.0f);
+            pixel[2] = static_cast<u8>((pixel[2] / 255.0f) / alpha * 255.0f);
+        }
+        pixel[3] = opacity;
+        pixel += 4;
+    }
+    // Flip
+    const size_t rowpitch = capture_data_width_px * 4;
+    std::vector<u8> swapbuffer(rowpitch);
+    u8 *swaprow = swapbuffer.data();
+    for (size_t row = 0; row < capture_data_height_px / 2; ++row)
+    {
+        u8 *thisrow = capture_data.data() + row * rowpitch;
+        u8 *thatrow = capture_data.data() + (capture_data_height_px - row - 1) * rowpitch;
+        ::memcpy(swaprow, thisrow, rowpitch);
+        ::memcpy(thisrow, thatrow, rowpitch);
+        ::memcpy(thatrow, swaprow, rowpitch);
+    }
+    // Crop
+    // TODO:
+}
+
 kernel_services::MeshID create_mesh_common(const VertexLayout& layout,
                                            u32 initialVCount,
                                            u32 initialICount,
@@ -786,6 +824,190 @@ private:
     bool current_value;
 };
 
+struct Pipeline
+{
+    FSQuad quad;
+    FSTexturePresenter fs;
+    StrokeImageTech si;
+    FSGrid grid;
+    RenderTargetMS bakeRTMS;
+    RenderTarget bakeRT;
+    RenderTarget currRT;
+    MarkerBatchTech render;
+    UIPresenter uirender;
+
+    void setup(u32 w, u32 h)
+    {
+        quad.setup();
+        fs.setup(&quad);
+        si.setup(&quad);
+        grid.setup(&quad);
+        bakeRTMS.setup(w, h);
+        bakeRT.setup(w, h);
+        currRT.setup(w, h);
+        render.setup();
+        uirender.setup();
+    }
+
+    void cleanup()
+    {
+        uirender.cleanup();
+        render.cleanup();
+        currRT.cleanup();
+        bakeRT.cleanup();
+        bakeRTMS.cleanup();
+        grid.cleanup();
+        si.cleanup();
+        fs.cleanup();
+        quad.cleanup();
+    }
+
+    void do_drawcalls(const input_data &input, const output_data &output,
+        const output_data::drawcall *drawcalls, size_t drawcall_cnt,
+        bool gamma_on)
+    {
+        bool has_anything_to_bake = false;
+        bool has_current_object = false;
+        for (u32 i = 0; i < drawcall_cnt; ++i)
+        {
+            output_data::techid id = drawcalls[i].id;
+
+            if (id == output_data::BAKEBATCH || id == output_data::IMAGE)
+            {
+                has_anything_to_bake = true;
+            }
+            if (id == output_data::CURRENTSTROKE || id == output_data::IMAGEFIT)
+            {
+                has_current_object = true;
+            }
+        }
+
+        if (has_anything_to_bake)
+        {
+            bakeRTMS.begin_receive();
+            glClearColor(0.0, 0.0, 0.0, 1.0);
+            glClearDepth(0.0);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            for (u32 i = 0; i < drawcall_cnt; ++i)
+            {
+                const auto &dc = drawcalls[i];
+                if (dc.id == output_data::BAKEBATCH)
+                {
+                    render.draw(dc.mesh_id, dc.offset, dc.count,
+                        2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
+                }
+                else if (dc.id == output_data::IMAGE)
+                {
+                    si.draw(textures[dc.texture_id].glid,
+                        dc.params[0], dc.params[1],
+                        dc.params[2], dc.params[3],
+                        dc.params[4], dc.params[5],
+                        1.0f,
+                        2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
+                }
+            }
+            bakeRTMS.end_receive();
+
+            bakeRT.begin_receive();
+            bakeRTMS.resolve();
+            bakeRT.end_receive();
+
+            for (size_t i = 0; i < drawcall_cnt; ++i)
+            {
+                if (drawcalls[i].id == output_data::CAPTURE)
+                {
+                    bakeRT.store_image(capture_data.data());
+                    normalize_capture_data();
+                }
+            }
+        }
+
+        if (has_current_object)
+        {
+            currRT.begin_receive();
+            glClearColor(0.0, 0.0, 0.0, 1.0);
+            glClearDepth(0.0);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            fs.draw(bakeRT.m_tex, GL_ONE, GL_ZERO,
+                output.preTranslateX, output.preTranslateY,
+                output.postTranslateX, output.postTranslateY,
+                output.scale, output.rotate,
+                input.rtWidthIn, input.rtHeightIn,
+                input.rtWidthIn, input.rtHeightIn);
+
+            for (u32 i = 0; i < output.drawcall_cnt; ++i)
+            {
+                const auto &dc = output.drawcalls[i];
+                if (dc.id == output_data::CURRENTSTROKE)
+                {
+                    render.draw(dc.mesh_id, dc.offset, dc.count,
+                        2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
+                }
+                if (dc.id == output_data::IMAGEFIT)
+                {
+                    si.draw(textures[dc.texture_id].glid,
+                        dc.params[0], dc.params[1],
+                        dc.params[2], dc.params[3],
+                        dc.params[4], dc.params[5],
+                        0.5f,
+                        2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
+                }
+            }
+            currRT.end_receive();
+        }
+
+        if (gamma_on)
+        {
+            glEnable(GL_FRAMEBUFFER_SRGB);
+        }
+
+        glClearColor(output.bg_red, output.bg_green, output.bg_blue, 1.0);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        // viewport is centered in window
+        i32 viewportLeftPx = (input.windowWidthPx - input.vpWidthPx) / 2;
+        i32 viewportBottomPx = (input.windowHeightPx - input.vpHeightPx) / 2;
+
+        glViewport(viewportLeftPx, viewportBottomPx,
+            input.vpWidthPx, input.vpHeightPx);
+
+        for (u32 i = 0; i < output.drawcall_cnt; ++i)
+        {
+            if (output.drawcalls[i].id == output_data::GRID)
+            {
+                grid.draw(output.grid_bg_color, output.grid_fg_color,
+                    2.0f / input.vpWidthIn, 2.0f / input.vpHeightIn);
+            }
+        }
+
+        fs.draw(currRT.m_tex, GL_ONE, GL_SRC_ALPHA,
+            0.0f, 0.0f,
+            0.0f, 0.0f,
+            1.0f, 0.0f,
+            input.vpWidthIn, input.vpHeightIn,
+            input.rtWidthIn, input.rtHeightIn);
+
+        for (u32 i = 0; i < output.drawcall_cnt; ++i)
+        {
+            const auto &dc = output.drawcalls[i];
+            if (dc.id == output_data::UI)
+            {
+                uirender.draw(dc.texture_id, dc.mesh_id,
+                    dc.offset, dc.count,
+                    static_cast<float>(input.vpWidthPt),
+                    static_cast<float>(input.vpHeightPt));
+            }
+        }
+
+        if (gamma_on)
+        {
+            glDisable(GL_FRAMEBUFFER_SRGB);
+        }
+    }
+};
+
 int main(int argc, char *argv[])
 {
     for (int i = 1; i < argc; ++i)
@@ -887,38 +1109,14 @@ int main(int argc, char *argv[])
         u8 ones[4] = { 255, 255, 255, 255 };
         update_texture_unsafe(kernel_services::default_texid, ones);
 
-        FSQuad quad;
-        quad.setup();
-
         quad_indexes.setup();
 
-        FSTexturePresenter fs;
-        fs.setup(&quad);
-
-        StrokeImageTech si;
-        si.setup(&quad);
-
-        FSGrid grid;
-        grid.setup(&quad);
-
-        RenderTargetMS bakeRTMS;
-        bakeRTMS.setup(rtWidthPx, rtHeightPx);
-
-        RenderTarget bakeRT;
-        bakeRT.setup(rtWidthPx, rtHeightPx);
+        Pipeline p;
+        p.setup(rtWidthPx, rtHeightPx);
 
         capture_data_width_px = rtWidthPx;
         capture_data_height_px = rtHeightPx;
         capture_data.resize(rtWidthPx * rtHeightPx * 4);
-
-        RenderTarget currRT;
-        currRT.setup(rtWidthPx, rtHeightPx);
-
-        MarkerBatchTech render;
-        render.setup();
-
-        UIPresenter uirender;
-        uirender.setup();
 
         check_gl_errors("after setup");
 
@@ -1038,10 +1236,6 @@ int main(int argc, char *argv[])
             input.rtHeightIn = rtHeightPx / pxPerPtVer / monitorVerDPI;
 
             // viewport is centered in window
-            i32 viewportLeftPx = (input.windowWidthPx - input.vpWidthPx) / 2;
-            i32 viewportBottomPx = (input.windowHeightPx - input.vpHeightPx) / 2;
-
-            // viewport is centered in window
             double viewportLeftPt = 0.5 * (input.windowWidthPt - input.vpWidthPt);
             double viewportBottomPt = 0.5 * (input.windowHeightPt - input.vpHeightPt);
             double viewportRightPt = viewportLeftPt + input.vpWidthPt;
@@ -1083,174 +1277,9 @@ int main(int argc, char *argv[])
                 break;
             }
 
-            bool has_anything_to_bake = false;
-            bool has_current_object = false;
-            for (u32 i = 0; i < output.drawcall_cnt; ++i)
-            {
-                output_data::techid id = output.drawcalls[i].id;
-
-                if (id == output_data::BAKEBATCH || id == output_data::IMAGE)
-                {
-                    has_anything_to_bake = true;
-                }
-                if (id == output_data::CURRENTSTROKE || id == output_data::IMAGEFIT)
-                {
-                    has_current_object = true;
-                }
-            }
-
-            if (has_anything_to_bake)
-            {
-                bakeRTMS.begin_receive();
-                glClearColor(0.0, 0.0, 0.0, 1.0);
-                glClearDepth(0.0);
-                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-                for (u32 i = 0; i < output.drawcall_cnt; ++i)
-                {
-                    const auto &dc = output.drawcalls[i];
-                    if (dc.id == output_data::BAKEBATCH)
-                    {
-                        render.draw(dc.mesh_id, dc.offset, dc.count,
-                                    2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
-                    }
-                    else if (dc.id == output_data::IMAGE)
-                    {
-                        si.draw(textures[dc.texture_id].glid,
-                                dc.params[0], dc.params[1],
-                                dc.params[2], dc.params[3],
-                                dc.params[4], dc.params[5],
-                                1.0f,
-                                2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
-                    }
-                }
-                bakeRTMS.end_receive();
-
-                bakeRT.begin_receive();
-                bakeRTMS.resolve();
-                bakeRT.end_receive();
-
-                for (size_t i = 0; i < output.drawcall_cnt; ++i)
-                {
-                    if (output.drawcalls[i].id == output_data::CAPTURE)
-                    {
-                        bakeRT.store_image(capture_data.data());
-                        u8 *start = capture_data.data();
-                        u8 *finish = start + capture_data.size();
-                        u8 *pixel = start;
-                        while (pixel != finish)
-                        {
-                            // NOTE: alpha channel contains amount of bg to add
-                            // 1-that is alpha value of the drawing
-                            u8 transparency = pixel[3];
-                            u8 opacity = 255 - transparency;
-                            if (opacity > 0)
-                            {
-                                // Unpremultiply
-                                float alpha = opacity / 255.0f;
-                                pixel[0] = static_cast<u8>((pixel[0] / 255.0f) / alpha * 255.0f);
-                                pixel[1] = static_cast<u8>((pixel[1] / 255.0f) / alpha * 255.0f);
-                                pixel[2] = static_cast<u8>((pixel[2] / 255.0f) / alpha * 255.0f);
-                            }
-                            pixel[3] = opacity;
-                            pixel += 4;
-                        }
-                        // Flip
-                        const size_t rowpitch = capture_data_width_px * 4;
-                        std::vector<u8> swapbuffer(rowpitch);
-                        u8 *swaprow = swapbuffer.data();
-                        for (size_t row = 0; row < capture_data_height_px / 2; ++row)
-                        {
-                            u8 *thisrow = capture_data.data() + row * rowpitch;
-                            u8 *thatrow = capture_data.data() + (capture_data_height_px - row - 1) * rowpitch;
-                            ::memcpy(swaprow, thisrow, rowpitch);
-                            ::memcpy(thisrow, thatrow, rowpitch);
-                            ::memcpy(thatrow, swaprow, rowpitch);
-                        }
-                        // Crop
-                        // TODO:
-                    }
-                }
-            }
-
-            if (has_current_object)
-            {
-                currRT.begin_receive();
-                glClearColor(0.0, 0.0, 0.0, 1.0);
-                glClearDepth(0.0);
-                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-                fs.draw(bakeRT.m_tex, GL_ONE, GL_ZERO,
-                    output.preTranslateX, output.preTranslateY,
-                    output.postTranslateX, output.postTranslateY,
-                    output.scale, output.rotate,
-                    input.rtWidthIn, input.rtHeightIn,
-                    input.rtWidthIn, input.rtHeightIn);
-
-                for (u32 i = 0; i < output.drawcall_cnt; ++i)
-                {
-                    const auto &dc = output.drawcalls[i];
-                    if (dc.id == output_data::CURRENTSTROKE)
-                    {
-                        render.draw(dc.mesh_id, dc.offset, dc.count,
-                                    2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
-                    }
-                    if (dc.id == output_data::IMAGEFIT)
-                    {
-                        si.draw(textures[dc.texture_id].glid,
-                                dc.params[0], dc.params[1],
-                                dc.params[2], dc.params[3],
-                                dc.params[4], dc.params[5],
-                                0.5f,
-                                2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
-                    }
-                }
-                currRT.end_receive();
-            }
-
-            if (gamma_enabled)
-            {
-                glEnable(GL_FRAMEBUFFER_SRGB);
-            }
-
-            glClearColor(output.bg_red, output.bg_green, output.bg_blue, 1.0);
-            glClear(GL_COLOR_BUFFER_BIT);
-
-            glViewport(viewportLeftPx, viewportBottomPx,
-                       input.vpWidthPx, input.vpHeightPx);
-
-            for (u32 i = 0; i < output.drawcall_cnt; ++i)
-            {
-                if (output.drawcalls[i].id == output_data::GRID)
-                {
-                    grid.draw(output.grid_bg_color, output.grid_fg_color,
-                              2.0f / input.vpWidthIn, 2.0f / input.vpHeightIn);
-                }
-            }
-
-            fs.draw(currRT.m_tex, GL_ONE, GL_SRC_ALPHA,
-                    0.0f, 0.0f,
-                    0.0f, 0.0f,
-                    1.0f, 0.0f,
-                    input.vpWidthIn, input.vpHeightIn,
-                    input.rtWidthIn, input.rtHeightIn);
-
-            for (u32 i = 0; i < output.drawcall_cnt; ++i)
-            {
-                const auto &dc = output.drawcalls[i];
-                if (dc.id == output_data::UI)
-                {
-                    uirender.draw(dc.texture_id, dc.mesh_id,
-                                  dc.offset, dc.count,
-                                  static_cast<float>(input.vpWidthPt),
-                                  static_cast<float>(input.vpHeightPt));
-                }
-            }
-
-            if (gamma_enabled)
-            {
-                glDisable(GL_FRAMEBUFFER_SRGB);
-            }
+            p.do_drawcalls(input, output,
+                           output.drawcalls, output.drawcall_cnt,
+                           gamma_enabled);
 
             TIME; // finish ---------------------------------------------------------
             
@@ -1271,14 +1300,8 @@ int main(int argc, char *argv[])
 
         cleanup();
 
-        uirender.cleanup();
-        render.cleanup();
-        bakeRT.cleanup();
-        currRT.cleanup();
-        fs.cleanup();
-        si.cleanup();
-        grid.cleanup();
-        quad.cleanup();
+        p.cleanup();
+
         quad_indexes.cleanup();
         delete_texture_unsafe(kernel_services::default_texid);
 
@@ -1888,5 +1911,3 @@ void QuadIndexes::after()
 {
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }
-
-
