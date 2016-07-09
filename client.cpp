@@ -519,7 +519,7 @@ void collect_bake_data(const test_data& bake_data,
         }
         else if (vis.ty == test_visible::IMAGE)
         {
-            const test_image &img = ism->images[vis.obj_id];
+            const test_image &img = bake_data.images[vis.obj_id];
 
             output_data::drawcall dc;
             dc.id = output_data::IMAGE;
@@ -870,10 +870,13 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::RadioButton("move center", &gui_tool, static_cast<i32>(Vandalism::FIRST));
     ImGui::SameLine();
     ImGui::RadioButton("pivot", &gui_tool, static_cast<i32>(Vandalism::SECOND));
-    if (ism->undoable())
+
+    Vandalism::Undoee undoee = ism->undoable();
+    const char *undolabels[] = { "", "Undo last stroke", "Undo image insertion", "Undo view change" };
+    if (undoee != Vandalism::NOTHING)
     {
         ImGui::SameLine();
-        if (ImGui::Button("Undo"))
+        if (ImGui::Button(undolabels[undoee]))
         {
             ism->undo();
         }

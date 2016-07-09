@@ -135,6 +135,7 @@ struct test_data
 {
     const test_point *points;
     const test_stroke *strokes;
+    const test_image *images;
     const test_view *views;
     size_t nviews;
 };

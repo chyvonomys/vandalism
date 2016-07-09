@@ -36,6 +36,10 @@ struct Vandalism
         std::vector<Point> points;
         std::vector<Stroke> strokes;
         std::vector<test_view> views;
+        // One image name can be referenced by many images
+        // Image is actually an image + placement.
+        // image<->imagename is like stroke<->brush
+        std::vector<Image> images;
         bool visible;
     };
 
@@ -49,9 +53,6 @@ struct Vandalism
 
     std::vector<std::string> imageNames;
 
-    // One image name can be referenced by many images
-    // Image is actually an image + placement.
-    std::vector<Image> images;
     std::vector<Brush> brushes;
 
     std::vector<Pin> pins;
@@ -551,7 +552,7 @@ struct Vandalism
             currentPin.viewidx = cl.views.size();
             test_transition t = {TPAN, 0.0f, 0.0f};
             cl.views.push_back(test_view(t, cl.strokes.size(), cl.strokes.size(),
-                                         images.size()));
+                                         cl.images.size()));
 
             size_t imageId = image_name_idx(name);
             if (imageId == imageNames.size())
@@ -566,7 +567,7 @@ struct Vandalism
 
             cl.views.back().imgbbox = i.get_bbox();
 
-            images.push_back(i);
+            cl.images.push_back(i);
         }
 
         set_dirty();
@@ -709,6 +710,7 @@ struct Vandalism
         {
             l.points.data(),
             l.strokes.data(),
+            l.images.data(),
             l.views.data(),
             l.views.size()
         };
@@ -802,7 +804,15 @@ struct Vandalism
         */
     }
 
-    bool undoable()
+    enum Undoee
+    {
+        NOTHING,
+        STROKE,
+        IMAGE,
+        VIEW
+    };
+
+    Undoee undoable()
     {
         return check_undo(false);
     }
@@ -815,27 +825,39 @@ struct Vandalism
         }
     }
 
-    bool check_undo(bool really)
+    Undoee check_undo(bool really)
     {
         Layer &cl = current_layer();
 
         if (!current_view_is_last())
         {
-            return false;
+            return NOTHING;
         }
         // TODO: view may now contain image, fix these conditions
         else if (cl.views.back().si1 == cl.views.back().si0)
         {
             if (cl.views.size() > 1)
             {
-                if (really)
+                if (cl.views.back().img == NPOS)
                 {
-                    // TODO: if we maintain parallel view in all layers,
-                    // then we pop back in other layers?
-                    cl.views.pop_back();
-                    --currentPin.viewidx;
+                    if (really)
+                    {
+                        // TODO: if we maintain parallel view in all layers,
+                        // then we pop back in other layers?
+                        cl.views.pop_back();
+                        --currentPin.viewidx;
+                    }
+                    return VIEW;
                 }
-                return true;
+                else
+                {
+                    if (really)
+                    {
+                        cl.images.pop_back();
+                        cl.views.back().img = NPOS;
+                    }
+                    return IMAGE;
+                }
             }
         }
         else if (cl.views.back().si1 > cl.views.back().si0)
@@ -850,9 +872,9 @@ struct Vandalism
                 cl.strokes.pop_back();
                 --cl.views.back().si1;
             }
-            return true;
+            return STROKE;
         }
-        return false;
+        return NOTHING;
     }
 
     void set_view(size_t idx)
@@ -905,12 +927,12 @@ struct Vandalism
                << brushes[i].b << ' ' << brushes[i].a << '\n';
         }
         // TODO: maybe reuse 'basis' vectors approach here and in views
-        for (size_t i = 0; i < images.size(); ++i)
+        for (size_t i = 0; i < cl.images.size(); ++i)
         {
-            os << "i \"" << imageNames[images[i].nameidx] << '\"'
-                << ' ' << images[i].tx << ' ' << images[i].ty
-                << ' ' << images[i].xx << ' ' << images[i].xy
-                << ' ' << images[i].yx << ' ' << images[i].yy << '\n';
+            os << "i \"" << imageNames[cl.images[i].nameidx] << '\"'
+                << ' ' << cl.images[i].tx << ' ' << cl.images[i].ty
+                << ' ' << cl.images[i].xx << ' ' << cl.images[i].xy
+                << ' ' << cl.images[i].yx << ' ' << cl.images[i].yy << '\n';
         }
     }
 
@@ -1095,8 +1117,8 @@ struct Vandalism
             Layer &cl = current_layer();
 
             imageNames = newImageNames;
-            images = newImages;
             brushes = newBrushes;
+            cl.images = newImages;
             cl.views = newViews;
             cl.strokes = newStrokes;
             cl.points = newPoints;
@@ -1129,7 +1151,6 @@ struct Vandalism
     {
         brushes.clear();
         pins.clear();
-        images.clear();
         imageNames.clear();
         layers.clear();
 
