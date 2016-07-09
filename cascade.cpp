@@ -691,4 +691,15 @@ void smooth_stroke(const test_point* input, size_t N,
     }
 }
 
+test_box get_strokes_bbox(const test_data &data, size_t vi)
+{
+    test_box result;
+    const test_view &v = data.views[vi];
+    for (size_t si = v.si0; si < v.si1; ++si)
+    {
+        result.add_box(data.strokes[si].bbox);
+    }
+    return result;
+}
+
 #include "tests.cpp"

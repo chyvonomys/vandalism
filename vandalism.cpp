@@ -41,6 +41,19 @@ struct Vandalism
         // image<->imagename is like stroke<->brush
         std::vector<Image> images;
         bool visible;
+
+        test_data get_data() const
+        {
+            test_data result =
+            {
+                points.data(),
+                strokes.data(),
+                images.data(),
+                views.data(),
+                views.size()
+            };
+            return result;
+        }
     };
 
     struct Pin
@@ -703,19 +716,10 @@ struct Vandalism
         return current_layer().strokes.size();
     }
 
+
     test_data get_bake_data(size_t li) const
     {
-        const Layer &l = layers[li];
-        test_data result =
-        {
-            l.points.data(),
-            l.strokes.data(),
-            l.images.data(),
-            l.views.data(),
-            l.views.size()
-        };
-
-        return result;
+        return layers[li].get_data();
     }
 
     test_data get_current_data() const
@@ -724,6 +728,7 @@ struct Vandalism
         {
             currentPoints.data(),
             &currentStroke,
+            nullptr,
             nullptr,
             0
         };
@@ -871,6 +876,8 @@ struct Vandalism
                 }
                 cl.strokes.pop_back();
                 --cl.views.back().si1;
+                size_t vi = cl.views.size() - 1;
+                cl.views.back().bbox = get_strokes_bbox(cl.get_data(), vi);
             }
             return STROKE;
         }
@@ -940,12 +947,10 @@ struct Vandalism
     {
         std::ifstream is(filename);
         std::string line;
-        std::vector<test_point> newPoints;
-        std::vector<test_stroke> newStrokes;
-        std::vector<test_view> newViews;
+
+        Layer nl;
         std::vector<Brush> newBrushes;
         std::vector<std::string> newImageNames;
-        std::vector<Image> newImages;
 
         bool ok = true;
         size_t lineNum = 0;
@@ -967,7 +972,7 @@ struct Vandalism
                     ok = !(ss >> pt.x >> pt.y >> pt.w).fail();
                     if (ok)
                     {
-                        newPoints.push_back(pt);
+                        nl.points.push_back(pt);
                     }
                 }
                 else if (*line.c_str() == 's')
@@ -978,7 +983,7 @@ struct Vandalism
                     ok = !(ss >> st.pi0 >> st.pi1 >> st.brush_id).fail();
                     if (ok)
                     {
-                        newStrokes.push_back(st);
+                        nl.strokes.push_back(st);
                     }
                 }
                 else if (*line.c_str() == 'v')
@@ -1010,7 +1015,7 @@ struct Vandalism
                             break;
                         }
                         vi.img = (imgidx == -1 ? NPOS : static_cast<u32>(imgidx));
-                        newViews.push_back(vi);
+                        nl.views.push_back(vi);
                     }
                 }
                 else if (*line.c_str() == 'b')
@@ -1068,7 +1073,7 @@ struct Vandalism
                                 // 'did not found'
                                 newImageNames.push_back(name);
                             }
-                            newImages.push_back(img);
+                            nl.images.push_back(img);
                         }
                     }
                     else
@@ -1086,26 +1091,26 @@ struct Vandalism
         // TODO: validation
 
         // calculate bboxes of strokes
-        for (size_t si = 0; si < newStrokes.size(); ++si)
+        for (size_t si = 0; si < nl.strokes.size(); ++si)
         {
-            Stroke& ns = newStrokes[si];
+            Stroke& ns = nl.strokes[si];
             for (size_t pi = ns.pi0; pi < ns.pi1; ++pi)
             {
-                ns.bbox.add(newPoints[pi]);
+                ns.bbox.add(nl.points[pi]);
             }
+            // TODO: invalid for non circular brushes
+            // diameter should be max bbox of drawn point shape
             ns.bbox.grow(0.5f * newBrushes[ns.brush_id].diameter);
         }
 
+        test_data newData = nl.get_data();
         // calculate bboxes of views
-        for (size_t vi = 0; vi < newViews.size(); ++vi)
+        for (size_t vi = 0; vi < nl.views.size(); ++vi)
         {
-            for (size_t si = newViews[vi].si0; si < newViews[vi].si1; ++si)
+            nl.views[vi].bbox = get_strokes_bbox(newData, vi);
+            if (nl.views[vi].img != NPOS)
             {
-                newViews[vi].bbox.add_box(newStrokes[si].bbox);
-            }
-            if (newViews[vi].img != NPOS)
-            {
-                newViews[vi].imgbbox = newImages[newViews[vi].img].get_bbox();
+                nl.views[vi].imgbbox = nl.images[nl.views[vi].img].get_bbox();
             }
         }
 
@@ -1118,10 +1123,7 @@ struct Vandalism
 
             imageNames = newImageNames;
             brushes = newBrushes;
-            cl.images = newImages;
-            cl.views = newViews;
-            cl.strokes = newStrokes;
-            cl.points = newPoints;
+            cl = nl;
             currentPin.viewidx = cl.views.size() - 1;
 
             set_dirty();
