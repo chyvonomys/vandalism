@@ -622,20 +622,21 @@ void kernel_services::delete_mesh(kernel_services::MeshID mi)
 
 struct Texture
 {
+    bool active;
     GLuint glid;
     GLuint width;
     GLuint height;
     GLenum format;
+    Texture() : active(false), glid(0), width(0), height(0), format(GL_RGBA) {}
 };
 
-// TODO: this runs always up
-u32 next_texture_idx = 0;
 const u32 MAXTEXCNT = 10;
 Texture textures[MAXTEXCNT];
 
-kernel_services::TexID kernel_services::create_texture(u32 w, u32 h, u32 comp)
+void create_texture_unsafe(u32 idx, u32 w, u32 h, u32 comp)
 {
-    Texture &tex = textures[next_texture_idx];
+    Texture &tex = textures[idx];
+    tex.active = true;
     tex.width = w;
     tex.height = h;
     tex.format = static_cast<GLenum>(comp == 1 ? GL_RED : GL_RGBA);
@@ -643,31 +644,76 @@ kernel_services::TexID kernel_services::create_texture(u32 w, u32 h, u32 comp)
 
     glBindTexture(GL_TEXTURE_2D, tex.glid);
     glTexImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(tex.format),
-                 static_cast<GLsizei>(w), static_cast<GLsizei>(h), 0,
-                 tex.format, GL_UNSIGNED_BYTE, nullptr);
+        static_cast<GLsizei>(w), static_cast<GLsizei>(h), 0,
+        tex.format, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glBindTexture(GL_TEXTURE_2D, 0);
+}
 
-    ++next_texture_idx;
+kernel_services::TexID kernel_services::create_texture(u32 w, u32 h, u32 comp)
+{
+    u32 next_texture_idx = 0;
+    for (; next_texture_idx < MAXTEXCNT; ++next_texture_idx)
+    {
+        if (!textures[next_texture_idx].active)
+            break;
+    }
 
-    return next_texture_idx - 1;
+    if (next_texture_idx < MAXTEXCNT)
+    {
+        create_texture_unsafe(next_texture_idx, w, h, comp);
+        return next_texture_idx;
+    }
+    else
+    {
+        return kernel_services::default_texid;
+    }
+}
+
+void update_texture_unsafe(kernel_services::TexID ti, const u8 *pixels)
+{
+    glBindTexture(GL_TEXTURE_2D, textures[ti].glid);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+        static_cast<GLsizei>(textures[ti].width),
+        static_cast<GLsizei>(textures[ti].height),
+        textures[ti].format, GL_UNSIGNED_BYTE, pixels);
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 // TODO: this is alpha only
 void kernel_services::update_texture(kernel_services::TexID ti, const u8 *pixels)
 {
-    glBindTexture(GL_TEXTURE_2D, textures[ti].glid);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
-                    static_cast<GLsizei>(textures[ti].width),
-                    static_cast<GLsizei>(textures[ti].height),
-                    textures[ti].format, GL_UNSIGNED_BYTE, pixels);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    if (ti != kernel_services::default_texid)
+    {
+        update_texture_unsafe(ti, pixels);
+    }
+    else
+    {
+        ::printf("warning: attempt to update contents of default texture\n");
+    }
+}
+
+void delete_texture_unsafe(kernel_services::TexID ti)
+{
+    glDeleteTextures(1, &textures[ti].glid);
+    textures[ti] = Texture();
 }
 
 void kernel_services::delete_texture(kernel_services::TexID ti)
 {
-    glDeleteTextures(1, &textures[ti].glid);
+    if (ti < MAXTEXCNT)
+    {
+        // NOTE: do not delete default texture
+        if (ti != kernel_services::default_texid)
+        {
+            delete_texture_unsafe(ti);
+        }
+    }
+    else
+    {
+        ::printf("warning: attempt to delete default texture\n");
+    }
 }
 
 const u8 *kernel_services::get_capture_data(u32 &w, u32 &h)
@@ -836,6 +882,10 @@ int main(int argc, char *argv[])
             ::printf("GLSL version: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
             ::printf("----------------------------\n");
         }
+
+        create_texture_unsafe(kernel_services::default_texid, 1, 1, 4);
+        u8 ones[4] = { 255, 255, 255, 255 };
+        update_texture_unsafe(kernel_services::default_texid, ones);
 
         FSQuad quad;
         quad.setup();
@@ -1147,6 +1197,8 @@ int main(int argc, char *argv[])
                     }
                     if (dc.id == output_data::IMAGEFIT)
                     {
+                        if (!textures[dc.texture_id].active)
+                            DebugBreak();
                         si.draw(textures[dc.texture_id].glid,
                                 dc.params[0], dc.params[1],
                                 dc.params[2], dc.params[3],
@@ -1230,6 +1282,9 @@ int main(int argc, char *argv[])
         grid.cleanup();
         quad.cleanup();
         quad_indexes.cleanup();
+        delete_texture_unsafe(kernel_services::default_texid);
+
+        // TODO: check if all textures/meshes are deleted properly
 
         check_gl_errors("cleanup");
     }

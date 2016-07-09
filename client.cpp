@@ -71,7 +71,7 @@ struct CurrentImage
     CurrentImage() :
         width_in(0.0f),
         height_in(0.0f),
-        texid(0xFFFF),
+        texid(kernel_services::default_texid),
         reuse(true)
     {}
 } fit_img;
@@ -90,11 +90,7 @@ void clear_loaded_images()
 {
     for (size_t i = 0; i < loaded_images.size(); ++i)
     {
-        // TODO: better way of checking validness of texid
-        if (loaded_images[i].height > 0 && loaded_images[i].width > 0)
-        {
-            current_services->delete_texture(loaded_images[i].texid);
-        }
+        current_services->delete_texture(loaded_images[i].texid);
     }
     loaded_images.clear();
 }
@@ -1090,21 +1086,6 @@ void update_and_render(input_data *input, output_data *output)
         }
         else
         {
-            output_data::drawcall dc;
-            dc.texture_id = fit_img.texid;
-            dc.id = output_data::IMAGEFIT;
-
-            dc.params[0] = -0.5f * fit_img.width_in;
-            dc.params[1] = -0.5f * fit_img.height_in;
-
-            dc.params[2] = fit_img.width_in;
-            dc.params[3] = 0.0f;
-
-            dc.params[4] = 0.0f;
-            dc.params[5] = fit_img.height_in;
-
-            drawcalls.push_back(dc);
-
             ImGui::SameLine();
             if (ImGui::Button("Cancel fitting"))
             {
@@ -1127,6 +1108,25 @@ void update_and_render(input_data *input, output_data *output)
             }
         }
     }
+
+    if (image_fitting)
+    {
+        output_data::drawcall dc;
+        dc.texture_id = fit_img.texid;
+        dc.id = output_data::IMAGEFIT;
+
+        dc.params[0] = -0.5f * fit_img.width_in;
+        dc.params[1] = -0.5f * fit_img.height_in;
+
+        dc.params[2] = fit_img.width_in;
+        dc.params[3] = 0.0f;
+
+        dc.params[4] = 0.0f;
+        dc.params[5] = fit_img.height_in;
+
+        drawcalls.push_back(dc);
+    }
+
     output->quit_flag = ImGui::Button("Quit");
 
     if (!ism->append_allowed())

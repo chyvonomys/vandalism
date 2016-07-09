@@ -3,8 +3,11 @@
 - undo 3 times
 - show all strokes
 may be a problem with bboxes
-* fit image and cancel leads to GL error and gray box *
+* [FIXED] fit image and cancel leads to GL error and gray box *
 - fit image
 - cancel
 - strange box remains
 - GL errors in terminal
+** Resolution **
+   active flag for textures. better texture management.
+   do not send IMAGEFIT with deleted tex

@@ -22,6 +22,7 @@ struct kernel_services
 
     const VertexLayout *ui_vertex_layout;
     const VertexLayout *stroke_vertex_layout;
+    static const TexID default_texid = 0;
 
     typedef u32 MeshID;
 
