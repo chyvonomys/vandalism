@@ -849,40 +849,44 @@ void update_and_render(input_data *input, output_data *output)
 
     ImGui::SetNextWindowSize(ImVec2(100, 200), ImGuiSetCond_FirstUseEver);
     ImGui::Begin("vandalism");
-    ImGui::ColorEdit4("color", gui_brush_color);
-    ImGui::ColorEdit3("background", gui_background_color);
-    ImGui::SliderInt("diameter", &gui_brush_diameter_units,
-                     cfg_min_brush_diameter_units, cfg_max_brush_diameter_units);
-    ImGui::SliderFloat("eraser", &gui_eraser_alpha, 0.0f, 1.0f);
-    ImGui::Separator();
-    ImGui::Checkbox("pressure", &gui_fake_pressure);
-    ImGui::Checkbox("rects", &gui_debug_draw_rects);
-    ImGui::Checkbox("disks", &gui_debug_draw_disks);
-    ImGui::Separator();
-    ImGui::Text("drawing");
-    ImGui::Checkbox("simplify", &gui_draw_simplify);
-    ImGui::RadioButton("smooth none", &gui_draw_smooth,
-                       static_cast<i32>(Vandalism::NONE));
-    ImGui::RadioButton("smooth hermite", &gui_draw_smooth,
-                       static_cast<i32>(Vandalism::HERMITE));
-    ImGui::RadioButton("smooth fit bezier", &gui_draw_smooth,
-                       static_cast<i32>(Vandalism::FITBEZIER));
-    ImGui::Separator();
-    ImGui::Text("rendering");
-    ImGui::PushID("rendering");
-    ImGui::RadioButton("smooth none", &gui_present_smooth,
-                       static_cast<i32>(Vandalism::NONE));
-    ImGui::RadioButton("smooth hermite", &gui_present_smooth,
-                       static_cast<i32>(Vandalism::HERMITE));
-    ImGui::RadioButton("smooth fit bezier", &gui_present_smooth,
-                       static_cast<i32>(Vandalism::FITBEZIER));
-    if (gui_present_smooth == static_cast<i32>(Vandalism::FITBEZIER))
+
+    // TOOLS
+    ImGui::RadioButton("draw", &gui_tool, static_cast<i32>(Vandalism::DRAW));
+    ImGui::SameLine();
+    ImGui::RadioButton("erase", &gui_tool, static_cast<i32>(Vandalism::ERASE));
+    if (gui_tool == Vandalism::DRAW)
     {
-        ImGui::Checkbox("debug smoothing", &gui_debug_smoothing);
-        ImGui::SliderFloat("error order", &gui_smooth_error_order, -7.0f, 0.0f);
+        ImGui::ColorEdit4("color", gui_brush_color);
+        ImGui::SliderInt("diameter", &gui_brush_diameter_units,
+                         cfg_min_brush_diameter_units, cfg_max_brush_diameter_units);
     }
-    ImGui::PopID();
+    if (gui_tool == Vandalism::ERASE)
+    {
+        ImGui::SliderFloat("eraser", &gui_eraser_alpha, 0.0f, 1.0f);
+        ImGui::SliderInt("diameter", &gui_brush_diameter_units,
+                         cfg_min_brush_diameter_units, cfg_max_brush_diameter_units);
+    }
+    ImGui::RadioButton("pan", &gui_tool, static_cast<i32>(Vandalism::PAN));
+    ImGui::SameLine();
+    ImGui::RadioButton("zoom", &gui_tool, static_cast<i32>(Vandalism::ZOOM));
+    ImGui::SameLine();
+    ImGui::RadioButton("rotate", &gui_tool, static_cast<i32>(Vandalism::ROTATE));
+    ImGui::RadioButton("move center", &gui_tool, static_cast<i32>(Vandalism::FIRST));
+    ImGui::SameLine();
+    ImGui::RadioButton("pivot", &gui_tool, static_cast<i32>(Vandalism::SECOND));
+    if (ism->undoable())
+    {
+        ImGui::SameLine();
+        if (ImGui::Button("Undo"))
+        {
+            ism->undo();
+        }
+    }
+
     ImGui::Separator();
+    // BACKGROUND
+
+    ImGui::ColorEdit3("background", gui_background_color);
     ImGui::Checkbox("grid", &gui_grid_enabled);
     if (gui_grid_enabled)
     {
@@ -894,17 +898,69 @@ void update_and_render(input_data *input, output_data *output)
 
         drawcalls.push_back(dc);
     }
+
     ImGui::Separator();
-    ImGui::RadioButton("draw", &gui_tool, static_cast<i32>(Vandalism::DRAW));
-    ImGui::RadioButton("erase", &gui_tool, static_cast<i32>(Vandalism::ERASE));
-    ImGui::RadioButton("pan", &gui_tool, static_cast<i32>(Vandalism::PAN));
-    ImGui::RadioButton("zoom", &gui_tool, static_cast<i32>(Vandalism::ZOOM));
-    ImGui::RadioButton("rot", &gui_tool, static_cast<i32>(Vandalism::ROTATE));
-    ImGui::RadioButton("first", &gui_tool, static_cast<i32>(Vandalism::FIRST));
-    ImGui::RadioButton("second", &gui_tool, static_cast<i32>(Vandalism::SECOND));
+    // STROKE SETTINGS
+
+    ImGui::Checkbox("fake pressure", &gui_fake_pressure);
+    ImGui::SameLine();
+    ImGui::Checkbox("rectangles", &gui_debug_draw_rects);
+    ImGui::SameLine();
+    ImGui::Checkbox("disks", &gui_debug_draw_disks);
+
+    ImGui::Separator();
+    // SMOOTHING/SIMPLIFICATION
+
+    ImGui::Text("drawing");
+    ImGui::Checkbox("simplify", &gui_draw_simplify);
+    ImGui::Text("smooth: ");
+    ImGui::SameLine();
+    ImGui::RadioButton("none", &gui_draw_smooth,
+                       static_cast<i32>(Vandalism::NONE));
+    ImGui::SameLine();
+    ImGui::RadioButton("hermite", &gui_draw_smooth,
+                       static_cast<i32>(Vandalism::HERMITE));
+    ImGui::SameLine();
+    ImGui::RadioButton("fit bezier", &gui_draw_smooth,
+                       static_cast<i32>(Vandalism::FITBEZIER));
+    ImGui::Separator();
+    ImGui::Text("rendering");
+    ImGui::PushID("rendering");
+    ImGui::Text("smooth: ");
+    ImGui::SameLine();
+    ImGui::RadioButton("none", &gui_present_smooth,
+                       static_cast<i32>(Vandalism::NONE));
+    ImGui::SameLine();
+    ImGui::RadioButton("hermite", &gui_present_smooth,
+                       static_cast<i32>(Vandalism::HERMITE));
+    ImGui::SameLine();
+    ImGui::RadioButton("fit bezier", &gui_present_smooth,
+                       static_cast<i32>(Vandalism::FITBEZIER));
+    if (gui_present_smooth == Vandalism::FITBEZIER)
+    {
+        ImGui::Checkbox("debug smoothing", &gui_debug_smoothing);
+        ImGui::SliderFloat("error order", &gui_smooth_error_order, -7.0f, 0.0f);
+    }
+    ImGui::PopID();
+
+    ImGui::Separator();
+    // BUTTONS
 
     if (ism->currentMode == Vandalism::IDLE)
     {
+        if (ImGui::Button("Clear canvas"))
+        {
+            ism->clear();
+            clear_loaded_images();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Show all strokes"))
+        {
+            ism->show_all(input->vpWidthIn, input->vpHeightIn);
+        }
+
+        ImGui::Text("[%s]", cfg_default_file);
+        ImGui::SameLine();
         if (ImGui::Button("Save"))
         {
             ism->save_data(cfg_default_file);
@@ -938,28 +994,12 @@ void update_and_render(input_data *input, output_data *output)
                 ::printf("nothing to load, there is no default save file\n");
             }
         }
-        if (ImGui::Button("Optimize views"))
-        {
-            ism->optimize_views();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Show all strokes"))
-        {
-            ism->show_all(input->vpWidthIn, input->vpHeightIn);
-        }
-        if (ism->undoable() && ImGui::Button("Undo"))
-        {
-            ism->undo();
-        }
-        if (ImGui::Button("Clear"))
-        {
-            ism->clear();
-            clear_loaded_images();
-        }
 
+        ImGui::Text("[%s]", cfg_default_capture_file);
         if (image_capturing == INACTIVE)
         {
-            if (ImGui::Button("Capture image"))
+            ImGui::SameLine();
+            if (ImGui::Button("Capture"))
             {
                 image_capturing = SELECTION;
             }
@@ -975,12 +1015,14 @@ void update_and_render(input_data *input, output_data *output)
 
             drawcalls.push_back(dc);
 
+            ImGui::SameLine();
             if (ImGui::Button("Cancel capture"))
             {
                 image_capturing = INACTIVE;
             }
 
-            if (ImGui::Button("Save image"))
+            ImGui::SameLine();
+            if (ImGui::Button("Save capture"))
             {
                 drawcalls.clear();
                 collect_bake_data(bake_data,
@@ -1008,9 +1050,11 @@ void update_and_render(input_data *input, output_data *output)
             image_capturing = INACTIVE;
         }
 
+        ImGui::Text("[%s]", cfg_default_image_file);
         if (!image_fitting)
         {
-            if (ImGui::Button("Fit image"))
+            ImGui::SameLine();
+            if (ImGui::Button("Insert image"))
             {
                 fit_img.name = cfg_default_image_file;
                 size_t ism_img_name_idx = ism->image_name_idx(fit_img.name.c_str());
@@ -1061,7 +1105,8 @@ void update_and_render(input_data *input, output_data *output)
 
             drawcalls.push_back(dc);
 
-            if (ImGui::Button("Cancel image"))
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel fitting"))
             {
                 if (!fit_img.reuse)
                 {
@@ -1072,6 +1117,7 @@ void update_and_render(input_data *input, output_data *output)
                 image_fitting = false;
             }
 
+            ImGui::SameLine();
             if (ImGui::Button("Place image"))
             {
                 ism->place_image(fit_img.name.c_str(),
@@ -1080,9 +1126,8 @@ void update_and_render(input_data *input, output_data *output)
                 image_fitting = false;
             }
         }
-        ImGui::SameLine();
-        output->quit_flag = ImGui::Button("Quit");
     }
+    output->quit_flag = ImGui::Button("Quit");
 
     if (!ism->append_allowed())
     {
