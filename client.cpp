@@ -86,6 +86,19 @@ enum CapturingStage
 bool image_fitting;
 CapturingStage image_capturing;
 
+void clear_loaded_images()
+{
+    for (size_t i = 0; i < loaded_images.size(); ++i)
+    {
+        // TODO: better way of checking validness of texid
+        if (loaded_images[i].height > 0 && loaded_images[i].width > 0)
+        {
+            current_services->delete_texture(loaded_images[i].texid);
+        }
+    }
+    loaded_images.clear();
+}
+
 // TODO: ImDrawIdx vs u16 in proto.cpp
 
 void RenderImGuiDrawLists(ImDrawData *drawData)
@@ -297,6 +310,8 @@ void setup(kernel_services *services)
 void cleanup()
 {
     ism->clear();
+    clear_loaded_images();
+
     delete ism;
 
     for (size_t i = 0; i < ui_meshes.size(); ++i)
@@ -313,11 +328,6 @@ void cleanup()
 
     current_services->delete_texture(font_texture_id);
 
-    for (size_t i = 0; i < loaded_images.size(); ++i)
-    {
-        current_services->delete_texture(loaded_images[i].texid);
-    }
-    loaded_images.clear();
 
     delete viewsBuf;
 
@@ -904,15 +914,7 @@ void update_and_render(input_data *input, output_data *output)
         {
             if (current_services->check_file(cfg_default_file))
             {
-                for (size_t i = 0; i < loaded_images.size(); ++i)
-                {
-                    // TODO: better way of checking validness of texid
-                    if (loaded_images[i].height > 0 && loaded_images[i].width > 0)
-                    {
-                        current_services->delete_texture(loaded_images[i].texid);
-                    }
-                }
-                loaded_images.clear();
+                clear_loaded_images();
 
                 ism->load_data(cfg_default_file);
 
@@ -952,7 +954,7 @@ void update_and_render(input_data *input, output_data *output)
         if (ImGui::Button("Clear"))
         {
             ism->clear();
-            // TODO: clear any created resources! (textures, buffers)
+            clear_loaded_images();
         }
 
         if (image_capturing == INACTIVE)
