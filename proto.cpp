@@ -1197,8 +1197,6 @@ int main(int argc, char *argv[])
                     }
                     if (dc.id == output_data::IMAGEFIT)
                     {
-                        if (!textures[dc.texture_id].active)
-                            DebugBreak();
                         si.draw(textures[dc.texture_id].glid,
                                 dc.params[0], dc.params[1],
                                 dc.params[2], dc.params[3],

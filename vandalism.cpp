@@ -1130,6 +1130,7 @@ struct Vandalism
         brushes.clear();
         pins.clear();
         images.clear();
+        imageNames.clear();
         layers.clear();
 
         setup_default_view();
