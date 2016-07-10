@@ -37,12 +37,11 @@
 #pragma warning(pop)
 #endif
 
+kernel_services *g_services = nullptr;
 
-kernel_services *current_services = 0;
+kernel_services::TexID g_font_texture_id;
 
-kernel_services::TexID font_texture_id;
-
-std::vector<kernel_services::MeshID> ui_meshes;
+std::vector<kernel_services::MeshID> g_ui_meshes;
 // TODO: these images must reflect 1-to-1 imageNames from ism
 // NOTE: ism doesn't need to know abount any texid or dimensions
 struct ImageDesc
@@ -51,14 +50,14 @@ struct ImageDesc
     u32 width;
     u32 height;
 };
-std::vector<ImageDesc> loaded_images;
-std::vector<output_data::drawcall> drawcalls;
+std::vector<ImageDesc> g_loaded_images;
+std::vector<output_data::drawcall> g_drawcalls;
 
-kernel_services::MeshID lines_mesh;
-kernel_services::MeshID bake_mesh;
-kernel_services::MeshID curr_mesh;
+kernel_services::MeshID g_lines_mesh;
+kernel_services::MeshID g_bake_mesh;
+kernel_services::MeshID g_curr_mesh;
 
-std::vector<ImDrawVert> lines_vb;
+std::vector<ImDrawVert> g_lines_vb;
 
 struct CurrentImage
 {
@@ -74,7 +73,7 @@ struct CurrentImage
         texid(kernel_services::default_texid),
         reuse(true)
     {}
-} fit_img;
+} g_fit_img;
 
 enum CapturingStage
 {
@@ -83,16 +82,16 @@ enum CapturingStage
     CAPTURE
 };
 
-bool image_fitting;
-CapturingStage image_capturing;
+bool g_image_fitting;
+CapturingStage g_image_capturing;
 
 void clear_loaded_images()
 {
-    for (size_t i = 0; i < loaded_images.size(); ++i)
+    for (size_t i = 0; i < g_loaded_images.size(); ++i)
     {
-        current_services->delete_texture(loaded_images[i].texid);
+        g_services->delete_texture(g_loaded_images[i].texid);
     }
-    loaded_images.clear();
+    g_loaded_images.clear();
 }
 
 // TODO: ImDrawIdx vs u16 in proto.cpp
@@ -109,17 +108,17 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
         u32 vtxCount = static_cast<u32>(drawList->VtxBuffer.size());
         u32 idxCount = static_cast<u32>(drawList->IdxBuffer.size());
 
-        if (ui_meshes.size() <= li)
+        if (g_ui_meshes.size() <= li)
         {
             kernel_services::MeshID mid =
-            current_services->create_mesh(*current_services->ui_vertex_layout,
-                                          vtxCount, idxCount);
-            ui_meshes.push_back(mid);
+            g_services->create_mesh(*g_services->ui_vertex_layout,
+                                    vtxCount, idxCount);
+            g_ui_meshes.push_back(mid);
         }
 
-        current_services->update_mesh(ui_meshes[li],
-                                      vertexBuffer, vtxCount,
-                                      indexBuffer, idxCount);
+        g_services->update_mesh(g_ui_meshes[li],
+                                vertexBuffer, vtxCount,
+                                indexBuffer, idxCount);
 
         i32 cmdCnt = drawList->CmdBuffer.size();
 
@@ -139,18 +138,18 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
                 output_data::drawcall drawcall;
                 size_t texId = reinterpret_cast<size_t>(cmd.TextureId);
                 drawcall.texture_id = static_cast<kernel_services::TexID>(texId);
-                drawcall.mesh_id = ui_meshes[li];
+                drawcall.mesh_id = g_ui_meshes[li];
                 drawcall.offset = idxOffs;
                 drawcall.count = idxCnt;
                 drawcall.id = output_data::UI;
 
-                drawcalls.push_back(drawcall);
+                g_drawcalls.push_back(drawcall);
 
                 /*
-                float xmin = cmd.ClipRect.x;
-                float ymin = cmd.ClipRect.y;
-                float xmax = cmd.ClipRect.z;
-                float ymax = cmd.ClipRect.w;
+                  float xmin = cmd.ClipRect.x;
+                  float ymin = cmd.ClipRect.y;
+                  float xmax = cmd.ClipRect.z;
+                  float ymax = cmd.ClipRect.w;
                 */
             }
 
@@ -162,7 +161,7 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
 
 #include "vandalism.cpp"
 
-Vandalism *ism = nullptr;
+Vandalism *g_ism = nullptr;
 
 bool gui_showAllViews;
 i32 gui_viewIdx;
@@ -200,19 +199,16 @@ const char* cfg_default_file = "default.ism";
 const float cfg_capture_width_in = 5.0f;
 const float cfg_capture_height_in = 4.0f;
 
-ImGuiTextBuffer *viewsBuf;
+ImGuiTextBuffer *g_viewsBuf;
 
-std::vector<output_data::Vertex> bake_quads;
-std::vector<output_data::Vertex> curr_quads;
-
-// temp vectors, reuse to avoid reallocations
-std::vector<test_point> s_sampled_points;
+std::vector<output_data::Vertex> g_bake_quads;
+std::vector<output_data::Vertex> g_curr_quads;
 
 void setup(kernel_services *services)
 {
     ImGuiIO& io = ImGui::GetIO();
     io.RenderDrawListsFn = RenderImGuiDrawLists;
-    viewsBuf = new ImGuiTextBuffer;
+    g_viewsBuf = new ImGuiTextBuffer;
 
     u8 *pixels;
     i32 width, height;
@@ -227,35 +223,35 @@ void setup(kernel_services *services)
 
     io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
 
-    font_texture_id = services->create_texture(static_cast<u32>(width),
-                                               static_cast<u32>(height),
-                                               4);
-    services->update_texture(font_texture_id, pixels);
+    g_font_texture_id = services->create_texture(static_cast<u32>(width),
+                                                 static_cast<u32>(height),
+                                                 4);
+    services->update_texture(g_font_texture_id, pixels);
     io.Fonts->TexID =
-    reinterpret_cast<void *>(static_cast<size_t>(font_texture_id));
+    reinterpret_cast<void *>(static_cast<size_t>(g_font_texture_id));
 
-    current_services = services;
+    g_services = services;
 
     const u32 BAKE_QUADS_CNT = 5000;
     const u32 CURR_QUADS_CNT = 500;
 
-    bake_quads.reserve(BAKE_QUADS_CNT * 4);
-    curr_quads.reserve(CURR_QUADS_CNT * 4);
+    g_bake_quads.reserve(BAKE_QUADS_CNT * 4);
+    g_curr_quads.reserve(CURR_QUADS_CNT * 4);
 
-    bake_mesh =
-    current_services->create_quad_mesh(*current_services->stroke_vertex_layout,
-                                       BAKE_QUADS_CNT * 4);
-    curr_mesh =
-    current_services->create_quad_mesh(*current_services->stroke_vertex_layout,
-                                       CURR_QUADS_CNT * 4);
-    lines_mesh =
-    current_services->create_quad_mesh(*current_services->ui_vertex_layout, 16);
+    g_bake_mesh =
+    g_services->create_quad_mesh(*g_services->stroke_vertex_layout,
+                                 BAKE_QUADS_CNT * 4);
+    g_curr_mesh =
+    g_services->create_quad_mesh(*g_services->stroke_vertex_layout,
+                                 CURR_QUADS_CNT * 4);
+    g_lines_mesh =
+    g_services->create_quad_mesh(*g_services->ui_vertex_layout, 16);
 
     io.Fonts->ClearInputData();
     io.Fonts->ClearTexData();
 
-    ism = new Vandalism();
-    ism->setup();
+    g_ism = new Vandalism();
+    g_ism->setup();
 
     gui_showAllViews = true;
     gui_viewIdx = 0;
@@ -299,33 +295,32 @@ void setup(kernel_services *services)
 
     gui_goto_idx = 0;
 
-    image_fitting = false;
-    image_capturing = INACTIVE;
+    g_image_fitting = false;
+    g_image_capturing = INACTIVE;
 }
 
 void cleanup()
 {
-    ism->clear();
+    g_ism->clear();
     clear_loaded_images();
 
-    delete ism;
+    delete g_ism;
 
-    for (size_t i = 0; i < ui_meshes.size(); ++i)
+    for (size_t i = 0; i < g_ui_meshes.size(); ++i)
     {
-        current_services->delete_mesh(ui_meshes[i]);
+        g_services->delete_mesh(g_ui_meshes[i]);
     }
 
-    current_services->delete_mesh(bake_mesh);
-    current_services->delete_mesh(curr_mesh);
-    current_services->delete_mesh(lines_mesh);
+    g_services->delete_mesh(g_bake_mesh);
+    g_services->delete_mesh(g_curr_mesh);
+    g_services->delete_mesh(g_lines_mesh);
 
-    ui_meshes.clear();
-    drawcalls.clear();
+    g_ui_meshes.clear();
+    g_drawcalls.clear();
 
-    current_services->delete_texture(font_texture_id);
+    g_services->delete_texture(g_font_texture_id);
 
-
-    delete viewsBuf;
+    delete g_viewsBuf;
 
     ImGui::Shutdown();
 }
@@ -360,71 +355,71 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
     float zindex = depthStep * (si + 1);
 
     if (gui_debug_draw_rects)
-	// rectangles between points
-	for (size_t i = 1; i < N; ++i)
-	{
-		float2 prev = {points[i-1].x, points[i-1].y};
-		float2 curr = {points[i].x, points[i].y};
-		float2 dir = curr - prev;
+        // rectangles between points
+        for (size_t i = 1; i < N; ++i)
+        {
+            float2 prev = {points[i-1].x, points[i-1].y};
+            float2 curr = {points[i].x, points[i].y};
+            float2 dir = curr - prev;
 
-		Vandalism::Brush cb0 = brush.modified(points[i-1].w);
+            Vandalism::Brush cb0 = brush.modified(points[i-1].w);
 
-		if (len(dir) > 0.001f)
-		{
-			Vandalism::Brush cb1 = brush.modified(points[i].w);
+            if (len(dir) > 0.001f)
+            {
+                Vandalism::Brush cb1 = brush.modified(points[i].w);
 
-			float2 side = perp(dir * (1.0f / len(dir)));
+                float2 side = perp(dir * (1.0f / len(dir)));
 
-			float2 side0 = 0.5f * cb0.diameter * side;
-			float2 side1 = 0.5f * cb1.diameter * side;
+                float2 side0 = 0.5f * cb0.diameter * side;
+                float2 side1 = 0.5f * cb1.diameter * side;
 
-			// x -ccw-> y
-			float2 p0l = prev + side0;
-			float2 p0r = prev - side0;
-			float2 p1l = curr + side1;
-			float2 p1r = curr - side1;
+                // x -ccw-> y
+                float2 p0l = prev + side0;
+                float2 p0r = prev - side0;
+                float2 p1l = curr + side1;
+                float2 p1r = curr - side1;
 
-			test_point a = apply_transform_pt(tform, {p0r.x, p0r.y});
-			test_point b = apply_transform_pt(tform, {p0l.x, p0l.y});
-			test_point c = apply_transform_pt(tform, {p1l.x, p1l.y});
-			test_point d = apply_transform_pt(tform, {p1r.x, p1r.y});
+                test_point a = apply_transform_pt(tform, {p0r.x, p0r.y});
+                test_point b = apply_transform_pt(tform, {p0l.x, p0l.y});
+                test_point c = apply_transform_pt(tform, {p1l.x, p1l.y});
+                test_point d = apply_transform_pt(tform, {p1r.x, p1r.y});
 
-			bool eraser = (cb1.type == 1);
+                bool eraser = (cb1.type == 1);
 
-			// TODO: interpolate color/erase/alpha across quad
-			add_quad(quads,
-				a, b, c, d, zindex, (eraser ? cb1.a : 0.0f),
-				cb1.r, cb1.g, cb1.b, (eraser ? 0.0f : cb1.a),
-				0.5f, 0.5f);
-		}
-	}
+                // TODO: interpolate color/erase/alpha across quad
+                add_quad(quads,
+                         a, b, c, d, zindex, (eraser ? cb1.a : 0.0f),
+                         cb1.r, cb1.g, cb1.b, (eraser ? 0.0f : cb1.a),
+                         0.5f, 0.5f);
+            }
+        }
 
     if (gui_debug_draw_disks)
-	// disks at points
-	for (size_t i = 0; i < N; ++i)
-	{
-		Vandalism::Brush cb = brush.modified(points[i].w);
+        // disks at points
+        for (size_t i = 0; i < N; ++i)
+        {
+            Vandalism::Brush cb = brush.modified(points[i].w);
 
-		float2 curr = {points[i].x, points[i].y};
-		float2 right = {0.5f * cb.diameter, 0.0f};
-		float2 up = {0.0, 0.5f * cb.diameter};
-		float2 bl = curr - right - up;
-		float2 br = curr + right - up;
-		float2 tl = curr - right + up;
-		float2 tr = curr + right + up;
+            float2 curr = {points[i].x, points[i].y};
+            float2 right = {0.5f * cb.diameter, 0.0f};
+            float2 up = {0.0, 0.5f * cb.diameter};
+            float2 bl = curr - right - up;
+            float2 br = curr + right - up;
+            float2 tl = curr - right + up;
+            float2 tr = curr + right + up;
 
-		test_point a = apply_transform_pt(tform, {bl.x, bl.y});
-		test_point b = apply_transform_pt(tform, {tl.x, tl.y});
-		test_point c = apply_transform_pt(tform, {tr.x, tr.y});
-		test_point d = apply_transform_pt(tform, {br.x, br.y});
+            test_point a = apply_transform_pt(tform, {bl.x, bl.y});
+            test_point b = apply_transform_pt(tform, {tl.x, tl.y});
+            test_point c = apply_transform_pt(tform, {tr.x, tr.y});
+            test_point d = apply_transform_pt(tform, {br.x, br.y});
 
-		bool eraser = (cb.type == 1);
+            bool eraser = (cb.type == 1);
 
-		add_quad(quads,
-			a, b, c, d, zindex, (eraser ? cb.a : 0.0f),
-			cb.r, cb.g, cb.b, (eraser ? 0.0f : cb.a),
-			0.0f, 1.0f);
-	}
+            add_quad(quads,
+                     a, b, c, d, zindex, (eraser ? cb.a : 0.0f),
+                     cb.r, cb.g, cb.b, (eraser ? 0.0f : cb.a),
+                     0.0f, 1.0f);
+        }
 }
 
 void stroke_to_quads(const test_point* begin, const test_point* end,
@@ -432,12 +427,13 @@ void stroke_to_quads(const test_point* begin, const test_point* end,
                      size_t stroke_id, const test_transform& tform,
                      const Vandalism::Brush& brush)
 {
-    static Vandalism::Brush debug_brush
+    static Vandalism::Brush s_debug_brush
     {
         0.02f,
         1.0f, 0.0f, 0.0f, 1.0f,
         0
-    };
+        };
+    static std::vector<test_point> s_sampled_points;
 
     if (gui_present_smooth == Vandalism::FITBEZIER ||
         gui_present_smooth == Vandalism::HERMITE)
@@ -451,7 +447,7 @@ void stroke_to_quads(const test_point* begin, const test_point* end,
         if (gui_debug_smoothing)
         {
             fill_quads(quads, begin, static_cast<size_t>(end - begin),
-                       stroke_id, tform, debug_brush,
+                       stroke_id, tform, s_debug_brush,
                        cfg_depth_step);
         }
 
@@ -475,7 +471,7 @@ void collect_bake_data(const test_data& bake_data,
     static std::vector<test_visible> s_visibles;
     static std::vector<test_transform> s_transforms;
 
-    bake_quads.clear();
+    g_bake_quads.clear();
     s_visibles.clear();
     s_transforms.clear();
     test_box viewbox = {-0.5f * width_in,
@@ -483,7 +479,7 @@ void collect_bake_data(const test_data& bake_data,
                         -0.5f * height_in,
                         +0.5f * height_in};
 
-    query(bake_data, ism->currentPin.viewidx,
+    query(bake_data, g_ism->currentPin.viewidx,
           viewbox, s_visibles, s_transforms,
           pixel_height_in);
 
@@ -494,28 +490,28 @@ void collect_bake_data(const test_data& bake_data,
         if (vis.ty == test_visible::STROKE)
         {
             const test_stroke& stroke = bake_data.strokes[vis.obj_id];
-            const Vandalism::Brush& brush = ism->brushes[stroke.brush_id];
+            const Vandalism::Brush& brush = g_ism->brushes[stroke.brush_id];
 
-            size_t before = bake_quads.size();
-            if (drawcalls.empty() || drawcalls.back().id != output_data::BAKEBATCH)
+            size_t before = g_bake_quads.size();
+            if (g_drawcalls.empty() || g_drawcalls.back().id != output_data::BAKEBATCH)
             {
                 output_data::drawcall dc;
                 dc.id = output_data::BAKEBATCH;
-                dc.mesh_id = bake_mesh;
+                dc.mesh_id = g_bake_mesh;
                 dc.texture_id = 0; // not used
                 dc.offset = static_cast<u32>(before / 4 * 6);
                 dc.count = 0;
 
-                drawcalls.push_back(dc);
+                g_drawcalls.push_back(dc);
             }
 
             stroke_to_quads(bake_data.points + stroke.pi0,
                             bake_data.points + stroke.pi1,
-                            bake_quads, vis.obj_id, tform, brush);
-            size_t after = bake_quads.size();
+                            g_bake_quads, vis.obj_id, tform, brush);
+            size_t after = g_bake_quads.size();
 
             size_t idxCnt = (after - before) / 4 * 6;
-            drawcalls.back().count += static_cast<u32>(idxCnt);
+            g_drawcalls.back().count += static_cast<u32>(idxCnt);
         }
         else if (vis.ty == test_visible::IMAGE)
         {
@@ -524,7 +520,7 @@ void collect_bake_data(const test_data& bake_data,
             output_data::drawcall dc;
             dc.id = output_data::IMAGE;
             dc.mesh_id = 0; // not used
-            dc.texture_id = loaded_images[img.nameidx].texid;
+            dc.texture_id = g_loaded_images[img.nameidx].texid;
             dc.offset = 0; // not used
             dc.count = 0; // not used
 
@@ -546,7 +542,7 @@ void collect_bake_data(const test_data& bake_data,
             dc.params[4] = oy.x - pos.x;
             dc.params[5] = oy.y - pos.y;
 
-            drawcalls.push_back(dc);
+            g_drawcalls.push_back(dc);
         }
     }
 
@@ -554,12 +550,12 @@ void collect_bake_data(const test_data& bake_data,
     {
         output_data::drawcall dc;
         dc.id = output_data::BAKEBATCH;
-        dc.mesh_id = bake_mesh;
+        dc.mesh_id = g_bake_mesh;
         dc.texture_id = 0; // not used
         dc.offset = 0;
         dc.count = 0;
 
-        drawcalls.push_back(dc);
+        g_drawcalls.push_back(dc);
     }
 
     std::cout << "update mesh: " << s_visibles.size() << " visibles" << std::endl;
@@ -567,7 +563,7 @@ void collect_bake_data(const test_data& bake_data,
 
 bool load_image(const char *filename, ImageDesc &desc)
 {
-    if (current_services->check_file(filename))
+    if (g_services->check_file(filename))
     {
         i32 image_w, image_h, image_comp;
         float *image_data = stbi_loadf(filename, &image_w, &image_h, &image_comp, 4);
@@ -585,8 +581,8 @@ bool load_image(const char *filename, ImageDesc &desc)
             }
             stbi_image_free(image_data);
 
-            desc.texid = current_services->create_texture(desc.width, desc.height, 4);
-            current_services->update_texture(desc.texid, udata.data());
+            desc.texid = g_services->create_texture(desc.width, desc.height, 4);
+            g_services->update_texture(desc.texid, udata.data());
             return true;
         }
     }
@@ -597,7 +593,7 @@ void update_and_render(input_data *input, output_data *output)
 {
     output->quit_flag = false;
 
-    drawcalls.clear();
+    g_drawcalls.clear();
 
     float mxnorm = input->vpMouseXPt / input->vpWidthPt - 0.5f;
     float mynorm = input->vpMouseYPt / input->vpHeightPt - 0.5f;
@@ -628,30 +624,30 @@ void update_and_render(input_data *input, output_data *output)
     ism_input.simplify = gui_draw_simplify;
     ism_input.smooth = static_cast<Vandalism::Smooth>(gui_draw_smooth);
 
-    ism->update(&ism_input);
+    g_ism->update(&ism_input);
 
     // TODO: change this!
     size_t layerIdx = 0;
-    const test_data &bake_data = ism->get_bake_data(layerIdx);
+    const test_data &bake_data = g_ism->get_bake_data(layerIdx);
 
     bool scrollViewsDown = false;
 
-    if (ism->visiblesChanged)
+    if (g_ism->visiblesChanged)
     {
         // flag processed
         // TODO: make this better
-        ism->visiblesChanged = false;
+        g_ism->visiblesChanged = false;
 
         collect_bake_data(bake_data,
                           input->rtWidthIn, input->rtHeightIn,
                           pixel_height_in);
 
-        u32 vtxCnt = static_cast<u32>(bake_quads.size());
+        u32 vtxCnt = static_cast<u32>(g_bake_quads.size());
 
-        current_services->update_mesh_vb(bake_mesh,
-                                         bake_quads.data(), vtxCnt);
+        g_services->update_mesh_vb(g_bake_mesh,
+                                   g_bake_quads.data(), vtxCnt);
 
-        viewsBuf->clear();
+        g_viewsBuf->clear();
         for (u32 vi = 0; vi < bake_data.nviews; ++vi)
         {
             const auto &view = bake_data.views[vi];
@@ -662,25 +658,25 @@ void update_and_render(input_data *input, output_data *output)
 
             // TODO: check this pin_index nonsense with multilayers
             bool isPinned = (view.pin_index != NPOS);
-            bool isCurrent = (vi == ism->currentPin.viewidx);
-            viewsBuf->append("%c %c %d: %s  %f/%f  (%ld..%ld)",
-                             (isCurrent ? '>' : ' '), (isPinned ? '*' : ' '),
-                             vi, typestr, view.tr.a, view.tr.b,
-                             view.si0, view.si1);
+            bool isCurrent = (vi == g_ism->currentPin.viewidx);
+            g_viewsBuf->append("%c %c %d: %s  %f/%f  (%ld..%ld)",
+                               (isCurrent ? '>' : ' '), (isPinned ? '*' : ' '),
+                               vi, typestr, view.tr.a, view.tr.b,
+                               view.si0, view.si1);
             if (view.img == NPOS)
-                viewsBuf->append("\n");
+                g_viewsBuf->append("\n");
             else
-                viewsBuf->append(" i:%ld\n", view.img);
+                g_viewsBuf->append(" i:%ld\n", view.img);
         }
         scrollViewsDown = true;
     }
 
-    output->preTranslateX  = ism->preShiftX;
-    output->preTranslateY  = ism->preShiftY;
-    output->postTranslateX = ism->postShiftX;
-    output->postTranslateY = ism->postShiftY;
-    output->scale          = ism->zoomCoeff;
-    output->rotate         = ism->rotateAngle;
+    output->preTranslateX  = g_ism->preShiftX;
+    output->preTranslateY  = g_ism->preShiftY;
+    output->postTranslateX = g_ism->postShiftX;
+    output->postTranslateY = g_ism->postShiftY;
+    output->scale          = g_ism->zoomCoeff;
+    output->rotate         = g_ism->rotateAngle;
 
     output->bg_red   = gui_background_color[0];
     output->bg_green = gui_background_color[1];
@@ -696,38 +692,38 @@ void update_and_render(input_data *input, output_data *output)
 
     output->zbandwidth = cfg_depth_step;
 
-    if (ism->currentChanged)
+    if (g_ism->currentChanged)
     {
         // TODO: flag processed, improve this
-        ism->currentChanged = false;
+        g_ism->currentChanged = false;
 
-        const test_data& current_data = ism->get_current_data();
-        const Vandalism::Brush& currBrush = ism->get_current_brush();
-        size_t currStrokeId = ism->get_current_stroke_id();
+        const test_data& current_data = g_ism->get_current_data();
+        const Vandalism::Brush& currBrush = g_ism->get_current_brush();
+        size_t currStrokeId = g_ism->get_current_stroke_id();
 
-        curr_quads.clear();
+        g_curr_quads.clear();
 
         const Vandalism::Stroke& stroke = current_data.strokes[0];
 
         stroke_to_quads(current_data.points + stroke.pi0,
                         current_data.points + stroke.pi1,
-                        curr_quads,
+                        g_curr_quads,
                         currStrokeId, id_transform(), currBrush);
 
-        u32 vtxCnt = static_cast<u32>(curr_quads.size());
+        u32 vtxCnt = static_cast<u32>(g_curr_quads.size());
         u32 idxCnt = vtxCnt / 4 * 6;
 
-        current_services->update_mesh_vb(curr_mesh,
-                                         curr_quads.data(), vtxCnt);
+        g_services->update_mesh_vb(g_curr_mesh,
+                                   g_curr_quads.data(), vtxCnt);
 
         output_data::drawcall dc;
         dc.id = output_data::CURRENTSTROKE;
-        dc.mesh_id = curr_mesh;
+        dc.mesh_id = g_curr_mesh;
         dc.texture_id = 0; // not used
         dc.offset = 0;
         dc.count = idxCnt;
 
-        drawcalls.push_back(dc);
+        g_drawcalls.push_back(dc);
     }
 
     // Draw UI -----------------------------------------------------------------
@@ -735,24 +731,24 @@ void update_and_render(input_data *input, output_data *output)
     float uiResHor = static_cast<float>(input->vpWidthPt);
     float uiResVer = static_cast<float>(input->vpHeightPt);
 
-    float fXPx = (ism->firstX / input->vpWidthIn + 0.5f) * uiResHor;
-    float fYPx = (0.5f - ism->firstY / input->vpHeightIn) * uiResVer;
+    float fXPx = (g_ism->firstX / input->vpWidthIn + 0.5f) * uiResHor;
+    float fYPx = (0.5f - g_ism->firstY / input->vpHeightIn) * uiResVer;
 
     // TODO: do not update this each frame
     ImDrawVert vtx;
     vtx.col = 0xFF5555FF;
     vtx.uv = ImGui::GetIO().Fonts->TexUvWhitePixel;
 
-    lines_vb.clear();
-    vtx.pos = ImVec2(fXPx-5.0f, fYPx-0.5f); lines_vb.push_back(vtx);
-    vtx.pos = ImVec2(fXPx-5.0f, fYPx+0.5f); lines_vb.push_back(vtx);
-    vtx.pos = ImVec2(fXPx+5.0f, fYPx+0.5f); lines_vb.push_back(vtx);
-    vtx.pos = ImVec2(fXPx+5.0f, fYPx-0.5f); lines_vb.push_back(vtx);
+    g_lines_vb.clear();
+    vtx.pos = ImVec2(fXPx-5.0f, fYPx-0.5f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(fXPx-5.0f, fYPx+0.5f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(fXPx+5.0f, fYPx+0.5f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(fXPx+5.0f, fYPx-0.5f); g_lines_vb.push_back(vtx);
 
-    vtx.pos = ImVec2(fXPx-0.5f, fYPx-5.0f); lines_vb.push_back(vtx);
-    vtx.pos = ImVec2(fXPx+0.5f, fYPx-5.0f); lines_vb.push_back(vtx);
-    vtx.pos = ImVec2(fXPx+0.5f, fYPx+5.0f); lines_vb.push_back(vtx);
-    vtx.pos = ImVec2(fXPx-0.5f, fYPx+5.0f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(fXPx-0.5f, fYPx-5.0f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(fXPx+0.5f, fYPx-5.0f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(fXPx+0.5f, fYPx+5.0f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(fXPx-0.5f, fYPx+5.0f); g_lines_vb.push_back(vtx);
 
     float cX0 = (0.5f - 0.5f * cfg_capture_width_in / input->vpWidthIn) * uiResHor;
     float cX1 = (0.5f + 0.5f * cfg_capture_width_in / input->vpWidthIn) * uiResHor;
@@ -761,36 +757,36 @@ void update_and_render(input_data *input, output_data *output)
     float cY1 = (0.5f - 0.5f * cfg_capture_height_in / input->vpHeightIn) * uiResVer;
 
     vtx.col = 0xFF0000FF;
-    vtx.pos = ImVec2(cX0-0.5f, cY0); lines_vb.push_back(vtx);
-    vtx.pos = ImVec2(cX0+0.5f, cY0); lines_vb.push_back(vtx);
-    vtx.pos = ImVec2(cX0+0.5f, cY1); lines_vb.push_back(vtx);
-    vtx.pos = ImVec2(cX0-0.5f, cY1); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX0-0.5f, cY0); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX0+0.5f, cY0); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX0+0.5f, cY1); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX0-0.5f, cY1); g_lines_vb.push_back(vtx);
 
-    vtx.pos = ImVec2(cX1-0.5f, cY0); lines_vb.push_back(vtx);
-    vtx.pos = ImVec2(cX1+0.5f, cY0); lines_vb.push_back(vtx);
-    vtx.pos = ImVec2(cX1+0.5f, cY1); lines_vb.push_back(vtx);
-    vtx.pos = ImVec2(cX1-0.5f, cY1); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1-0.5f, cY0); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1+0.5f, cY0); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1+0.5f, cY1); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1-0.5f, cY1); g_lines_vb.push_back(vtx);
 
-    vtx.pos = ImVec2(cX0, cY0-0.5f); lines_vb.push_back(vtx);
-    vtx.pos = ImVec2(cX0, cY0+0.5f); lines_vb.push_back(vtx);
-    vtx.pos = ImVec2(cX1, cY0+0.5f); lines_vb.push_back(vtx);
-    vtx.pos = ImVec2(cX1, cY0-0.5f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX0, cY0-0.5f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX0, cY0+0.5f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1, cY0+0.5f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1, cY0-0.5f); g_lines_vb.push_back(vtx);
 
-    vtx.pos = ImVec2(cX0, cY1-0.5f); lines_vb.push_back(vtx);
-    vtx.pos = ImVec2(cX0, cY1+0.5f); lines_vb.push_back(vtx);
-    vtx.pos = ImVec2(cX1, cY1+0.5f); lines_vb.push_back(vtx);
-    vtx.pos = ImVec2(cX1, cY1-0.5f); lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX0, cY1-0.5f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX0, cY1+0.5f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1, cY1+0.5f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(cX1, cY1-0.5f); g_lines_vb.push_back(vtx);
 
-    current_services->update_mesh_vb(lines_mesh, lines_vb.data(), 24);
+    g_services->update_mesh_vb(g_lines_mesh, g_lines_vb.data(), 24);
 
     output_data::drawcall lines_drawcall;
-    lines_drawcall.texture_id = font_texture_id;
-    lines_drawcall.mesh_id = lines_mesh;
+    lines_drawcall.texture_id = g_font_texture_id;
+    lines_drawcall.mesh_id = g_lines_mesh;
     lines_drawcall.offset = 0;
     lines_drawcall.count = 12;
     lines_drawcall.id = output_data::UI;
 
-    drawcalls.push_back(lines_drawcall);
+    g_drawcalls.push_back(lines_drawcall);
 
     // Draw ImGui --------------------------------------------------------------
 
@@ -871,14 +867,14 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::SameLine();
     ImGui::RadioButton("pivot", &gui_tool, static_cast<i32>(Vandalism::SECOND));
 
-    Vandalism::Undoee undoee = ism->undoable();
+    Vandalism::Undoee undoee = g_ism->undoable();
     const char *undolabels[] = { "", "Undo last stroke", "Undo image insertion", "Undo view change" };
     if (undoee != Vandalism::NOTHING)
     {
         ImGui::SameLine();
         if (ImGui::Button(undolabels[undoee]))
         {
-            ism->undo();
+            g_ism->undo();
         }
     }
 
@@ -895,7 +891,7 @@ void update_and_render(input_data *input, output_data *output)
         output_data::drawcall dc;
         dc.id = output_data::GRID;
 
-        drawcalls.push_back(dc);
+        g_drawcalls.push_back(dc);
     }
 
     ImGui::Separator();
@@ -945,46 +941,46 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::Separator();
     // BUTTONS
 
-    if (ism->currentMode == Vandalism::IDLE)
+    if (g_ism->currentMode == Vandalism::IDLE)
     {
         if (ImGui::Button("Clear canvas"))
         {
-            ism->clear();
+            g_ism->clear();
             clear_loaded_images();
         }
         ImGui::SameLine();
         if (ImGui::Button("Show all strokes"))
         {
-            ism->show_all(input->vpWidthIn, input->vpHeightIn);
+            g_ism->show_all(input->vpWidthIn, input->vpHeightIn);
         }
 
         ImGui::Text("[%s]", cfg_default_file);
         ImGui::SameLine();
         if (ImGui::Button("Save"))
         {
-            ism->save_data(cfg_default_file);
+            g_ism->save_data(cfg_default_file);
         }
         ImGui::SameLine();
         if (ImGui::Button("Load"))
         {
-            if (current_services->check_file(cfg_default_file))
+            if (g_services->check_file(cfg_default_file))
             {
                 clear_loaded_images();
 
-                ism->load_data(cfg_default_file);
+                g_ism->load_data(cfg_default_file);
 
-                for (size_t i = 0; i < ism->imageNames.size(); ++i)
+                for (size_t i = 0; i < g_ism->imageNames.size(); ++i)
                 {
                     ImageDesc desc;
-                    if (load_image(ism->imageNames[i].c_str(), desc))
+                    if (load_image(g_ism->imageNames[i].c_str(), desc))
                     {
-                        loaded_images.push_back(desc);
+                        g_loaded_images.push_back(desc);
                     }
                     else
                     {
                         // TODO: some indication of missing file
-                        ImageDesc invalid_desc{ font_texture_id, 0, 0 };
-                        loaded_images.push_back(invalid_desc);
+                        ImageDesc invalid_desc{ g_font_texture_id, 0, 0 };
+                        g_loaded_images.push_back(invalid_desc);
                     }
                 }
             }
@@ -995,35 +991,35 @@ void update_and_render(input_data *input, output_data *output)
         }
 
         ImGui::Text("[%s]", cfg_default_capture_file);
-        if (image_capturing == INACTIVE)
+        if (g_image_capturing == INACTIVE)
         {
             ImGui::SameLine();
             if (ImGui::Button("Capture"))
             {
-                image_capturing = SELECTION;
+                g_image_capturing = SELECTION;
             }
         }
-        else if (image_capturing == SELECTION)
+        else if (g_image_capturing == SELECTION)
         {
             output_data::drawcall dc;
-            dc.texture_id = font_texture_id;
-            dc.mesh_id = lines_mesh;
+            dc.texture_id = g_font_texture_id;
+            dc.mesh_id = g_lines_mesh;
             dc.offset = 12;
             dc.count = 24;
             dc.id = output_data::UI;
 
-            drawcalls.push_back(dc);
+            g_drawcalls.push_back(dc);
 
             ImGui::SameLine();
             if (ImGui::Button("Cancel capture"))
             {
-                image_capturing = INACTIVE;
+                g_image_capturing = INACTIVE;
             }
 
             ImGui::SameLine();
             if (ImGui::Button("Save capture"))
             {
-                drawcalls.clear();
+                g_drawcalls.clear();
                 collect_bake_data(bake_data,
                                   cfg_capture_width_in, cfg_capture_height_in,
                                   pixel_height_in);
@@ -1033,56 +1029,56 @@ void update_and_render(input_data *input, output_data *output)
                 captdc.params[0] = cfg_capture_width_in;
                 captdc.params[1] = cfg_capture_height_in;
 
-                drawcalls.push_back(captdc);
+                g_drawcalls.push_back(captdc);
 
-                image_capturing = CAPTURE;
+                g_image_capturing = CAPTURE;
             }
         }
-        else if (image_capturing == CAPTURE)
+        else if (g_image_capturing == CAPTURE)
         {
             u32 width, height;
-            const u8 *data = current_services->get_capture_data(width, height);
+            const u8 *data = g_services->get_capture_data(width, height);
             stbi_write_png(cfg_default_capture_file,
                            static_cast<i32>(width),
                            static_cast<i32>(height),
                            4, data, 0);
-            image_capturing = INACTIVE;
+            g_image_capturing = INACTIVE;
         }
 
         ImGui::Text("[%s]", cfg_default_image_file);
-        if (!image_fitting)
+        if (!g_image_fitting)
         {
             ImGui::SameLine();
             if (ImGui::Button("Insert image"))
             {
-                fit_img.name = cfg_default_image_file;
-                size_t ism_img_name_idx = ism->image_name_idx(fit_img.name.c_str());
-                if (ism_img_name_idx < ism->imageNames.size())
+                g_fit_img.name = cfg_default_image_file;
+                size_t ism_img_name_idx = g_ism->image_name_idx(g_fit_img.name.c_str());
+                if (ism_img_name_idx < g_ism->imageNames.size())
                 {
-                    const ImageDesc &desc = loaded_images[ism_img_name_idx];
+                    const ImageDesc &desc = g_loaded_images[ism_img_name_idx];
                     float image_aspect = static_cast<float>(desc.height) / static_cast<float>(desc.width);
 
-                    fit_img.texid = desc.texid;
-                    fit_img.width_in = 0.5f * input->vpWidthIn;
-                    fit_img.height_in = fit_img.width_in * image_aspect;
-                    fit_img.reuse = true;
+                    g_fit_img.texid = desc.texid;
+                    g_fit_img.width_in = 0.5f * input->vpWidthIn;
+                    g_fit_img.height_in = g_fit_img.width_in * image_aspect;
+                    g_fit_img.reuse = true;
 
-                    image_fitting = true;
+                    g_image_fitting = true;
                 }
                 else
                 {
                     ImageDesc desc;
-                    if (load_image(fit_img.name.c_str(), desc))
+                    if (load_image(g_fit_img.name.c_str(), desc))
                     {
-                        loaded_images.push_back(desc);
+                        g_loaded_images.push_back(desc);
                         float image_aspect = static_cast<float>(desc.height) / static_cast<float>(desc.width);
 
-                        fit_img.texid = desc.texid;
-                        fit_img.width_in = 0.5f * input->vpWidthIn;
-                        fit_img.height_in = fit_img.width_in * image_aspect;
-                        fit_img.reuse = false;
+                        g_fit_img.texid = desc.texid;
+                        g_fit_img.width_in = 0.5f * input->vpWidthIn;
+                        g_fit_img.height_in = g_fit_img.width_in * image_aspect;
+                        g_fit_img.reuse = false;
 
-                        image_fitting = true;
+                        g_image_fitting = true;
                     }
                 }
             }
@@ -1092,47 +1088,47 @@ void update_and_render(input_data *input, output_data *output)
             ImGui::SameLine();
             if (ImGui::Button("Cancel fitting"))
             {
-                if (!fit_img.reuse)
+                if (!g_fit_img.reuse)
                 {
-                    current_services->delete_texture(fit_img.texid);
+                    g_services->delete_texture(g_fit_img.texid);
                 }
-                fit_img = CurrentImage();
+                g_fit_img = CurrentImage();
 
-                image_fitting = false;
+                g_image_fitting = false;
             }
 
             ImGui::SameLine();
             if (ImGui::Button("Place image"))
             {
-                ism->place_image(fit_img.name.c_str(),
-                                 fit_img.width_in, fit_img.height_in);
+                g_ism->place_image(g_fit_img.name.c_str(),
+                                   g_fit_img.width_in, g_fit_img.height_in);
 
-                image_fitting = false;
+                g_image_fitting = false;
             }
         }
     }
 
-    if (image_fitting)
+    if (g_image_fitting)
     {
         output_data::drawcall dc;
-        dc.texture_id = fit_img.texid;
+        dc.texture_id = g_fit_img.texid;
         dc.id = output_data::IMAGEFIT;
 
-        dc.params[0] = -0.5f * fit_img.width_in;
-        dc.params[1] = -0.5f * fit_img.height_in;
+        dc.params[0] = -0.5f * g_fit_img.width_in;
+        dc.params[1] = -0.5f * g_fit_img.height_in;
 
-        dc.params[2] = fit_img.width_in;
+        dc.params[2] = g_fit_img.width_in;
         dc.params[3] = 0.0f;
 
         dc.params[4] = 0.0f;
-        dc.params[5] = fit_img.height_in;
+        dc.params[5] = g_fit_img.height_in;
 
-        drawcalls.push_back(dc);
+        g_drawcalls.push_back(dc);
     }
 
     output->quit_flag = ImGui::Button("Quit");
 
-    if (!ism->append_allowed())
+    if (!g_ism->append_allowed())
     {
         ImGui::TextColored(ImColor(1.0f, 0.0f, 0.0f), "read only mode");
     }
@@ -1145,9 +1141,9 @@ void update_and_render(input_data *input, output_data *output)
                      static_cast<i32>(bake_data.nviews-1));
     if (ImGui::Button("Goto view"))
     {
-        ism->set_view(static_cast<size_t>(gui_goto_idx));
+        g_ism->set_view(static_cast<size_t>(gui_goto_idx));
     }
-    ImGui::TextUnformatted(viewsBuf->begin());
+    ImGui::TextUnformatted(g_viewsBuf->begin());
     if (scrollViewsDown)
     {
         ImGui::SetScrollHere(1.0f);
@@ -1165,26 +1161,26 @@ void update_and_render(input_data *input, output_data *output)
 
     ImGui::Separator();
 
-    ImGui::Text("shift-inch: (%g, %g)", ism->postShiftX, ism->postShiftY);
-    ImGui::Text("zoom-coeff: %g", ism->zoomCoeff);
-    ImGui::Text("rotate-angle: %g", ism->rotateAngle);
+    ImGui::Text("shift-inch: (%g, %g)", g_ism->postShiftX, g_ism->postShiftY);
+    ImGui::Text("zoom-coeff: %g", g_ism->zoomCoeff);
+    ImGui::Text("rotate-angle: %g", g_ism->rotateAngle);
 
     ImGui::Separator();
 
     // TODO: multilayers support
-    ImGui::Text("ism strokes: %lu", ism->current_layer().strokes.size());
-    ImGui::Text("ism points: %lu", ism->current_layer().points.size());
-    ImGui::Text("ism brushes: %lu", ism->brushes.size());
+    ImGui::Text("ism strokes: %lu", g_ism->current_layer().strokes.size());
+    ImGui::Text("ism points: %lu", g_ism->current_layer().points.size());
+    ImGui::Text("ism brushes: %lu", g_ism->brushes.size());
 
     ImGui::Text("bake_quads v: (%lu/%lu)",
-                bake_quads.size(),
-                bake_quads.capacity());
+                g_bake_quads.size(),
+                g_bake_quads.capacity());
 
     ImGui::Text("curr_quads v: (%lu/%lu)",
-                curr_quads.size(),
-                curr_quads.capacity());
+                g_curr_quads.size(),
+                g_curr_quads.capacity());
 
-    ImGui::Text("mode: %d", ism->currentMode);
+    ImGui::Text("mode: %d", g_ism->currentMode);
 
     ImGui::Text("mouse occupied: %d", static_cast<i32>(gui_mouse_occupied));
     ImGui::Text("mouse hover: %d", static_cast<i32>(gui_mouse_hover));
@@ -1206,6 +1202,6 @@ void update_and_render(input_data *input, output_data *output)
     gui_mouse_occupied = ImGui::IsAnyItemActive();
     gui_mouse_hover = ImGui::IsMouseHoveringAnyWindow();
 
-    output->drawcalls = drawcalls.data();
-    output->drawcall_cnt = static_cast<u32>(drawcalls.size());
+    output->drawcalls = g_drawcalls.data();
+    output->drawcall_cnt = static_cast<u32>(g_drawcalls.size());
 }
