@@ -142,6 +142,7 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
                 drawcall.offset = idxOffs;
                 drawcall.count = idxCnt;
                 drawcall.id = output_data::UI;
+                drawcall.layer_id = 0xFF;
 
                 g_drawcalls.push_back(drawcall);
 
@@ -466,7 +467,8 @@ void stroke_to_quads(const test_point* begin, const test_point* end,
 
 void collect_bake_data(const test_data& bake_data,
                        float width_in, float height_in,
-                       float pixel_height_in)
+                       float pixel_height_in,
+                       u8 layer_id)
 {
     static std::vector<test_visible> s_visibles;
     static std::vector<test_transform> s_transforms;
@@ -501,6 +503,7 @@ void collect_bake_data(const test_data& bake_data,
                 dc.texture_id = 0; // not used
                 dc.offset = static_cast<u32>(before / 4 * 6);
                 dc.count = 0;
+                dc.layer_id = layer_id;
 
                 g_drawcalls.push_back(dc);
             }
@@ -523,6 +526,7 @@ void collect_bake_data(const test_data& bake_data,
             dc.texture_id = g_loaded_images[img.nameidx].texid;
             dc.offset = 0; // not used
             dc.count = 0; // not used
+            dc.layer_id = layer_id;
 
             test_point o{ img.tx, img.ty };
             test_point x{ img.tx + img.xx, img.ty + img.xy };
@@ -554,11 +558,12 @@ void collect_bake_data(const test_data& bake_data,
         dc.texture_id = 0; // not used
         dc.offset = 0;
         dc.count = 0;
+        dc.layer_id = layer_id;
 
         g_drawcalls.push_back(dc);
     }
 
-    std::cout << "update mesh: " << s_visibles.size() << " visibles" << std::endl;
+    std::cout << "layer #" << layer_id << " update mesh: " << s_visibles.size() << " visibles" << std::endl;
 }
 
 bool load_image(const char *filename, ImageDesc &desc)
@@ -627,8 +632,9 @@ void update_and_render(input_data *input, output_data *output)
     g_ism->update(&ism_input);
 
     // TODO: change this!
-    size_t layerIdx = 0;
+    u8 layerIdx = 0;
     const test_data &bake_data = g_ism->get_bake_data(layerIdx);
+    const test_data &bake_data_empty = g_ism->get_bake_data(1);
 
     bool scrollViewsDown = false;
 
@@ -640,7 +646,17 @@ void update_and_render(input_data *input, output_data *output)
 
         collect_bake_data(bake_data,
                           input->rtWidthIn, input->rtHeightIn,
-                          pixel_height_in);
+                          pixel_height_in,
+                          layerIdx);
+
+        collect_bake_data(bake_data_empty,
+                          input->rtWidthIn, input->rtHeightIn,
+                          pixel_height_in,
+                          1);
+        collect_bake_data(bake_data_empty,
+                          input->rtWidthIn, input->rtHeightIn,
+                          pixel_height_in,
+                          2);
 
         u32 vtxCnt = static_cast<u32>(g_bake_quads.size());
 
@@ -722,6 +738,7 @@ void update_and_render(input_data *input, output_data *output)
         dc.texture_id = 0; // not used
         dc.offset = 0;
         dc.count = idxCnt;
+        dc.layer_id = layerIdx;
 
         g_drawcalls.push_back(dc);
     }
@@ -785,6 +802,7 @@ void update_and_render(input_data *input, output_data *output)
     lines_drawcall.offset = 0;
     lines_drawcall.count = 12;
     lines_drawcall.id = output_data::UI;
+    lines_drawcall.layer_id = 0xFF;
 
     g_drawcalls.push_back(lines_drawcall);
 
@@ -890,6 +908,11 @@ void update_and_render(input_data *input, output_data *output)
 
         output_data::drawcall dc;
         dc.id = output_data::GRID;
+        dc.texture_id = 0; // not used
+        dc.mesh_id = 0; // not used
+        dc.offset = 0; // not used
+        dc.count = 0; // not used
+        dc.layer_id = 0xFF;
 
         g_drawcalls.push_back(dc);
     }
@@ -1007,6 +1030,7 @@ void update_and_render(input_data *input, output_data *output)
             dc.offset = 12;
             dc.count = 24;
             dc.id = output_data::UI;
+            dc.layer_id = 0xFF;
 
             g_drawcalls.push_back(dc);
 
@@ -1019,15 +1043,22 @@ void update_and_render(input_data *input, output_data *output)
             ImGui::SameLine();
             if (ImGui::Button("Save capture"))
             {
+                u8 layer_idx = 0;
                 g_drawcalls.clear();
                 collect_bake_data(bake_data,
                                   cfg_capture_width_in, cfg_capture_height_in,
-                                  pixel_height_in);
+                                  pixel_height_in,
+                                  layer_idx);
 
                 output_data::drawcall captdc;
                 captdc.id = output_data::CAPTURE;
                 captdc.params[0] = cfg_capture_width_in;
                 captdc.params[1] = cfg_capture_height_in;
+                captdc.texture_id = 0;
+                captdc.mesh_id = 0;
+                captdc.offset = 0;
+                captdc.count = 0;
+                captdc.layer_id = layerIdx;
 
                 g_drawcalls.push_back(captdc);
 
@@ -1113,6 +1144,7 @@ void update_and_render(input_data *input, output_data *output)
         output_data::drawcall dc;
         dc.texture_id = g_fit_img.texid;
         dc.id = output_data::IMAGEFIT;
+        dc.layer_id = layerIdx;
 
         dc.params[0] = -0.5f * g_fit_img.width_in;
         dc.params[1] = -0.5f * g_fit_img.height_in;

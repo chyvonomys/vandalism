@@ -716,7 +716,6 @@ struct Vandalism
         return current_layer().strokes.size();
     }
 
-
     test_data get_bake_data(size_t li) const
     {
         return layers[li].get_data();
@@ -1144,6 +1143,9 @@ struct Vandalism
         l0.views.push_back(test_view(none, 0, 0));
         l0.views.back().pin_index = 0;
 
+        layers.push_back(l0);
+
+        l0.views.back().pin_index = NPOS;
         layers.push_back(l0);
 
         currentPin = {0, 0};

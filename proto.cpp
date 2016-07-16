@@ -831,8 +831,8 @@ struct Pipeline
     StrokeImageTech si;
     FSGrid grid;
     RenderTargetMS bakeRTMS;
-    RenderTarget bakeRT;
-    RenderTarget currRT;
+    RenderTarget layerRT[3];
+    RenderTarget compRT;
     MarkerBatchTech render;
     UIPresenter uirender;
 
@@ -843,8 +843,10 @@ struct Pipeline
         si.setup(&quad);
         grid.setup(&quad);
         bakeRTMS.setup(w, h);
-        bakeRT.setup(w, h);
-        currRT.setup(w, h);
+        layerRT[0].setup(w, h);
+        layerRT[1].setup(w, h);
+        layerRT[2].setup(w, h);
+        compRT.setup(w, h);
         render.setup();
         uirender.setup();
     }
@@ -853,8 +855,10 @@ struct Pipeline
     {
         uirender.cleanup();
         render.cleanup();
-        currRT.cleanup();
-        bakeRT.cleanup();
+        compRT.cleanup();
+        layerRT[2].cleanup();
+        layerRT[1].cleanup();
+        layerRT[0].cleanup();
         bakeRTMS.cleanup();
         grid.cleanup();
         si.cleanup();
@@ -866,24 +870,26 @@ struct Pipeline
         const output_data::drawcall *drawcalls, size_t drawcall_cnt,
         bool gamma_on)
     {
-        bool has_anything_to_bake = false;
-        bool has_current_object = false;
-        for (u32 i = 0; i < drawcall_cnt; ++i)
+        for (size_t layerId = 0; layerId < 3; ++layerId)
         {
-            output_data::techid id = drawcalls[i].id;
-
-            if (id == output_data::BAKEBATCH || id == output_data::IMAGE)
+            bool refreshThisLayer = false;
+            for (u32 i = 0; i < drawcall_cnt; ++i)
             {
-                has_anything_to_bake = true;
+                if (drawcalls[i].layer_id == layerId)
+                {
+                    output_data::techid id = drawcalls[i].id;
+                    if (id == output_data::BAKEBATCH || id == output_data::IMAGE)
+                    {
+                        refreshThisLayer = true;
+                    }
+                }
             }
-            if (id == output_data::CURRENTSTROKE || id == output_data::IMAGEFIT)
-            {
-                has_current_object = true;
-            }
-        }
 
-        if (has_anything_to_bake)
-        {
+            if (!refreshThisLayer)
+            {
+                continue;
+            }
+
             bakeRTMS.begin_receive();
             glClearColor(0.0, 0.0, 0.0, 1.0);
             glClearDepth(0.0);
@@ -892,45 +898,51 @@ struct Pipeline
             for (u32 i = 0; i < drawcall_cnt; ++i)
             {
                 const auto &dc = drawcalls[i];
-                if (dc.id == output_data::BAKEBATCH)
+                if (dc.layer_id == layerId)
                 {
-                    render.draw(dc.mesh_id, dc.offset, dc.count,
-                        2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
-                }
-                else if (dc.id == output_data::IMAGE)
-                {
-                    si.draw(textures[dc.texture_id].glid,
-                        dc.params[0], dc.params[1],
-                        dc.params[2], dc.params[3],
-                        dc.params[4], dc.params[5],
-                        1.0f,
-                        2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
+                    if (dc.id == output_data::BAKEBATCH)
+                    {
+                        render.draw(dc.mesh_id, dc.offset, dc.count,
+                                    2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
+                    }
+                    else if (dc.id == output_data::IMAGE)
+                    {
+                        si.draw(textures[dc.texture_id].glid,
+                                dc.params[0], dc.params[1],
+                                dc.params[2], dc.params[3],
+                                dc.params[4], dc.params[5],
+                                1.0f,
+                                2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
+                    }
                 }
             }
             bakeRTMS.end_receive();
 
-            bakeRT.begin_receive();
+            layerRT[layerId].begin_receive();
             bakeRTMS.resolve();
-            bakeRT.end_receive();
+            layerRT[layerId].end_receive();
+        }
 
-            for (size_t i = 0; i < drawcall_cnt; ++i)
+        // Check if we need to augment any layerRTs?
+        // TODO: augments only one layer for now.
+        size_t augLayerId = 0xFFFF;
+        for (u32 i = 0; i < drawcall_cnt; ++i)
+        {
+            output_data::techid id = drawcalls[i].id;
+            if (id == output_data::CURRENTSTROKE || id == output_data::IMAGEFIT)
             {
-                if (drawcalls[i].id == output_data::CAPTURE)
-                {
-                    bakeRT.store_image(capture_data.data());
-                    normalize_capture_data();
-                }
+                augLayerId = drawcalls[i].layer_id;
             }
         }
 
-        if (has_current_object)
+        if (augLayerId != 0xFFFF)
         {
-            currRT.begin_receive();
+            compRT.begin_receive();
             glClearColor(0.0, 0.0, 0.0, 1.0);
             glClearDepth(0.0);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            fs.draw(bakeRT.m_tex, GL_ONE, GL_ZERO,
+            fs.draw(layerRT[augLayerId].m_tex, GL_ONE, GL_ZERO,
                 output.preTranslateX, output.preTranslateY,
                 output.postTranslateX, output.postTranslateY,
                 output.scale, output.rotate,
@@ -955,7 +967,17 @@ struct Pipeline
                         2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
                 }
             }
-            currRT.end_receive();
+            compRT.end_receive();
+        }
+
+        // TODO: captures only one separate layer
+        for (size_t i = 0; i < drawcall_cnt; ++i)
+        {
+            if (drawcalls[i].id == output_data::CAPTURE)
+            {
+                layerRT[drawcalls[i].layer_id].store_image(capture_data.data());
+                normalize_capture_data();
+            }
         }
 
         if (gamma_on)
@@ -982,12 +1004,16 @@ struct Pipeline
             }
         }
 
-        fs.draw(currRT.m_tex, GL_ONE, GL_SRC_ALPHA,
-            0.0f, 0.0f,
-            0.0f, 0.0f,
-            1.0f, 0.0f,
-            input.vpWidthIn, input.vpHeightIn,
-            input.rtWidthIn, input.rtHeightIn);
+        for (size_t layerId = 0; layerId < 3; ++layerId)
+        {
+            GLuint tex = (layerId == augLayerId ? compRT : layerRT[layerId]).m_tex;
+            fs.draw(tex, GL_ONE, GL_SRC_ALPHA,
+                    0.0f, 0.0f,
+                    0.0f, 0.0f,
+                    1.0f, 0.0f,
+                    input.vpWidthIn, input.vpHeightIn,
+                    input.rtWidthIn, input.rtHeightIn);
+        }
 
         for (u32 i = 0; i < output.drawcall_cnt; ++i)
         {

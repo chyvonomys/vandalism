@@ -114,6 +114,7 @@ struct output_data
         kernel_services::MeshID mesh_id;
         u32 offset;
         u32 count;
+        u8 layer_id;
         float params[8];
     };
 
