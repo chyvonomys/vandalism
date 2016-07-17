@@ -61,8 +61,6 @@ struct input_data
     float rtWidthIn, rtHeightIn;
 
     i32 swWidthPx, swHeightPx;
-
-	kernel_services services;
 };
 
 struct output_data
@@ -123,5 +121,5 @@ struct output_data
 };
 
 void update_and_render(input_data *input, output_data *output);
-void setup(kernel_services *services);
+void setup(kernel_services *services, u32 layerCnt);
 void cleanup();

@@ -210,7 +210,7 @@ ImGuiTextBuffer *g_viewsBuf;
 std::vector<output_data::Vertex> g_bake_quads;
 std::vector<output_data::Vertex> g_curr_quads;
 
-void setup(kernel_services *services)
+void setup(kernel_services *services, u32 nLayers)
 {
     ImGuiIO& io = ImGui::GetIO();
     io.RenderDrawListsFn = RenderImGuiDrawLists;
@@ -257,7 +257,7 @@ void setup(kernel_services *services)
     io.Fonts->ClearTexData();
 
     g_ism = new Vandalism();
-    g_ism->setup();
+    g_ism->setup(nLayers);
 
     gui_showAllViews = true;
     gui_viewIdx = 0;
@@ -635,11 +635,6 @@ void update_and_render(input_data *input, output_data *output)
 
     g_ism->update(&ism_input);
 
-    // TODO: change this!
-    u8 layerIdx = 0;
-    const test_data &bake_data = g_ism->get_bake_data(layerIdx);
-    const test_data &bake_data_empty = g_ism->get_bake_data(1);
-
     bool scrollViewsDown = false;
 
     if (g_ism->visiblesChanged)
@@ -650,46 +645,45 @@ void update_and_render(input_data *input, output_data *output)
 
         g_bake_quads.clear();
 
-        collect_bake_data(bake_data,
-                          input->rtWidthIn, input->rtHeightIn,
-                          pixel_height_in,
-                          layerIdx);
-
-        collect_bake_data(bake_data_empty,
-                          input->rtWidthIn, input->rtHeightIn,
-                          pixel_height_in,
-                          1);
-
-        collect_bake_data(bake_data_empty,
-                          input->rtWidthIn, input->rtHeightIn,
-                          pixel_height_in,
-                          2);
+        for (u8 layerIdx = 0; layerIdx < g_ism->get_layer_cnt(); ++layerIdx)
+        {
+            const test_data &bake_data = g_ism->get_bake_data(layerIdx);
+            collect_bake_data(bake_data,
+                              input->rtWidthIn, input->rtHeightIn,
+                              pixel_height_in,
+                              layerIdx);
+        }
 
         u32 vtxCnt = static_cast<u32>(g_bake_quads.size());
 
         g_services->update_mesh_vb(g_bake_mesh,
                                    g_bake_quads.data(), vtxCnt);
-
+        
         g_viewsBuf->clear();
-        for (u32 vi = 0; vi < bake_data.nviews; ++vi)
+        for (u8 layerIdx = 0; layerIdx < g_ism->get_layer_cnt(); ++layerIdx)
         {
-            const auto &view = bake_data.views[vi];
-            auto t = view.tr.type;
-            const char *typestr = (t == TZOOM ? "ZOOM" :
-                                   (t == TPAN ? "PAN" :
-                                    (t == TROTATE ? "ROTATE" : "ERROR")));
+            const test_data &bake_data = g_ism->get_bake_data(layerIdx);
+            g_viewsBuf->append("------ layer #%d ------ \n", layerIdx);
+            for (u32 vi = 0; vi < bake_data.nviews; ++vi)
+            {
+                const auto &view = bake_data.views[vi];
+                auto t = view.tr.type;
+                const char *typestr = (t == TZOOM ? "ZOOM" :
+                                       (t == TPAN ? "PAN" :
+                                        (t == TROTATE ? "ROTATE" : "ERROR")));
 
-            // TODO: check this pin_index nonsense with multilayers
-            bool isPinned = (view.pin_index != NPOS);
-            bool isCurrent = (vi == g_ism->currentPin.viewidx);
-            g_viewsBuf->append("%c %c %d: %s  %f/%f  (%ld..%ld)",
-                               (isCurrent ? '>' : ' '), (isPinned ? '*' : ' '),
-                               vi, typestr, view.tr.a, view.tr.b,
-                               view.si0, view.si1);
-            if (view.img == NPOS)
-                g_viewsBuf->append("\n");
-            else
-                g_viewsBuf->append(" i:%ld\n", view.img);
+                // TODO: check this pin_index nonsense with multilayers
+                bool isPinned = (view.pin_index != NPOS);
+                bool isCurrent = (vi == g_ism->currentPin.viewidx);
+                g_viewsBuf->append("%c %c %d: %s  %f/%f  (%ld..%ld)",
+                                   (isCurrent ? '>' : ' '), (isPinned ? '*' : ' '),
+                                   vi, typestr, view.tr.a, view.tr.b,
+                                   view.si0, view.si1);
+                if (view.img == NPOS)
+                    g_viewsBuf->append("\n");
+                else
+                    g_viewsBuf->append(" i:%ld\n", view.img);
+            }
         }
         scrollViewsDown = true;
     }
@@ -745,7 +739,7 @@ void update_and_render(input_data *input, output_data *output)
         dc.texture_id = 0; // not used
         dc.offset = 0;
         dc.count = idxCnt;
-        dc.layer_id = layerIdx;
+        dc.layer_id = g_ism->get_current_layer_id();
 
         g_drawcalls.push_back(dc);
     }
@@ -1051,7 +1045,11 @@ void update_and_render(input_data *input, output_data *output)
             if (ImGui::Button("Save capture"))
             {
                 u8 layer_idx = 0;
+                const auto &bake_data = g_ism->get_bake_data(layer_idx);
                 g_drawcalls.clear();
+                // TODO: if capture within rt then rebake is not needed,
+                // just crop, so maybe remove this and leave just
+                // DC request?
                 collect_bake_data(bake_data,
                                   cfg_capture_width_in, cfg_capture_height_in,
                                   pixel_height_in,
@@ -1065,7 +1063,7 @@ void update_and_render(input_data *input, output_data *output)
                 captdc.mesh_id = 0;
                 captdc.offset = 0;
                 captdc.count = 0;
-                captdc.layer_id = layerIdx;
+                captdc.layer_id = layer_idx;
 
                 g_drawcalls.push_back(captdc);
 
@@ -1151,7 +1149,7 @@ void update_and_render(input_data *input, output_data *output)
         output_data::drawcall dc;
         dc.texture_id = g_fit_img.texid;
         dc.id = output_data::IMAGEFIT;
-        dc.layer_id = layerIdx;
+        dc.layer_id = g_ism->get_current_layer_id();
 
         dc.params[0] = -0.5f * g_fit_img.width_in;
         dc.params[1] = -0.5f * g_fit_img.height_in;
@@ -1176,6 +1174,7 @@ void update_and_render(input_data *input, output_data *output)
 
     ImGui::SetNextWindowSize(ImVec2(200, 300), ImGuiSetCond_FirstUseEver);
     ImGui::Begin("views");
+    const auto &bake_data = g_ism->get_bake_data(g_ism->get_current_layer_id());
     ImGui::SliderInt("view", &gui_goto_idx, 0,
                      static_cast<i32>(bake_data.nviews-1));
     if (ImGui::Button("Goto view"))

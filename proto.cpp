@@ -831,7 +831,8 @@ struct Pipeline
     StrokeImageTech si;
     FSGrid grid;
     RenderTargetMS bakeRTMS;
-    RenderTarget layerRT[3];
+    static const u32 LAYERCNT = 3;
+    RenderTarget layerRT[LAYERCNT];
     RenderTarget compRT;
     MarkerBatchTech render;
     UIPresenter uirender;
@@ -845,14 +846,15 @@ struct Pipeline
         si.setup(&quad);
         grid.setup(&quad);
         bakeRTMS.setup(w, h);
-        layerRT[0].setup(w, h);
-        layerRT[1].setup(w, h);
-        layerRT[2].setup(w, h);
+        for (u32 i = 0; i < LAYERCNT; ++i)
+        {
+            layerRT[i].setup(w, h);
+        }
         compRT.setup(w, h);
         render.setup();
         uirender.setup();
 
-        augLayerId = 0xFFFF;
+        augLayerId = LAYERCNT;
     }
 
     void cleanup()
@@ -860,9 +862,10 @@ struct Pipeline
         uirender.cleanup();
         render.cleanup();
         compRT.cleanup();
-        layerRT[2].cleanup();
-        layerRT[1].cleanup();
-        layerRT[0].cleanup();
+        for (u32 i = 0; i < LAYERCNT; ++i)
+        {
+            layerRT[i].cleanup();
+        }
         bakeRTMS.cleanup();
         grid.cleanup();
         si.cleanup();
@@ -874,7 +877,7 @@ struct Pipeline
         const output_data::drawcall *drawcalls, size_t drawcall_cnt,
         bool gamma_on)
     {
-        for (size_t layerId = 0; layerId < 3; ++layerId)
+        for (size_t layerId = 0; layerId < LAYERCNT; ++layerId)
         {
             bool refreshThisLayer = false;
             for (u32 i = 0; i < drawcall_cnt; ++i)
@@ -896,7 +899,7 @@ struct Pipeline
 
             if (layerId == augLayerId)
             {
-                augLayerId = 0xFFFF;
+                augLayerId = LAYERCNT;
             }
 
             bakeRTMS.begin_receive();
@@ -934,7 +937,7 @@ struct Pipeline
 
         // Check if we need to augment any layerRTs?
         // TODO: augments only one layer for now.
-        u32 augCallId = 0xFFFF;
+        u32 augCallId = LAYERCNT;
         for (u32 i = 0; i < drawcall_cnt; ++i)
         {
             output_data::techid id = drawcalls[i].id;
@@ -945,7 +948,7 @@ struct Pipeline
             }
         }
 
-        if (augCallId != 0xFFFF)
+        if (augCallId != LAYERCNT)
         {
             compRT.begin_receive();
             glClearColor(0.0, 0.0, 0.0, 1.0);
@@ -1014,7 +1017,7 @@ struct Pipeline
             }
         }
 
-        for (size_t layerId = 0; layerId < 3; ++layerId)
+        for (size_t layerId = 0; layerId < LAYERCNT; ++layerId)
         {
             GLuint tex = (layerId == augLayerId ? compRT : layerRT[layerId]).m_tex;
             fs.draw(tex, GL_ONE, GL_SRC_ALPHA,
@@ -1177,7 +1180,7 @@ int main(int argc, char *argv[])
         services.ui_vertex_layout = &ui_vertex_layout;
         services.stroke_vertex_layout = &stroke_vertex_layout;
 
-        setup(&services);
+        setup(&services, Pipeline::LAYERCNT);
 
         signal_change_detector f9_signal, s_signal;
 
@@ -1191,7 +1194,7 @@ int main(int argc, char *argv[])
             if (reload_client)
             {
                 cleanup();
-                setup(&services);
+                setup(&services, Pipeline::LAYERCNT);
                 reload_client = false;
                 input.nFrames = 0;
             }

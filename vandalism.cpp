@@ -58,7 +58,7 @@ struct Vandalism
 
     struct Pin
     {
-        size_t layeridx;
+        u8 layeridx;
         size_t viewidx;
     };
 
@@ -177,14 +177,19 @@ struct Vandalism
         currentChanged = true;
     }
 
+    u8 get_current_layer_id() const
+    {
+        return currentPin.layeridx;
+    }
+
     const Layer &current_layer() const
     {
-        return layers[currentPin.layeridx];
+        return layers[get_current_layer_id()];
     }
 
     Layer &current_layer()
     {
-        return layers[currentPin.layeridx];
+        return layers[get_current_layer_id()];
     }
 
     bool current_view_is_last() const
@@ -654,6 +659,7 @@ struct Vandalism
     }
 
     Mode currentMode;
+    u32 layersCnt;
 
     void update(Input *input)
     {
@@ -662,7 +668,7 @@ struct Vandalism
         currentMode = mode;
     }
 
-    void setup()
+    void setup(u32 nLayers)
     {
 		// TODO: this should be statically initialized once (works in clang)
 		// doesn't work in vs2013
@@ -695,6 +701,8 @@ struct Vandalism
 
         currentMode = IDLE;
 
+        layersCnt = nLayers;
+
         setup_default_view();
 
         autoOptimizeViews = true;
@@ -719,6 +727,12 @@ struct Vandalism
     test_data get_bake_data(size_t li) const
     {
         return layers[li].get_data();
+    }
+
+    u8 get_layer_cnt() const
+    {
+        // TODO: types u8/size_t
+        return static_cast<u8>(layers.size());
     }
 
     test_data get_current_data() const
@@ -1143,10 +1157,13 @@ struct Vandalism
         l0.views.push_back(test_view(none, 0, 0));
         l0.views.back().pin_index = 0;
 
-        layers.push_back(l0);
+        layers.push_back(l0); // 0th
 
         l0.views.back().pin_index = NPOS;
-        layers.push_back(l0);
+        for (size_t i = 1; i < layersCnt; ++i)
+        {
+            layers.push_back(l0);
+        }
 
         currentPin = {0, 0};
     }
