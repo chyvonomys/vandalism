@@ -836,6 +836,8 @@ struct Pipeline
     MarkerBatchTech render;
     UIPresenter uirender;
 
+    u32 augLayerId;
+
     void setup(u32 w, u32 h)
     {
         quad.setup();
@@ -849,6 +851,8 @@ struct Pipeline
         compRT.setup(w, h);
         render.setup();
         uirender.setup();
+
+        augLayerId = 0xFFFF;
     }
 
     void cleanup()
@@ -890,6 +894,11 @@ struct Pipeline
                 continue;
             }
 
+            if (layerId == augLayerId)
+            {
+                augLayerId = 0xFFFF;
+            }
+
             bakeRTMS.begin_receive();
             glClearColor(0.0, 0.0, 0.0, 1.0);
             glClearDepth(0.0);
@@ -925,22 +934,25 @@ struct Pipeline
 
         // Check if we need to augment any layerRTs?
         // TODO: augments only one layer for now.
-        size_t augLayerId = 0xFFFF;
+        u32 augCallId = 0xFFFF;
         for (u32 i = 0; i < drawcall_cnt; ++i)
         {
             output_data::techid id = drawcalls[i].id;
             if (id == output_data::CURRENTSTROKE || id == output_data::IMAGEFIT)
             {
-                augLayerId = drawcalls[i].layer_id;
+                augCallId = i;
+                break;
             }
         }
 
-        if (augLayerId != 0xFFFF)
+        if (augCallId != 0xFFFF)
         {
             compRT.begin_receive();
             glClearColor(0.0, 0.0, 0.0, 1.0);
             glClearDepth(0.0);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            augLayerId = drawcalls[augCallId].layer_id;
 
             fs.draw(layerRT[augLayerId].m_tex, GL_ONE, GL_ZERO,
                 output.preTranslateX, output.preTranslateY,
@@ -949,24 +961,22 @@ struct Pipeline
                 input.rtWidthIn, input.rtHeightIn,
                 input.rtWidthIn, input.rtHeightIn);
 
-            for (u32 i = 0; i < output.drawcall_cnt; ++i)
+            const auto &augDC = output.drawcalls[augCallId];
+            if (augDC.id == output_data::CURRENTSTROKE)
             {
-                const auto &dc = output.drawcalls[i];
-                if (dc.id == output_data::CURRENTSTROKE)
-                {
-                    render.draw(dc.mesh_id, dc.offset, dc.count,
-                        2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
-                }
-                if (dc.id == output_data::IMAGEFIT)
-                {
-                    si.draw(textures[dc.texture_id].glid,
-                        dc.params[0], dc.params[1],
-                        dc.params[2], dc.params[3],
-                        dc.params[4], dc.params[5],
+                render.draw(augDC.mesh_id, augDC.offset, augDC.count,
+                            2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
+            }
+            if (augDC.id == output_data::IMAGEFIT)
+            {
+                si.draw(textures[augDC.texture_id].glid,
+                        augDC.params[0], augDC.params[1],
+                        augDC.params[2], augDC.params[3],
+                        augDC.params[4], augDC.params[5],
                         0.5f,
                         2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
-                }
             }
+
             compRT.end_receive();
         }
 
