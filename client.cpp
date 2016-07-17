@@ -186,6 +186,11 @@ float gui_eraser_alpha;
 float gui_smooth_error_order;
 i32 gui_goto_idx;
 
+u32 g_dclogidx = 0;
+const u32 DCLOGENTRIES = 10;
+std::string g_dclog[DCLOGENTRIES];
+u32 g_dclogtimes[DCLOGENTRIES] = {0};
+
 const i32 cfg_min_brush_diameter_units = 1;
 const i32 cfg_max_brush_diameter_units = 64;
 const i32 cfg_def_brush_diameter_units = 4;
@@ -1229,6 +1234,42 @@ void update_and_render(input_data *input, output_data *output)
                 input->windowWidthPx, input->windowHeightPx);
     ImGui::Text("win pos %d, %d pt",
                 input->windowPosXPt, input->windowPosYPt);
+
+    ImGui::Separator();
+    std::stringstream ds;
+    for (size_t i = 0; i < g_drawcalls.size(); ++i)
+    {
+        u32 lid = g_drawcalls[i].layer_id;
+        switch (g_drawcalls[i].id)
+        {
+        case output_data::UI: ds << "UI"; break;
+        case output_data::IMAGE: ds << "IMG@" << lid; break;
+        case output_data::BAKEBATCH: ds << "BAK@" << lid; break;
+        case output_data::CURRENTSTROKE: ds << "CUR@" << lid; break;
+        case output_data::GRID: ds << "GRD|"; break;
+        case output_data::IMAGEFIT: ds << "FIT@" << lid; break;
+        case output_data::CAPTURE: ds << "CAP@" << lid; break;
+        }
+        if (i + 1 < g_drawcalls.size())
+        {
+            ds << "|";
+        }
+    }
+    if (ds.str() != g_dclog[g_dclogidx % DCLOGENTRIES])
+    {
+        ++g_dclogidx;
+        g_dclog[g_dclogidx % DCLOGENTRIES] = ds.str();
+        g_dclogtimes[g_dclogidx % DCLOGENTRIES] = 1;
+    }
+    else
+    {
+        ++g_dclogtimes[g_dclogidx % DCLOGENTRIES];
+    }
+    for (u32 i = 1; i <= DCLOGENTRIES; ++i)
+    {
+        u32 id = (g_dclogidx + i) % DCLOGENTRIES;
+        ImGui::Text("%s (%d times)", g_dclog[id].c_str(), g_dclogtimes[id]);
+    }
 
     ImGui::End();
     ImGui::Render();
