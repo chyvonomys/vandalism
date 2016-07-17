@@ -473,7 +473,6 @@ void collect_bake_data(const test_data& bake_data,
     static std::vector<test_visible> s_visibles;
     static std::vector<test_transform> s_transforms;
 
-    g_bake_quads.clear();
     s_visibles.clear();
     s_transforms.clear();
     test_box viewbox = {-0.5f * width_in,
@@ -563,7 +562,7 @@ void collect_bake_data(const test_data& bake_data,
         g_drawcalls.push_back(dc);
     }
 
-    std::cout << "layer #" << layer_id << " update mesh: " << s_visibles.size() << " visibles" << std::endl;
+    std::cout << "layer #" << static_cast<u32>(layer_id) << " update mesh: " << s_visibles.size() << " visibles" << std::endl;
 }
 
 bool load_image(const char *filename, ImageDesc &desc)
@@ -644,6 +643,8 @@ void update_and_render(input_data *input, output_data *output)
         // TODO: make this better
         g_ism->visiblesChanged = false;
 
+        g_bake_quads.clear();
+
         collect_bake_data(bake_data,
                           input->rtWidthIn, input->rtHeightIn,
                           pixel_height_in,
@@ -653,6 +654,7 @@ void update_and_render(input_data *input, output_data *output)
                           input->rtWidthIn, input->rtHeightIn,
                           pixel_height_in,
                           1);
+
         collect_bake_data(bake_data_empty,
                           input->rtWidthIn, input->rtHeightIn,
                           pixel_height_in,
