@@ -209,7 +209,7 @@ const char* cfg_default_image_file = "default_image.jpg";
 const char* cfg_default_capture_file = "default_capture.png";
 const char* cfg_default_file = "default.ism";
 
-const float cfg_capture_width_in = 5.0f;
+const float cfg_capture_width_in = 4.0f;
 const float cfg_capture_height_in = 4.0f;
 
 ImGuiTextBuffer *g_viewsBuf;
@@ -1079,17 +1079,6 @@ void update_and_render(input_data *input, output_data *output)
             ImGui::SameLine();
             if (ImGui::Button("Save capture"))
             {
-                u8 layer_idx = 0;
-                const auto &bake_data = g_ism->get_bake_data(layer_idx);
-                g_drawcalls.clear();
-                // TODO: if capture within rt then rebake is not needed,
-                // just crop, so maybe remove this and leave just
-                // DC request?
-                collect_bake_data(bake_data,
-                                  cfg_capture_width_in, cfg_capture_height_in,
-                                  pixel_height_in,
-                                  layer_idx);
-
                 output_data::drawcall captdc;
                 captdc.id = output_data::CAPTURE;
                 captdc.params[0] = cfg_capture_width_in;
@@ -1098,7 +1087,7 @@ void update_and_render(input_data *input, output_data *output)
                 captdc.mesh_id = 0;
                 captdc.offset = 0;
                 captdc.count = 0;
-                captdc.layer_id = layer_idx;
+                captdc.layer_id = static_cast<u8>(gui_current_layer);
 
                 g_drawcalls.push_back(captdc);
 
@@ -1145,7 +1134,7 @@ void update_and_render(input_data *input, output_data *output)
                         float image_aspect = static_cast<float>(desc.height) / static_cast<float>(desc.width);
 
                         g_fit_img.texid = desc.texid;
-                        g_fit_img.width_in = 0.5f * input->vpWidthIn;
+                        g_fit_img.width_in = 4.0f;
                         g_fit_img.height_in = g_fit_img.width_in * image_aspect;
                         g_fit_img.reuse = false;
 
