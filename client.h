@@ -102,7 +102,8 @@ struct output_data
         CURRENTSTROKE,
         GRID,
         IMAGEFIT,
-        CAPTURE
+        CAPTURE,
+        PRESENT
     };
 
     struct drawcall

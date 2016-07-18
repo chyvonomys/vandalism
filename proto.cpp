@@ -831,7 +831,7 @@ struct Pipeline
     StrokeImageTech si;
     FSGrid grid;
     RenderTargetMS bakeRTMS;
-    static const u32 LAYERCNT = 3;
+    static const u32 LAYERCNT = 4;
     RenderTarget layerRT[LAYERCNT];
     RenderTarget compRT;
     MarkerBatchTech render;
@@ -874,21 +874,20 @@ struct Pipeline
     }
 
     void do_drawcalls(const input_data &input, const output_data &output,
-        const output_data::drawcall *drawcalls, size_t drawcall_cnt,
-        bool gamma_on)
+                      const output_data::drawcall *drawcalls, size_t drawcall_cnt,
+                      bool gamma_on)
     {
         for (size_t layerId = 0; layerId < LAYERCNT; ++layerId)
         {
             bool refreshThisLayer = false;
             for (u32 i = 0; i < drawcall_cnt; ++i)
             {
-                if (drawcalls[i].layer_id == layerId)
+                const auto &dc = drawcalls[i];
+                if (dc.layer_id == layerId &&
+                    (dc.id == output_data::BAKEBATCH ||
+                     dc.id == output_data::IMAGE))
                 {
-                    output_data::techid id = drawcalls[i].id;
-                    if (id == output_data::BAKEBATCH || id == output_data::IMAGE)
-                    {
-                        refreshThisLayer = true;
-                    }
+                    refreshThisLayer = true;
                 }
             }
 
@@ -915,7 +914,8 @@ struct Pipeline
                     if (dc.id == output_data::BAKEBATCH)
                     {
                         render.draw(dc.mesh_id, dc.offset, dc.count,
-                                    2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
+                                    2.0f / input.rtWidthIn,
+                                    2.0f / input.rtHeightIn);
                     }
                     else if (dc.id == output_data::IMAGE)
                     {
@@ -924,7 +924,8 @@ struct Pipeline
                                 dc.params[2], dc.params[3],
                                 dc.params[4], dc.params[5],
                                 1.0f,
-                                2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
+                                2.0f / input.rtWidthIn,
+                                2.0f / input.rtHeightIn);
                     }
                 }
             }
@@ -958,11 +959,11 @@ struct Pipeline
             augLayerId = drawcalls[augCallId].layer_id;
 
             fs.draw(layerRT[augLayerId].m_tex, GL_ONE, GL_ZERO,
-                output.preTranslateX, output.preTranslateY,
-                output.postTranslateX, output.postTranslateY,
-                output.scale, output.rotate,
-                input.rtWidthIn, input.rtHeightIn,
-                input.rtWidthIn, input.rtHeightIn);
+                    0.0f, 0.0f,
+                    0.0f, 0.0f,
+                    1.0f, 0.0f,
+                    input.rtWidthIn, input.rtHeightIn,
+                    input.rtWidthIn, input.rtHeightIn);
 
             const auto &augDC = output.drawcalls[augCallId];
             if (augDC.id == output_data::CURRENTSTROKE)
@@ -1006,26 +1007,36 @@ struct Pipeline
         i32 viewportBottomPx = (input.windowHeightPx - input.vpHeightPx) / 2;
 
         glViewport(viewportLeftPx, viewportBottomPx,
-            input.vpWidthPx, input.vpHeightPx);
+                   input.vpWidthPx, input.vpHeightPx);
 
         for (u32 i = 0; i < output.drawcall_cnt; ++i)
         {
             if (output.drawcalls[i].id == output_data::GRID)
             {
                 grid.draw(output.grid_bg_color, output.grid_fg_color,
-                    2.0f / input.vpWidthIn, 2.0f / input.vpHeightIn);
+                          2.0f / input.vpWidthIn, 2.0f / input.vpHeightIn);
             }
         }
 
         for (size_t layerId = 0; layerId < LAYERCNT; ++layerId)
         {
-            GLuint tex = (layerId == augLayerId ? compRT : layerRT[layerId]).m_tex;
-            fs.draw(tex, GL_ONE, GL_SRC_ALPHA,
-                    0.0f, 0.0f,
-                    0.0f, 0.0f,
-                    1.0f, 0.0f,
-                    input.vpWidthIn, input.vpHeightIn,
-                    input.rtWidthIn, input.rtHeightIn);
+            for (u32 i = 0; i < output.drawcall_cnt; ++i)
+            {
+                const auto &dc = output.drawcalls[i];
+                if (dc.id == output_data::PRESENT && dc.layer_id == layerId)
+                {
+                    GLuint tex = (layerId == augLayerId ?
+                                  compRT : layerRT[layerId]).m_tex;
+
+                    fs.draw(tex, GL_ONE, GL_SRC_ALPHA,
+                            output.preTranslateX, output.preTranslateY,
+                            output.postTranslateX, output.postTranslateY,
+                            output.scale, output.rotate,
+                            input.vpWidthIn, input.vpHeightIn,
+                            input.rtWidthIn, input.rtHeightIn);
+                    break;
+                }
+            }
         }
 
         for (u32 i = 0; i < output.drawcall_cnt; ++i)
@@ -1034,9 +1045,9 @@ struct Pipeline
             if (dc.id == output_data::UI)
             {
                 uirender.draw(dc.texture_id, dc.mesh_id,
-                    dc.offset, dc.count,
-                    static_cast<float>(input.vpWidthPt),
-                    static_cast<float>(input.vpHeightPt));
+                              dc.offset, dc.count,
+                              static_cast<float>(input.vpWidthPt),
+                              static_cast<float>(input.vpHeightPt));
             }
         }
 
@@ -1166,7 +1177,7 @@ int main(int argc, char *argv[])
         
 		double counter_ticks_per_ms = get_platform_counter_freq();
 
-        const u32 TIMEPOINTS = 10;
+        const u32 TIMEPOINTS = 20;
         const u32 INTERVALS = TIMEPOINTS-1;
         u64 timestamps[TIMEPOINTS] = {0};
 

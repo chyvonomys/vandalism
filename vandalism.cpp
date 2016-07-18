@@ -177,6 +177,11 @@ struct Vandalism
         currentChanged = true;
     }
 
+    void set_current_layer(u8 id)
+    {
+        currentPin.layeridx = id;
+    }
+
     u8 get_current_layer_id() const
     {
         return currentPin.layeridx;
@@ -204,9 +209,10 @@ struct Vandalism
 
     void append_new_view(const test_transition& tr)
     {
-        // TODO: if `parallel views` then add new view to all layers
-        Layer &cl = current_layer();
+        // TODO: deal with view optimization and pin/view indexes
+        //Layer &cl = current_layer();
 
+        /*
         auto& prev = cl.views[currentPin.viewidx];
         if (autoOptimizeViews &&
             prev.pin_index == NPOS && prev.img == NPOS &&
@@ -220,7 +226,10 @@ struct Vandalism
                                           prev.tr.type);
         }
         else
+        */
+        for (u8 i = 0; i < get_layer_cnt(); ++i)
         {
+            Layer &cl = layers[i];
             currentPin.viewidx = cl.views.size();
             cl.views.push_back(test_view(tr,
                                          cl.strokes.size(), cl.strokes.size(),
@@ -265,8 +274,6 @@ struct Vandalism
     {
         float dx = input->mousex - rotateStartX;
         rotateAngle = si_pi * dx;
-
-        currentChanged = true;
     }
 
     void start_zoom(const Input *input)
@@ -277,8 +284,6 @@ struct Vandalism
     void do_zoom(const Input *input)
     {
         zoomCoeff = input->mousex / zoomStartX;
-
-        currentChanged = true;
     }
 
     void done_zoom(const Input *input)
@@ -302,8 +307,6 @@ struct Vandalism
     {
         postShiftX = input->mousex - panStartX;
         postShiftY = input->mousey - panStartY;
-
-        currentChanged = true;
     }
 
     void done_pan(const Input *input)
@@ -461,8 +464,6 @@ struct Vandalism
 
         zoomCoeff = len(d1) / len(d0);
         rotateAngle = a1 - a0;
-
-        currentChanged = true;
     }
 
     void done_move2(const Input *input)
@@ -519,8 +520,6 @@ struct Vandalism
     {
         float scrollAmount = input->scrolly - scrollY0;
         zoomCoeff = powf(2.0f, scrollAmount);
-
-        currentChanged = true;
     }
 
     void done_scroll(const Input *input)

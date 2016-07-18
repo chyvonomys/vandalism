@@ -162,6 +162,11 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
 
 #include "vandalism.cpp"
 
+const char *g_roman_numerals[11] =
+{
+    "0", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"
+};
+
 Vandalism *g_ism = nullptr;
 
 bool gui_showAllViews;
@@ -185,6 +190,8 @@ bool gui_grid_enabled;
 float gui_eraser_alpha;
 float gui_smooth_error_order;
 i32 gui_goto_idx;
+bool gui_layer_active[255];
+i32 gui_current_layer;
 
 u32 g_dclogidx = 0;
 const u32 DCLOGENTRIES = 10;
@@ -300,6 +307,12 @@ void setup(kernel_services *services, u32 nLayers)
     gui_present_smooth = static_cast<i32>(Vandalism::NONE);
 
     gui_goto_idx = 0;
+
+    for (u8 i = 0; i < nLayers; ++i)
+    {
+        gui_layer_active[i] = true;
+    }
+    gui_current_layer = 0;
 
     g_image_fitting = false;
     g_image_capturing = INACTIVE;
@@ -499,7 +512,10 @@ void collect_bake_data(const test_data& bake_data,
             const Vandalism::Brush& brush = g_ism->brushes[stroke.brush_id];
 
             size_t before = g_bake_quads.size();
-            if (g_drawcalls.empty() || g_drawcalls.back().id != output_data::BAKEBATCH)
+            if (g_drawcalls.empty() ||
+                g_drawcalls.back().id != output_data::BAKEBATCH ||
+                (g_drawcalls.back().id == output_data::BAKEBATCH &&
+                 g_drawcalls.back().layer_id != layer_id))
             {
                 output_data::drawcall dc;
                 dc.id = output_data::BAKEBATCH;
@@ -633,6 +649,8 @@ void update_and_render(input_data *input, output_data *output)
     ism_input.simplify = gui_draw_simplify;
     ism_input.smooth = static_cast<Vandalism::Smooth>(gui_draw_smooth);
 
+    // TODO: move all input to this point
+    g_ism->set_current_layer(static_cast<u8>(gui_current_layer));
     g_ism->update(&ism_input);
 
     bool scrollViewsDown = false;
@@ -963,6 +981,23 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::PopID();
 
     ImGui::Separator();
+    // LAYERS
+
+    for (u8 i = 0; i < g_ism->get_layer_cnt(); ++i)
+    {
+        if (i > 0) ImGui::SameLine();
+        ImGui::Checkbox(g_roman_numerals[i], &gui_layer_active[i]); 
+    }
+
+    ImGui::PushID("curlayer");
+    for (u8 i = 0; i < g_ism->get_layer_cnt(); ++i)
+    {
+        if (i > 0) ImGui::SameLine();
+        ImGui::RadioButton(g_roman_numerals[i], &gui_current_layer, i);
+    }
+    ImGui::PopID();
+
+    ImGui::Separator();
     // BUTTONS
 
     if (g_ism->currentMode == Vandalism::IDLE)
@@ -1163,6 +1198,19 @@ void update_and_render(input_data *input, output_data *output)
         g_drawcalls.push_back(dc);
     }
 
+    output_data::drawcall pdc;
+    ::memset(&pdc, 0, sizeof(output_data::drawcall));
+    pdc.id = output_data::PRESENT;
+
+    for (u8 i = 0; i < g_ism->get_layer_cnt(); ++i)
+    {
+        if (gui_layer_active[i])
+        {
+            pdc.layer_id = i;
+            g_drawcalls.push_back(pdc);
+        }
+    }
+    
     output->quit_flag = ImGui::Button("Quit");
 
     if (!g_ism->append_allowed())
@@ -1241,17 +1289,18 @@ void update_and_render(input_data *input, output_data *output)
         u32 lid = g_drawcalls[i].layer_id;
         switch (g_drawcalls[i].id)
         {
-        case output_data::UI: ds << "UI"; break;
-        case output_data::IMAGE: ds << "IMG@" << lid; break;
-        case output_data::BAKEBATCH: ds << "BAK@" << lid; break;
-        case output_data::CURRENTSTROKE: ds << "CUR@" << lid; break;
-        case output_data::GRID: ds << "GRD|"; break;
-        case output_data::IMAGEFIT: ds << "FIT@" << lid; break;
-        case output_data::CAPTURE: ds << "CAP@" << lid; break;
+        case output_data::UI: ds << "U"; break;
+        case output_data::IMAGE: ds << "I" << lid; break;
+        case output_data::BAKEBATCH: ds << "B" << lid; break;
+        case output_data::CURRENTSTROKE: ds << "S" << lid; break;
+        case output_data::GRID: ds << "G"; break;
+        case output_data::IMAGEFIT: ds << "F" << lid; break;
+        case output_data::CAPTURE: ds << "C" << lid; break;
+        case output_data::PRESENT: ds << "P" << lid; break;
         }
         if (i + 1 < g_drawcalls.size())
         {
-            ds << "|";
+            ds << " ";
         }
     }
     if (ds.str() != g_dclog[g_dclogidx % DCLOGENTRIES])
