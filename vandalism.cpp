@@ -263,8 +263,8 @@ struct Vandalism
         {
             float dx = input->mousex - rotateStartX;
             float angle = si_pi * dx;
-            test_transition trot = {TROTATE, -angle, 0.0f};
-            append_new_view(trot);
+
+            append_new_view(test_transition{TROTATE, -angle, 0.0f});
         }
 
         common_done();
@@ -290,8 +290,7 @@ struct Vandalism
     {
         if (append_allowed())
         {
-            test_transition tzoom = {TZOOM, input->mousex, zoomStartX};
-            append_new_view(tzoom);
+            append_new_view(test_transition{TZOOM, input->mousex, zoomStartX});
         }
 
         common_done();
@@ -470,8 +469,6 @@ struct Vandalism
     {
         if (append_allowed())
         {
-            Layer &cl = current_layer();
-
             secondX1 = input->mousex;
             secondY1 = input->mousey;
 
@@ -485,23 +482,10 @@ struct Vandalism
             float a0 = static_cast<float>(::atan2f(d0.y, d0.x));
             float a1 = static_cast<float>(::atan2f(d1.y, d1.x));
 
-            size_t ss = cl.strokes.size();
-
-            currentPin.viewidx = cl.views.size();
-            test_transition tpre = {TPAN, f.x, f.y};
-            cl.views.push_back(test_view(tpre, ss, ss));
-
-            currentPin.viewidx = cl.views.size();
-            test_transition trot = {TROTATE, a0 - a1, 0.0f};
-            cl.views.push_back(test_view(trot, ss, ss));
-
-            currentPin.viewidx = cl.views.size();
-            test_transition tzoom = {TZOOM, len(d1), len(d0)};
-            cl.views.push_back(test_view(tzoom, ss, ss));
-
-            currentPin.viewidx = cl.views.size();
-            test_transition tpost = {TPAN, -f.x, -f.y};
-            cl.views.push_back(test_view(tpost, ss, ss));
+            append_new_view(test_transition{TPAN, f.x, f.y});
+            append_new_view(test_transition{TROTATE, a0 - a1, 0.0f});
+            append_new_view(test_transition{TZOOM, len(d1), len(d0)});
+            append_new_view(test_transition{TPAN, -f.x, -f.y});
         }
 
         common_done();
@@ -529,21 +513,9 @@ struct Vandalism
 
         if (append_allowed())
         {
-            Layer &cl = current_layer();
-
-            size_t ss = cl.strokes.size();
-
-            currentPin.viewidx = cl.views.size();
-            test_transition tpre = {TPAN, postShiftX, postShiftY};
-            cl.views.push_back(test_view(tpre, ss, ss));
-
-            currentPin.viewidx = cl.views.size();
-            test_transition tzoom = {TZOOM, zoomCoeff, 1.0f};
-            cl.views.push_back(test_view(tzoom, ss, ss));
-
-            currentPin.viewidx = cl.views.size();
-            test_transition tpost = {TPAN, preShiftX, preShiftY};
-            cl.views.push_back(test_view(tpost, ss, ss));
+            append_new_view(test_transition{TPAN, postShiftX, postShiftY});
+            append_new_view(test_transition{TZOOM, zoomCoeff, 1.0f});
+            append_new_view(test_transition{TPAN, preShiftX, preShiftY});
         }
 
         common_done();
@@ -564,12 +536,7 @@ struct Vandalism
     {
         if (append_allowed())
         {
-            Layer &cl = current_layer();
-
-            currentPin.viewidx = cl.views.size();
-            test_transition t = {TPAN, 0.0f, 0.0f};
-            cl.views.push_back(test_view(t, cl.strokes.size(), cl.strokes.size(),
-                                         cl.images.size()));
+            append_new_view(test_transition{TPAN, 0.0f, 0.0f});
 
             size_t imageId = image_name_idx(name);
             if (imageId == imageNames.size())
@@ -582,8 +549,10 @@ struct Vandalism
                             imageW, 0.0f,
                             0.0f, imageH};
 
-            cl.views.back().imgbbox = i.get_bbox();
+            Layer &cl = current_layer();
 
+            cl.views.back().imgbbox = i.get_bbox();
+            cl.views.back().img = cl.images.size();
             cl.images.push_back(i);
         }
 
