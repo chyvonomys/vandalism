@@ -671,6 +671,10 @@ struct Vandalism
 
         layersCnt = nLayers;
 
+        // TODO: look for other missing initializations
+        currentStroke.pi0 = 0;
+        currentStroke.pi1 = 0;
+
         setup_default_view();
 
         autoOptimizeViews = true;
