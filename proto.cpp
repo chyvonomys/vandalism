@@ -1171,8 +1171,7 @@ int main(int argc, char *argv[])
         check_gl_errors("after setup");
 
         input_data input;
-        input.nFrames = 0;
-		input.scrolling = false;
+        ::memset(&input, 0, sizeof(input_data));
         output_data output;
         
 		double counter_ticks_per_ms = get_platform_counter_freq();
@@ -1207,7 +1206,7 @@ int main(int argc, char *argv[])
                 cleanup();
                 setup(&services, Pipeline::LAYERCNT);
                 reload_client = false;
-                input.nFrames = 0;
+                ::memset(&input, 0, sizeof(input_data));
             }
             
             for (u8 i = 1; i < nTimePoints; ++i)
