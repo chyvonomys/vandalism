@@ -93,8 +93,8 @@ test_stroke t_strokes1[] =
 
 test_view t_views1[] =
 {
-    test_view({TPAN, 0.0f, 0.0f}, 0, 1),
-    test_view({TPAN, 1.0f, 0.0f}, 1, 2)
+    test_view({TPAN, 0.0f, 0.0f}, 0, 1, 0),
+    test_view({TPAN, 1.0f, 0.0f}, 1, 2, 0)
 };
 const size_t NVIEWS1 = 2;
 const size_t PIN1 = 1;
@@ -127,13 +127,13 @@ test_stroke t_strokes2[] =
 
 test_view t_views2[] =
 {
-    test_view({TPAN,  0.0f, 0.0f}, 0, 2),
-    test_view({TPAN,  5.0f, 0.0f}, 2, 4),
-    test_view({TPAN,  5.0f, 0.0f}, 4, 6),
-    test_view({TPAN, -5.0f, 0.0f}, 6, 6),
-    test_view({TZOOM, 1.0f, 5.0f}, 6, 8),
-    test_view({TPAN, -1.0f, 0.0f}, 8, 8),
-    test_view({TZOOM, 5.0f, 3.0f}, 8, 8)
+    test_view({TPAN,  0.0f, 0.0f}, 0, 2, 0),
+    test_view({TPAN,  5.0f, 0.0f}, 2, 4, 0),
+    test_view({TPAN,  5.0f, 0.0f}, 4, 6, 0),
+    test_view({TPAN, -5.0f, 0.0f}, 6, 6, 0),
+    test_view({TZOOM, 1.0f, 5.0f}, 6, 8, 0),
+    test_view({TPAN, -1.0f, 0.0f}, 8, 8, 0),
+    test_view({TZOOM, 5.0f, 3.0f}, 8, 8, 0)
 };
 const size_t NVIEWS2 = 7;
 const size_t PIN2 = 6;
@@ -153,8 +153,8 @@ test_stroke t_strokes3[] =
 
 test_view t_views3[] =
 {
-    test_view({TPAN, 0.0f, 0.0f}, 0, 1),
-    test_view({TZOOM, 2.0f, 1.0f}, 1, 1)
+    test_view({TPAN, 0.0f, 0.0f}, 0, 1, 0),
+    test_view({TZOOM, 2.0f, 1.0f}, 1, 1, 0)
 };
 const size_t NVIEWS3 = 2;
 const size_t PIN3 = 1;

@@ -127,8 +127,8 @@ struct test_view
     size_t pi;
     test_box bbox;
     test_box imgbbox;
-    test_view(const test_transition& t, size_t s0, size_t s1)
-        : tr(t), si0(s0), si1(s1), ii(NPOS), li(NPOS), pi(NPOS)
+    test_view(const test_transition& t, size_t s0, size_t s1, size_t l)
+        : tr(t), si0(s0), si1(s1), ii(NPOS), li(l), pi(NPOS)
     {}
 
     bool has_image() const { return ii != NPOS; }
@@ -450,7 +450,8 @@ test_transform get_relative_transform(const test_data &data,
 // given a pin (a view index) collect list of strokes
 // along with needed transforms, that are inside viewport
 // which is in pin's view local space
-void query(const test_data &data, size_t pin, const test_box &viewport,
+void query(size_t layer_id,
+           const test_data &data, size_t pin, const test_box &viewport,
            std::vector<test_visible> &visibles,
            std::vector<test_transform> &transforms,
            float negligibledist)
@@ -460,13 +461,16 @@ void query(const test_data &data, size_t pin, const test_box &viewport,
 
     for (size_t vi = 0; vi < data.nviews; ++vi)
     {
-        test_transform ls2ps = get_relative_transform(data, vi, pin);
-        test_transform ps2ls = get_relative_transform(data, pin, vi);
+        if (data.views[vi].li == layer_id)
+        {
+            test_transform ls2ps = get_relative_transform(data, vi, pin);
+            test_transform ps2ls = get_relative_transform(data, pin, vi);
 
-        test_box ls_box = apply_transform_box(ps2ls, viewport);
-        float ls_negligible = apply_transform_dist(ps2ls, negligibledist);
-        crop(data, vi, transforms.size(), ls_box, visibles, ls_negligible);
-        transforms.push_back(ls2ps);
+            test_box ls_box = apply_transform_box(ps2ls, viewport);
+            float ls_negligible = apply_transform_dist(ps2ls, negligibledist);
+            crop(data, vi, transforms.size(), ls_box, visibles, ls_negligible);
+            transforms.push_back(ls2ps);
+        }
     }
 }
 

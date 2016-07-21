@@ -30,38 +30,19 @@ struct Vandalism
         }
     };
 
-    struct Layer
-    {
-        std::vector<Point> points;
-        std::vector<Stroke> strokes;
-        std::vector<test_view> views;
-        // One image name can be referenced by many images
-        // Image is actually an image + placement.
-        // image<->imagename is like stroke<->brush
-        std::vector<Image> images;
-        bool visible;
-
-        test_data get_data() const
-        {
-            test_data result =
-            {
-                points.data(),
-                strokes.data(),
-                images.data(),
-                views.data(),
-                views.size()
-            };
-            return result;
-        }
-    };
-
     struct Pin
     {
         u8 layeridx;
         size_t viewidx;
     };
 
-    std::vector<Layer> layers;
+    std::vector<Point> points;
+    std::vector<Stroke> strokes;
+    std::vector<test_view> views;
+    // One image name can be referenced by many images
+    // Image is actually an image + placement.
+    // image<->imagename is like stroke<->brush
+    std::vector<Image> images;
 
     std::vector<std::string> imageNames;
 
@@ -186,19 +167,9 @@ struct Vandalism
         return currentPin.layeridx;
     }
 
-    const Layer &current_layer() const
-    {
-        return layers[get_current_layer_id()];
-    }
-
-    Layer &current_layer()
-    {
-        return layers[get_current_layer_id()];
-    }
-
     bool current_view_is_last() const
     {
-        return currentPin.viewidx + 1 == current_layer().views.size();
+        return currentPin.viewidx + 1 == views.size();
     }
 
     bool append_allowed() const
@@ -209,30 +180,27 @@ struct Vandalism
     void append_new_view(const test_transition& tr)
     {
         // TODO: deal with view optimization and pin/view indexes
-        //Layer &cl = current_layer();
 
         /*
-        auto& prev = cl.views[currentPin.viewidx];
+        auto& prev = views[currentPin.viewidx];
         if (autoOptimizeViews &&
             !prev.is_pinned() && !prev.has_image() &&
             prev.si0 == prev.si1 &&
             prev.tr.type == tr.type)
         {
-            prev.si0 = cl.strokes.size();
-            prev.si1 = cl.strokes.size();
+            prev.si0 = strokes.size();
+            prev.si1 = strokes.size();
             prev.tr = combine_transitions(prev.tr.a, prev.tr.b,
                                           tr.a, tr.b,
                                           prev.tr.type);
         }
         else
         */
-        for (u8 i = 0; i < get_layer_cnt(); ++i)
-        {
-            Layer &cl = layers[i];
-            currentPin.viewidx = cl.views.size();
-            cl.views.push_back(test_view(tr,
-                                         cl.strokes.size(), cl.strokes.size()));
-        }
+
+        currentPin.viewidx = views.size();
+        views.push_back(test_view(tr,
+                                  strokes.size(), strokes.size(),
+                                  currentPin.layeridx));
     }
 
     void remove_alterations()
@@ -373,8 +341,6 @@ struct Vandalism
     {
         if (append_allowed())
         {
-            Layer &cl = current_layer();
-
             // TODO: keep only unique?
             if (brushes.empty() ||
                 ::memcmp(&brushes.back(), &currentBrush, sizeof(Brush)) != 0)
@@ -384,9 +350,9 @@ struct Vandalism
 
             currentStroke.bbox.grow(0.5f * currentBrush.diameter);
 
-            cl.strokes.push_back(currentStroke);
-            cl.strokes.back().brush_id = brushes.size() - 1;
-            cl.strokes.back().pi0 = cl.points.size();
+            strokes.push_back(currentStroke);
+            strokes.back().brush_id = brushes.size() - 1;
+            strokes.back().pi0 = points.size();
 
             if (input->simplify)
             {
@@ -405,19 +371,24 @@ struct Vandalism
             {
                 smooth_stroke(currentPoints.data(),
                               currentPoints.size(),
-                              cl.points, input->negligibledistance,
+                              points, input->negligibledistance,
                               input->smooth == FITBEZIER);
             }
             else if (input->smooth == NONE)
             {
                 std::copy(currentPoints.cbegin(), currentPoints.cend(),
-                          std::back_inserter(cl.points));
+                          std::back_inserter(points));
             }
 
-            cl.strokes.back().pi1 = cl.points.size();
+            strokes.back().pi1 = points.size();
 
-            cl.views[currentPin.viewidx].bbox.add_box(currentStroke.bbox);
-            cl.views[currentPin.viewidx].si1 += 1;
+            if (views[currentPin.viewidx].li != currentPin.layeridx)
+            {
+                append_new_view(test_transition{TPAN, 0.0f, 0.0f});
+            }
+
+            views[currentPin.viewidx].bbox.add_box(currentStroke.bbox);
+            views[currentPin.viewidx].si1 += 1;
         }
 
         currentStroke.pi0 = 0;
@@ -547,11 +518,9 @@ struct Vandalism
                             imageW, 0.0f,
                             0.0f, imageH};
 
-            Layer &cl = current_layer();
-
-            cl.views.back().imgbbox = i.get_bbox();
-            cl.views.back().ii = cl.images.size();
-            cl.images.push_back(i);
+            views.back().imgbbox = i.get_bbox();
+            views.back().ii = images.size();
+            images.push_back(i);
         }
 
         set_dirty();
@@ -634,7 +603,7 @@ struct Vandalism
         currentMode = mode;
     }
 
-    void setup(u32 nLayers)
+    void setup()
     {
 		// TODO: this should be statically initialized once (works in clang)
 		// doesn't work in vs2013
@@ -667,8 +636,6 @@ struct Vandalism
 
         currentMode = IDLE;
 
-        layersCnt = nLayers;
-
         // TODO: look for other missing initializations
         currentStroke.pi0 = 0;
         currentStroke.pi1 = 0;
@@ -689,20 +656,23 @@ struct Vandalism
         return currentBrush;
     }
 
+    // TODO: does this need to be here?
     size_t get_current_stroke_id() const
     {
-        return current_layer().strokes.size();
+        return strokes.size();
     }
 
-    test_data get_bake_data(size_t li) const
+    test_data get_bake_data() const
     {
-        return layers[li].get_data();
-    }
-
-    u8 get_layer_cnt() const
-    {
-        // TODO: types u8/size_t
-        return static_cast<u8>(layers.size());
+        test_data result =
+        {
+            points.data(),
+            strokes.data(),
+            images.data(),
+            views.data(),
+            views.size()
+        };
+        return result;
     }
 
     test_data get_current_data() const
@@ -815,24 +785,22 @@ struct Vandalism
 
     Undoee check_undo(bool really)
     {
-        Layer &cl = current_layer();
-
         if (!current_view_is_last())
         {
             return NOTHING;
         }
         // TODO: view may now contain image, fix these conditions
-        else if (cl.views.back().si1 == cl.views.back().si0)
+        else if (views.back().si1 == views.back().si0)
         {
-            if (cl.views.size() > 1)
+            if (views.size() > 1)
             {
-                if (!cl.views.back().has_image())
+                if (!views.back().has_image())
                 {
                     if (really)
                     {
                         // TODO: if we maintain parallel view in all layers,
                         // then we pop back in other layers?
-                        cl.views.pop_back();
+                        views.pop_back();
                         --currentPin.viewidx;
                     }
                     return VIEW;
@@ -841,26 +809,26 @@ struct Vandalism
                 {
                     if (really)
                     {
-                        cl.images.pop_back();
-                        cl.views.back().ii = NPOS;
+                        images.pop_back();
+                        views.back().ii = NPOS;
                     }
                     return IMAGE;
                 }
             }
         }
-        else if (cl.views.back().si1 > cl.views.back().si0)
+        else if (views.back().has_strokes())
         {
             if (really)
             {
-                size_t deleteCnt = cl.strokes.back().pi1 - cl.strokes.back().pi0;
+                size_t deleteCnt = strokes.back().pi1 - strokes.back().pi0;
                 for (size_t i = 0; i < deleteCnt; ++i)
                 {
-                    cl.points.pop_back();
+                    points.pop_back();
                 }
-                cl.strokes.pop_back();
-                --cl.views.back().si1;
-                size_t vi = cl.views.size() - 1;
-                cl.views.back().bbox = get_strokes_bbox(cl.get_data(), vi);
+                strokes.pop_back();
+                --views.back().si1;
+                size_t vi = views.size() - 1;
+                views.back().bbox = get_strokes_bbox(get_bake_data(), vi);
             }
             return STROKE;
         }
@@ -869,7 +837,7 @@ struct Vandalism
 
     void set_view(size_t idx)
     {
-        if (idx < current_layer().views.size())
+        if (idx < views.size())
         {
             currentPin.viewidx = idx;
 
@@ -887,26 +855,23 @@ struct Vandalism
 
     void save_data(const char *filename) const
     {
-        // TODO: saves only current layer!
         std::ofstream os(filename);
 
-        const Layer &cl = current_layer();
-
-        for (size_t i = 0; i < cl.points.size(); ++i)
+        for (size_t i = 0; i < points.size(); ++i)
         {
-            os << "p " << cl.points[i].x << ' ' << cl.points[i].y << ' ' << cl.points[i].w << '\n';
+            os << "p " << points[i].x << ' ' << points[i].y << ' ' << points[i].w << '\n';
         }
-        for (size_t i = 0; i < cl.strokes.size(); ++i)
+        for (size_t i = 0; i < strokes.size(); ++i)
         {
-            os << "s " << cl.strokes[i].pi0 << ' ' << cl.strokes[i].pi1
-               << ' ' << cl.strokes[i].brush_id << ' ' << '\n';
+            os << "s " << strokes[i].pi0 << ' ' << strokes[i].pi1
+               << ' ' << strokes[i].brush_id << ' ' << '\n';
         }
-        for (size_t i = 0; i < cl.views.size(); ++i)
+        for (size_t i = 0; i < views.size(); ++i)
         {
-            os << "v " << tr_type_str(cl.views[i].tr.type)
-               << ' ' << cl.views[i].tr.a << ' ' << cl.views[i].tr.b
-               << ' ' << cl.views[i].si0 << ' ' << cl.views[i].si1
-               << ' ' << (!cl.views[i].has_image() ? -1 : static_cast<i32>(cl.views[i].ii))
+            os << "v " << tr_type_str(views[i].tr.type)
+               << ' ' << views[i].tr.a << ' ' << views[i].tr.b
+               << ' ' << views[i].si0 << ' ' << views[i].si1
+               << ' ' << (!views[i].has_image() ? -1 : static_cast<i32>(views[i].ii))
                << '\n';
         }
         // TODO: maybe separate codes for regular brush, eraser, etc
@@ -917,12 +882,12 @@ struct Vandalism
                << brushes[i].b << ' ' << brushes[i].a << '\n';
         }
         // TODO: maybe reuse 'basis' vectors approach here and in views
-        for (size_t i = 0; i < cl.images.size(); ++i)
+        for (size_t i = 0; i < images.size(); ++i)
         {
-            os << "i \"" << imageNames[cl.images[i].nameidx] << '\"'
-                << ' ' << cl.images[i].tx << ' ' << cl.images[i].ty
-                << ' ' << cl.images[i].xx << ' ' << cl.images[i].xy
-                << ' ' << cl.images[i].yx << ' ' << cl.images[i].yy << '\n';
+            os << "i \"" << imageNames[images[i].nameidx] << '\"'
+                << ' ' << images[i].tx << ' ' << images[i].ty
+                << ' ' << images[i].xx << ' ' << images[i].xy
+                << ' ' << images[i].yx << ' ' << images[i].yy << '\n';
         }
     }
 
@@ -931,7 +896,10 @@ struct Vandalism
         std::ifstream is(filename);
         std::string line;
 
-        Layer nl;
+        std::vector<Point> newPoints;
+        std::vector<Stroke> newStrokes;
+        std::vector<Image> newImages;
+        std::vector<test_view> newViews;
         std::vector<Brush> newBrushes;
         std::vector<std::string> newImageNames;
 
@@ -955,7 +923,7 @@ struct Vandalism
                     ok = !(ss >> pt.x >> pt.y >> pt.w).fail();
                     if (ok)
                     {
-                        nl.points.push_back(pt);
+                        newPoints.push_back(pt);
                     }
                 }
                 else if (*line.c_str() == 's')
@@ -966,18 +934,18 @@ struct Vandalism
                     ok = !(ss >> st.pi0 >> st.pi1 >> st.brush_id).fail();
                     if (ok)
                     {
-                        nl.strokes.push_back(st);
+                        newStrokes.push_back(st);
                     }
                 }
                 else if (*line.c_str() == 'v')
                 {
                     std::istringstream ss(line);
                     ss.seekg(2);
-                    test_view vi({TPAN, 0.0f, 0.0f}, 0, 0);
+                    test_view vi({TPAN, 0.0f, 0.0f}, 0, 0, 0);
                     std::string ttype;
                     i32 imgidx;
                     ok = !(ss >> ttype >> vi.tr.a >> vi.tr.b
-                           >> vi.si0 >> vi.si1 >> imgidx).fail();
+                           >> vi.si0 >> vi.si1 >> imgidx >> vi.li).fail();
                     if (ok)
                     {
                         if (ttype == "pan")
@@ -998,7 +966,7 @@ struct Vandalism
                             break;
                         }
                         vi.ii = (imgidx == -1 ? NPOS : static_cast<u32>(imgidx));
-                        nl.views.push_back(vi);
+                        newViews.push_back(vi);
                     }
                 }
                 else if (*line.c_str() == 'b')
@@ -1056,7 +1024,7 @@ struct Vandalism
                                 // 'did not found'
                                 newImageNames.push_back(name);
                             }
-                            nl.images.push_back(img);
+                            newImages.push_back(img);
                         }
                     }
                     else
@@ -1074,26 +1042,32 @@ struct Vandalism
         // TODO: validation
 
         // calculate bboxes of strokes
-        for (size_t si = 0; si < nl.strokes.size(); ++si)
+        for (size_t si = 0; si < newStrokes.size(); ++si)
         {
-            Stroke& ns = nl.strokes[si];
+            Stroke& ns = newStrokes[si];
             for (size_t pi = ns.pi0; pi < ns.pi1; ++pi)
             {
-                ns.bbox.add(nl.points[pi]);
+                ns.bbox.add(newPoints[pi]);
             }
             // TODO: invalid for non circular brushes
             // diameter should be max bbox of drawn point shape
             ns.bbox.grow(0.5f * newBrushes[ns.brush_id].diameter);
         }
 
-        test_data newData = nl.get_data();
+        test_data newData;
+        newData.points = newPoints.data();
+        newData.strokes = newStrokes.data();
+        newData.images = newImages.data();
+        newData.views = newViews.data();
+        newData.nviews = newViews.size();
+
         // calculate bboxes of views
-        for (size_t vi = 0; vi < nl.views.size(); ++vi)
+        for (size_t vi = 0; vi < newViews.size(); ++vi)
         {
-            nl.views[vi].bbox = get_strokes_bbox(newData, vi);
-            if (nl.views[vi].has_image())
+            newViews[vi].bbox = get_strokes_bbox(newData, vi);
+            if (newViews[vi].has_image())
             {
-                nl.views[vi].imgbbox = nl.images[nl.views[vi].ii].get_bbox();
+                newViews[vi].imgbbox = newImages[newViews[vi].ii].get_bbox();
             }
         }
 
@@ -1102,12 +1076,14 @@ struct Vandalism
             // TODO: support for multiple layers
             clear();
 
-            Layer &cl = current_layer();
-
             imageNames = newImageNames;
             brushes = newBrushes;
-            cl = nl;
-            currentPin.viewidx = cl.views.size() - 1;
+            views = newViews;
+            images = newImages;
+            points = newPoints;
+            strokes = newStrokes;
+
+            currentPin.viewidx = views.size() - 1;
 
             set_dirty();
         }
@@ -1120,20 +1096,9 @@ struct Vandalism
         p0.viewidx = 0;
         pins.push_back(p0);
 
-        Layer l0;
-        l0.visible = true;
-
         test_transition none = {TPAN, 0.0f, 0.0f};
-        l0.views.push_back(test_view(none, 0, 0));
-        l0.views.back().pi = 0;
-
-        layers.push_back(l0); // 0th
-
-        l0.views.back().pi = NPOS;
-        for (size_t i = 1; i < layersCnt; ++i)
-        {
-            layers.push_back(l0);
-        }
+        views.push_back(test_view(none, 0, 0, 0));
+        views.back().pi = 0;
 
         currentPin = {0, 0};
     }
@@ -1143,7 +1108,10 @@ struct Vandalism
         brushes.clear();
         pins.clear();
         imageNames.clear();
-        layers.clear();
+        points.clear();
+        strokes.clear();
+        images.clear();
+        views.clear();
 
         setup_default_view();
 
@@ -1152,15 +1120,11 @@ struct Vandalism
 
     void show_all(float vpW, float vpH)
     {
-        // TODO: should check all visible layers not only current one
-        Layer &cl = current_layer();
-
-        if (cl.strokes.empty())
+        if (strokes.empty())
             return;
 
-        currentPin.viewidx = cl.views.size() - 1;
-        test_box all_box = query_bbox(get_bake_data(currentPin.layeridx),
-                                      currentPin.viewidx);
+        currentPin.viewidx = views.size() - 1;
+        test_box all_box = query_bbox(get_bake_data(), currentPin.viewidx);
 
         test_transition center = {TPAN,
                                   0.5f * (all_box.x1 + all_box.x0),

@@ -191,6 +191,7 @@ float gui_eraser_alpha;
 float gui_smooth_error_order;
 i32 gui_goto_idx;
 bool gui_layer_active[255];
+i32 gui_layer_cnt;
 i32 gui_current_layer;
 
 u32 g_dclogidx = 0;
@@ -264,7 +265,7 @@ void setup(kernel_services *services, u32 nLayers)
     io.Fonts->ClearTexData();
 
     g_ism = new Vandalism();
-    g_ism->setup(nLayers);
+    g_ism->setup();
 
     gui_showAllViews = true;
     gui_viewIdx = 0;
@@ -313,6 +314,7 @@ void setup(kernel_services *services, u32 nLayers)
         gui_layer_active[i] = true;
     }
     gui_current_layer = 0;
+    gui_layer_cnt = static_cast<i32>(nLayers);
 
     g_image_fitting = false;
     g_image_capturing = INACTIVE;
@@ -498,7 +500,7 @@ void collect_bake_data(const test_data& bake_data,
                         -0.5f * height_in,
                         +0.5f * height_in};
 
-    query(bake_data, g_ism->currentPin.viewidx,
+    query(layer_id, bake_data, g_ism->currentPin.viewidx,
           viewbox, s_visibles, s_transforms,
           pixel_height_in);
 
@@ -655,6 +657,8 @@ void update_and_render(input_data *input, output_data *output)
 
     bool scrollViewsDown = false;
 
+    const test_data &bake_data = g_ism->get_bake_data();
+
     if (g_ism->visiblesChanged)
     {
         // flag processed
@@ -663,9 +667,8 @@ void update_and_render(input_data *input, output_data *output)
 
         g_bake_quads.clear();
 
-        for (u8 layerIdx = 0; layerIdx < g_ism->get_layer_cnt(); ++layerIdx)
+        for (u8 layerIdx = 0; layerIdx < gui_layer_cnt; ++layerIdx)
         {
-            const test_data &bake_data = g_ism->get_bake_data(layerIdx);
             collect_bake_data(bake_data,
                               input->rtWidthIn, input->rtHeightIn,
                               pixel_height_in,
@@ -678,29 +681,26 @@ void update_and_render(input_data *input, output_data *output)
                                    g_bake_quads.data(), vtxCnt);
         
         g_viewsBuf->clear();
-        for (u8 layerIdx = 0; layerIdx < g_ism->get_layer_cnt(); ++layerIdx)
+        for (u32 vi = 0; vi < bake_data.nviews; ++vi)
         {
-            const test_data &bake_data = g_ism->get_bake_data(layerIdx);
-            g_viewsBuf->append("------ layer #%d ------ \n", layerIdx);
-            for (u32 vi = 0; vi < bake_data.nviews; ++vi)
-            {
-                const auto &view = bake_data.views[vi];
-                auto t = view.tr.type;
-                const char *typestr = (t == TZOOM ? "ZOOM" :
-                                       (t == TPAN ? "PAN" :
-                                        (t == TROTATE ? "ROTATE" : "ERROR")));
+            const auto &view = bake_data.views[vi];
+            auto t = view.tr.type;
+            const char *typestr = (t == TZOOM ? "ZOOM" :
+                                   (t == TPAN ? "PAN" :
+                                    (t == TROTATE ? "ROTATE" : "ERROR")));
 
-                // TODO: check this pin_index nonsense with multilayers
-                bool isCurrent = (vi == g_ism->currentPin.viewidx);
-                g_viewsBuf->append("%c %c %d: %s  %f/%f  (%ld..%ld)",
-                                   (isCurrent ? '>' : ' '), (view.is_pinned() ? '*' : ' '),
-                                   vi, typestr, view.tr.a, view.tr.b,
-                                   view.si0, view.si1);
-                if (view.has_image())
-                    g_viewsBuf->append(" i:%ld\n", view.ii);
-                else
-                    g_viewsBuf->append("\n");
-            }
+            // TODO: check this pin_index nonsense with multilayers
+            bool isCurrent = (vi == g_ism->currentPin.viewidx);
+            g_viewsBuf->append("#%ld %c %c %d: %s  %f/%f  (%ld..%ld)",
+                               view.li,
+                               (isCurrent ? '>' : ' '),
+                               (view.is_pinned() ? '*' : ' '),
+                               vi, typestr, view.tr.a, view.tr.b,
+                               view.si0, view.si1);
+            if (view.has_image())
+                g_viewsBuf->append(" i:%ld\n", view.ii);
+            else
+                g_viewsBuf->append("\n");
         }
         scrollViewsDown = true;
     }
@@ -982,14 +982,14 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::Separator();
     // LAYERS
 
-    for (u8 i = 0; i < g_ism->get_layer_cnt(); ++i)
+    for (u8 i = 0; i < gui_layer_cnt; ++i)
     {
         if (i > 0) ImGui::SameLine();
         ImGui::Checkbox(g_roman_numerals[i], &gui_layer_active[i]); 
     }
 
     ImGui::PushID("curlayer");
-    for (u8 i = 0; i < g_ism->get_layer_cnt(); ++i)
+    for (u8 i = 0; i < gui_layer_cnt; ++i)
     {
         if (i > 0) ImGui::SameLine();
         ImGui::RadioButton(g_roman_numerals[i], &gui_current_layer, i);
@@ -1190,7 +1190,7 @@ void update_and_render(input_data *input, output_data *output)
     ::memset(&pdc, 0, sizeof(output_data::drawcall));
     pdc.id = output_data::PRESENT;
 
-    for (u8 i = 0; i < g_ism->get_layer_cnt(); ++i)
+    for (u8 i = 0; i < gui_layer_cnt; ++i)
     {
         if (gui_layer_active[i])
         {
@@ -1210,7 +1210,6 @@ void update_and_render(input_data *input, output_data *output)
 
     ImGui::SetNextWindowSize(ImVec2(200, 300), ImGuiSetCond_FirstUseEver);
     ImGui::Begin("views");
-    const auto &bake_data = g_ism->get_bake_data(g_ism->get_current_layer_id());
     ImGui::SliderInt("view", &gui_goto_idx, 0,
                      static_cast<i32>(bake_data.nviews-1));
     if (ImGui::Button("Goto view"))
@@ -1242,8 +1241,8 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::Separator();
 
     // TODO: multilayers support
-    ImGui::Text("ism strokes: %lu", g_ism->current_layer().strokes.size());
-    ImGui::Text("ism points: %lu", g_ism->current_layer().points.size());
+    ImGui::Text("ism strokes: %lu", g_ism->strokes.size());
+    ImGui::Text("ism points: %lu", g_ism->points.size());
     ImGui::Text("ism brushes: %lu", g_ism->brushes.size());
 
     ImGui::Text("bake_quads v: (%lu/%lu)",
