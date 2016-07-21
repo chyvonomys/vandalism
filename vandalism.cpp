@@ -350,6 +350,11 @@ struct Vandalism
 
             currentStroke.bbox.grow(0.5f * currentBrush.diameter);
 
+            if (views[currentPin.viewidx].li != currentPin.layeridx)
+            {
+                append_new_view(test_transition{TPAN, 0.0f, 0.0f});
+            }
+
             strokes.push_back(currentStroke);
             strokes.back().brush_id = brushes.size() - 1;
             strokes.back().pi0 = points.size();
@@ -381,11 +386,6 @@ struct Vandalism
             }
 
             strokes.back().pi1 = points.size();
-
-            if (views[currentPin.viewidx].li != currentPin.layeridx)
-            {
-                append_new_view(test_transition{TPAN, 0.0f, 0.0f});
-            }
 
             views[currentPin.viewidx].bbox.add_box(currentStroke.bbox);
             views[currentPin.viewidx].si1 += 1;
