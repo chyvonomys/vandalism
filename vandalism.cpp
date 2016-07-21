@@ -8,7 +8,6 @@
 struct Vandalism
 {
     typedef test_point Point;
-
     typedef test_stroke Stroke;
     typedef test_image Image;
 
@@ -215,7 +214,7 @@ struct Vandalism
         /*
         auto& prev = cl.views[currentPin.viewidx];
         if (autoOptimizeViews &&
-            prev.pin_index == NPOS && prev.img == NPOS &&
+            !prev.is_pinned() && !prev.has_image() &&
             prev.si0 == prev.si1 &&
             prev.tr.type == tr.type)
         {
@@ -232,8 +231,7 @@ struct Vandalism
             Layer &cl = layers[i];
             currentPin.viewidx = cl.views.size();
             cl.views.push_back(test_view(tr,
-                                         cl.strokes.size(), cl.strokes.size(),
-                                         NPOS));
+                                         cl.strokes.size(), cl.strokes.size()));
         }
     }
 
@@ -552,7 +550,7 @@ struct Vandalism
             Layer &cl = current_layer();
 
             cl.views.back().imgbbox = i.get_bbox();
-            cl.views.back().img = cl.images.size();
+            cl.views.back().ii = cl.images.size();
             cl.images.push_back(i);
         }
 
@@ -763,7 +761,7 @@ struct Vandalism
             {
                 auto& prev = optimized.back();
                 const auto& curr = views[i];
-                if (prev.pin_index == NPOS && prev.si0 == prev.si1 &&
+                if (!prev.is_pined() && !prev.has_strokes() &&
                     prev.tr.type == curr.tr.type && i != currentViewIdx)
                 {
                     prev.bbox = curr.bbox;
@@ -783,7 +781,7 @@ struct Vandalism
                     optimized.push_back(curr);
                 }
                 // indexes change while optimizing, update
-                if (curr.pin_index != NPOS)
+                if (curr.is_pinned())
                 {
                     pins[curr.pin_index] = optimized.size() - 1;
                 }
@@ -828,7 +826,7 @@ struct Vandalism
         {
             if (cl.views.size() > 1)
             {
-                if (cl.views.back().img == NPOS)
+                if (!cl.views.back().has_image())
                 {
                     if (really)
                     {
@@ -844,7 +842,7 @@ struct Vandalism
                     if (really)
                     {
                         cl.images.pop_back();
-                        cl.views.back().img = NPOS;
+                        cl.views.back().ii = NPOS;
                     }
                     return IMAGE;
                 }
@@ -906,10 +904,10 @@ struct Vandalism
         for (size_t i = 0; i < cl.views.size(); ++i)
         {
             os << "v " << tr_type_str(cl.views[i].tr.type)
-                << ' ' << cl.views[i].tr.a << ' ' << cl.views[i].tr.b
-                << ' ' << cl.views[i].si0 << ' ' << cl.views[i].si1
-                << ' ' << (cl.views[i].img == NPOS ? -1 : static_cast<i32>(cl.views[i].img))
-                << '\n';
+               << ' ' << cl.views[i].tr.a << ' ' << cl.views[i].tr.b
+               << ' ' << cl.views[i].si0 << ' ' << cl.views[i].si1
+               << ' ' << (!cl.views[i].has_image() ? -1 : static_cast<i32>(cl.views[i].ii))
+               << '\n';
         }
         // TODO: maybe separate codes for regular brush, eraser, etc
         for (size_t i = 0; i < brushes.size(); ++i)
@@ -999,7 +997,7 @@ struct Vandalism
                             ok = false;
                             break;
                         }
-                        vi.img = (imgidx == -1 ? NPOS : static_cast<u32>(imgidx));
+                        vi.ii = (imgidx == -1 ? NPOS : static_cast<u32>(imgidx));
                         nl.views.push_back(vi);
                     }
                 }
@@ -1093,9 +1091,9 @@ struct Vandalism
         for (size_t vi = 0; vi < nl.views.size(); ++vi)
         {
             nl.views[vi].bbox = get_strokes_bbox(newData, vi);
-            if (nl.views[vi].img != NPOS)
+            if (nl.views[vi].has_image())
             {
-                nl.views[vi].imgbbox = nl.images[nl.views[vi].img].get_bbox();
+                nl.views[vi].imgbbox = nl.images[nl.views[vi].ii].get_bbox();
             }
         }
 
@@ -1127,11 +1125,11 @@ struct Vandalism
 
         test_transition none = {TPAN, 0.0f, 0.0f};
         l0.views.push_back(test_view(none, 0, 0));
-        l0.views.back().pin_index = 0;
+        l0.views.back().pi = 0;
 
         layers.push_back(l0); // 0th
 
-        l0.views.back().pin_index = NPOS;
+        l0.views.back().pi = NPOS;
         for (size_t i = 1; i < layersCnt; ++i)
         {
             layers.push_back(l0);

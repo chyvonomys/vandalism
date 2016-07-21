@@ -691,16 +691,15 @@ void update_and_render(input_data *input, output_data *output)
                                         (t == TROTATE ? "ROTATE" : "ERROR")));
 
                 // TODO: check this pin_index nonsense with multilayers
-                bool isPinned = (view.pin_index != NPOS);
                 bool isCurrent = (vi == g_ism->currentPin.viewidx);
                 g_viewsBuf->append("%c %c %d: %s  %f/%f  (%ld..%ld)",
-                                   (isCurrent ? '>' : ' '), (isPinned ? '*' : ' '),
+                                   (isCurrent ? '>' : ' '), (view.is_pinned() ? '*' : ' '),
                                    vi, typestr, view.tr.a, view.tr.b,
                                    view.si0, view.si1);
-                if (view.img == NPOS)
-                    g_viewsBuf->append("\n");
+                if (view.has_image())
+                    g_viewsBuf->append(" i:%ld\n", view.ii);
                 else
-                    g_viewsBuf->append(" i:%ld\n", view.img);
+                    g_viewsBuf->append("\n");
             }
         }
         scrollViewsDown = true;

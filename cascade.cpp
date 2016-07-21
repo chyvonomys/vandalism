@@ -122,13 +122,18 @@ struct test_view
     test_transition tr;
     size_t si0;
     size_t si1;
-    size_t img;
-    size_t pin_index;
+    size_t ii;
+    size_t li;
+    size_t pi;
     test_box bbox;
     test_box imgbbox;
-    test_view(const test_transition& t, size_t s0, size_t s1, size_t i = NPOS)
-        : tr(t), si0(s0), si1(s1), img(i), pin_index(NPOS)
+    test_view(const test_transition& t, size_t s0, size_t s1)
+        : tr(t), si0(s0), si1(s1), ii(NPOS), li(NPOS), pi(NPOS)
     {}
+
+    bool has_image() const { return ii != NPOS; }
+    bool is_pinned() const { return pi != NPOS; }
+    bool has_strokes() const { return si1 > si0; }
 };
 
 struct test_data
@@ -207,7 +212,7 @@ void crop(const test_data &data, size_t vi, size_t ti,
 {
     test_view view = data.views[vi];
 
-    if (view.img != NPOS)
+    if (view.has_image())
     {
         // TODO: why do we check with negligibledist here?
         if (overlaps(viewport, view.imgbbox) &&
@@ -216,7 +221,7 @@ void crop(const test_data &data, size_t vi, size_t ti,
         {
             test_visible vis;
             vis.ty = test_visible::IMAGE;
-            vis.obj_id = view.img;
+            vis.obj_id = view.ii;
             vis.tform_id = ti;
             visibles.push_back(vis);
         }
