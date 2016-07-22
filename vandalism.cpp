@@ -60,8 +60,6 @@ struct Vandalism
     bool visiblesChanged;
     bool currentChanged;
 
-    bool autoOptimizeViews;
-
     // PAN related
 
     float panStartX;
@@ -179,24 +177,6 @@ struct Vandalism
 
     void append_new_view(const test_transition& tr)
     {
-        // TODO: deal with view optimization and pin/view indexes
-
-        /*
-        auto& prev = views[currentPin.viewidx];
-        if (autoOptimizeViews &&
-            !prev.is_pinned() && !prev.has_image() &&
-            prev.si0 == prev.si1 &&
-            prev.tr.type == tr.type)
-        {
-            prev.si0 = strokes.size();
-            prev.si1 = strokes.size();
-            prev.tr = combine_transitions(prev.tr.a, prev.tr.b,
-                                          tr.a, tr.b,
-                                          prev.tr.type);
-        }
-        else
-        */
-
         currentPin.viewidx = views.size();
         views.push_back(test_view(tr,
                                   strokes.size(), strokes.size(),
@@ -641,8 +621,6 @@ struct Vandalism
         currentStroke.pi1 = 0;
 
         setup_default_view();
-
-        autoOptimizeViews = true;
 
         firstX = 0.0f;
         firstY = 0.0f;
