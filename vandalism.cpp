@@ -175,7 +175,7 @@ struct Vandalism
         return current_view_is_last();
     }
 
-    void append_new_view(const test_transition& tr)
+    void append_new_view(const test_transform& tr)
     {
         currentPin.viewidx = views.size();
         views.push_back(test_view(tr,
@@ -210,7 +210,7 @@ struct Vandalism
             float dx = input->mousex - rotateStartX;
             float angle = si_pi * dx;
 
-            append_new_view(test_transition{TROTATE, -angle, 0.0f});
+            append_new_view(make_rotate(-angle));
         }
 
         common_done();
@@ -236,7 +236,7 @@ struct Vandalism
     {
         if (append_allowed())
         {
-            append_new_view(test_transition{TZOOM, input->mousex, zoomStartX});
+            append_new_view(make_zoom(input->mousex, zoomStartX));
         }
 
         common_done();
@@ -258,10 +258,8 @@ struct Vandalism
     {
         if (append_allowed())
         {
-            test_transition tpan = {TPAN,
-                                    panStartX - input->mousex,
-                                    panStartY - input->mousey};
-            append_new_view(tpan);
+            append_new_view(make_pan(panStartX - input->mousex,
+                                     panStartY - input->mousey));
         }
         common_done();
     }
@@ -332,7 +330,7 @@ struct Vandalism
 
             if (views[currentPin.viewidx].li != currentPin.layeridx)
             {
-                append_new_view(test_transition{TPAN, 0.0f, 0.0f});
+                append_new_view(make_pan(0.0f, 0.0f));
             }
 
             strokes.push_back(currentStroke);
@@ -431,10 +429,10 @@ struct Vandalism
             float a0 = static_cast<float>(::atan2f(d0.y, d0.x));
             float a1 = static_cast<float>(::atan2f(d1.y, d1.x));
 
-            append_new_view(test_transition{TPAN, f.x, f.y});
-            append_new_view(test_transition{TROTATE, a0 - a1, 0.0f});
-            append_new_view(test_transition{TZOOM, len(d1), len(d0)});
-            append_new_view(test_transition{TPAN, -f.x, -f.y});
+            append_new_view(make_pan(f.x, f.y));
+            append_new_view(make_rotate(a0 - a1));
+            append_new_view(make_zoom(len(d1), len(d0)));
+            append_new_view(make_pan(-f.x, -f.y));
         }
 
         common_done();
@@ -462,9 +460,9 @@ struct Vandalism
 
         if (append_allowed())
         {
-            append_new_view(test_transition{TPAN, postShiftX, postShiftY});
-            append_new_view(test_transition{TZOOM, zoomCoeff, 1.0f});
-            append_new_view(test_transition{TPAN, preShiftX, preShiftY});
+            append_new_view(make_pan(postShiftX, postShiftY));
+            append_new_view(make_zoom(zoomCoeff, 1.0f));
+            append_new_view(make_pan(preShiftX, preShiftY));
         }
 
         common_done();
@@ -485,7 +483,7 @@ struct Vandalism
     {
         if (append_allowed())
         {
-            append_new_view(test_transition{TPAN, 0.0f, 0.0f});
+            append_new_view(make_pan(0.0f, 0.0f));
 
             size_t imageId = image_name_idx(name);
             if (imageId == imageNames.size())
@@ -846,8 +844,8 @@ struct Vandalism
         }
         for (size_t i = 0; i < views.size(); ++i)
         {
-            os << "v " << tr_type_str(views[i].tr.type)
-               << ' ' << views[i].tr.a << ' ' << views[i].tr.b
+            os << "v " << views[i].tr.tx << ' ' << views[i].tr.ty
+               << ' ' << views[i].tr.a << ' ' << views[i].tr.s
                << ' ' << views[i].si0 << ' ' << views[i].si1
                << ' ' << (!views[i].has_image() ? -1 : static_cast<i32>(views[i].ii))
                << '\n';
@@ -919,30 +917,12 @@ struct Vandalism
                 {
                     std::istringstream ss(line);
                     ss.seekg(2);
-                    test_view vi({TPAN, 0.0f, 0.0f}, 0, 0, 0);
-                    std::string ttype;
+                    test_view vi(make_pan(0.0f, 0.0f), 0, 0, 0);
                     i32 imgidx;
-                    ok = !(ss >> ttype >> vi.tr.a >> vi.tr.b
+                    ok = !(ss >> vi.tr.tx >> vi.tr.ty >> vi.tr.a >> vi.tr.s
                            >> vi.si0 >> vi.si1 >> imgidx >> vi.li).fail();
                     if (ok)
                     {
-                        if (ttype == "pan")
-                        {
-                            vi.tr.type = TPAN;
-                        }
-                        else if (ttype == "zoom")
-                        {
-                            vi.tr.type = TZOOM;
-                        }
-                        else if (ttype == "rotate")
-                        {
-                            vi.tr.type = TROTATE;
-                        }
-                        else
-                        {
-                            ok = false;
-                            break;
-                        }
                         vi.ii = (imgidx == -1 ? NPOS : static_cast<u32>(imgidx));
                         newViews.push_back(vi);
                     }
@@ -1074,8 +1054,7 @@ struct Vandalism
         p0.viewidx = 0;
         pins.push_back(p0);
 
-        test_transition none = {TPAN, 0.0f, 0.0f};
-        views.push_back(test_view(none, 0, 0, 0));
+        views.push_back(test_view(make_pan(0.0f, 0.0f), 0, 0, 0));
         views.back().pi = 0;
 
         currentPin = {0, 0};
@@ -1104,23 +1083,20 @@ struct Vandalism
         currentPin.viewidx = views.size() - 1;
         test_box all_box = query_bbox(get_bake_data(), currentPin.viewidx);
 
-        test_transition center = {TPAN,
-                                  0.5f * (all_box.x1 + all_box.x0),
-                                  0.5f * (all_box.y1 + all_box.y0)};
-
-        append_new_view(center);
+        append_new_view(make_pan(0.5f * (all_box.x1 + all_box.x0),
+                                 0.5f * (all_box.y1 + all_box.y0)));
 
         float vpAspect = vpH / vpW;
         float bbAspect = all_box.height() / all_box.width();
 
-        test_transition fit;
+        test_transform fit;
         if (vpAspect > bbAspect)
         {
-            fit = {TZOOM, vpW, all_box.width()};
+            fit = make_zoom(vpW, all_box.width());
         }
         else
         {
-            fit = {TZOOM, vpH, all_box.height()};
+            fit = make_zoom(vpH, all_box.height());
         }
         append_new_view(fit);
 

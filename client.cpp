@@ -684,18 +684,14 @@ void update_and_render(input_data *input, output_data *output)
         for (u32 vi = 0; vi < bake_data.nviews; ++vi)
         {
             const auto &view = bake_data.views[vi];
-            auto t = view.tr.type;
-            const char *typestr = (t == TZOOM ? "ZOOM" :
-                                   (t == TPAN ? "PAN" :
-                                    (t == TROTATE ? "ROTATE" : "ERROR")));
 
             // TODO: check this pin_index nonsense with multilayers
             bool isCurrent = (vi == g_ism->currentPin.viewidx);
-            g_viewsBuf->append("#%ld %c %c %d: %s  %f/%f  (%ld..%ld)",
+            g_viewsBuf->append("#%ld %c %c %d: %f,%f/%fx%f  (%ld..%ld)",
                                view.li,
                                (isCurrent ? '>' : ' '),
                                (view.is_pinned() ? '*' : ' '),
-                               vi, typestr, view.tr.a, view.tr.b,
+                               vi, view.tr.tx, view.tr.ty, view.tr.a, view.tr.s,
                                view.si0, view.si1);
             if (view.has_image())
                 g_viewsBuf->append(" i:%ld\n", view.ii);

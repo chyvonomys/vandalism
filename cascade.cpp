@@ -81,6 +81,24 @@ struct test_transition
     float b;
 };
 
+struct test_transform
+{
+    float s;
+    float tx;
+    float ty;
+    float a;
+};
+
+// coordinates of center (x0, y0) and x axis (xx, xy)
+// y axis is (-xy, xx)
+struct test_basis
+{
+    float x0;
+    float y0;
+    float xx;
+    float xy;
+};
+
 // TODO: refine this
 struct test_image
 {
@@ -113,7 +131,7 @@ const size_t NPOS = static_cast<size_t>(-1);
 
 struct test_view
 {
-    test_transition tr;
+    test_transform tr;
     size_t si0;
     size_t si1;
     size_t ii;
@@ -121,7 +139,7 @@ struct test_view
     size_t pi;
     test_box bbox;
     test_box imgbbox;
-    test_view(const test_transition& t, size_t s0, size_t s1, size_t l)
+    test_view(const test_transform& t, size_t s0, size_t s1, size_t l)
         : tr(t), si0(s0), si1(s1), ii(NPOS), li(l), pi(NPOS)
     {}
 
@@ -245,24 +263,6 @@ void crop(const test_data &data, size_t vi, size_t ti,
     }
 }
 
-struct test_transform
-{
-    float s;
-    float tx;
-    float ty;
-    float a;
-};
-
-// coordinates of center (x0, y0) and x axis (xx, xy)
-// y axis is (-xy, xx)
-struct test_basis
-{
-    float x0;
-    float y0;
-    float xx;
-    float xy;
-};
-
 test_transform transform_from_basis(const test_basis &basis)
 {
     test_transform result;
@@ -293,47 +293,43 @@ test_transform id_transform()
     return {1.0f, 0.0f, 0.0f, 0.0f};
 }
 
-test_transform transform_from_transition(const test_transition &transition)
+test_transform make_zoom(float a, float b)
 {
     test_transform result = id_transform();
-
-    if (transition.type == TZOOM)
-    {
-        result.s = transition.b / transition.a;
-    }
-    else if (transition.type == TPAN)
-    {
-        result.tx = transition.a;
-        result.ty = transition.b;
-    }
-    else if (transition.type == TROTATE)
-    {
-        result.a = transition.a;
-    }
-
+    result.s = b / a;
     return result;
 }
 
-test_transition inverse_transition(const test_transition &transition)
+test_transform make_pan(float a, float b)
 {
-    test_transition result = transition;
-
-    if (transition.type == TZOOM)
-    {
-        result.a = transition.b;
-        result.b = transition.a;
-    }
-    else if (transition.type == TPAN)
-    {
-        result.a = -transition.a;
-        result.b = -transition.b;
-    }
-    else if (transition.type == TROTATE)
-    {
-        result.a = -transition.a;
-    }
-
+    test_transform result = id_transform();
+    result.tx = a;
+    result.ty = b;
     return result;
+}
+
+test_transform make_rotate(float a)
+{
+    test_transform result = id_transform();
+    result.a = a;
+    return result;
+}
+
+test_basis inverse_basis(const test_basis &basis)
+{
+    float det = basis.xx * basis.xx + basis.xy * basis.xy;
+
+    float nx = basis.xx / det;
+    float ny = -basis.xy / det;
+
+    return test_basis{-basis.x0, -basis.y0, nx, ny};
+}
+
+test_transform inverse_transform(const test_transform &transform)
+{
+    test_basis b = basis_from_transform(transform);
+    test_basis invb = inverse_basis(b);
+    return transform_from_basis(invb);
 }
 
 test_point point_in_basis(const test_basis &b,
@@ -415,21 +411,16 @@ test_transform get_relative_transform(const test_data &data,
     {
         for (size_t vi = dst_idx; vi != src_idx; --vi)
         {
-            const auto &view = data.views[vi];
-
-            test_transition inv_tr = inverse_transition(view.tr);
-            test_transform transform = transform_from_transition(inv_tr);
-            accum = combine_transforms(accum, transform);
+            accum = combine_transforms(accum,
+                                       inverse_transform(data.views[vi].tr));
         }
     }
     else
     {
         for (size_t vi = dst_idx + 1; vi <= src_idx; ++vi)
         {
-            const auto &view = data.views[vi];
-
-            test_transform transform = transform_from_transition(view.tr);
-            accum = combine_transforms(accum, transform);
+            accum = combine_transforms(accum,
+                                       data.views[vi].tr);
         }
     }
     return accum;
