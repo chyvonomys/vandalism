@@ -813,6 +813,7 @@ struct Vandalism
                << ' ' << views[i].tr.a << ' ' << views[i].tr.s
                << ' ' << views[i].si0 << ' ' << views[i].si1
                << ' ' << (!views[i].has_image() ? -1 : static_cast<i32>(views[i].ii))
+               << ' ' << views[i].li
                << '\n';
         }
         // TODO: maybe separate codes for regular brush, eraser, etc
