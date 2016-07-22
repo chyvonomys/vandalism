@@ -137,7 +137,7 @@ const size_t NPOS = static_cast<size_t>(-1);
 
 struct test_view
 {
-    test_transform tr;
+    test_basis tr;
     size_t si0;
     size_t si1;
     size_t ii;
@@ -145,7 +145,7 @@ struct test_view
     size_t pi;
     test_box bbox;
     test_box imgbbox;
-    test_view(const test_transform& t, size_t s0, size_t s1, size_t l)
+    test_view(const test_basis& t, size_t s0, size_t s1, size_t l)
         : tr(t), si0(s0), si1(s1), ii(NPOS), li(l), pi(NPOS)
     {}
 
@@ -299,26 +299,26 @@ test_transform id_transform()
     return {1.0f, 0.0f, 0.0f, 0.0f};
 }
 
-test_transform make_zoom(float a, float b)
+test_basis make_zoom(float a, float b)
 {
     test_transform result = id_transform();
     result.s = b / a;
-    return result;
+    return basis_from_transform(result);
 }
 
-test_transform make_pan(float a, float b)
+test_basis make_pan(float a, float b)
 {
     test_transform result = id_transform();
     result.tx = a;
     result.ty = b;
-    return result;
+    return basis_from_transform(result);
 }
 
-test_transform make_rotate(float a)
+test_basis make_rotate(float a)
 {
     test_transform result = id_transform();
     result.a = a;
-    return result;
+    return basis_from_transform(result);
 }
 
 test_basis inverse_basis(const test_basis &basis)
@@ -329,13 +329,6 @@ test_basis inverse_basis(const test_basis &basis)
     float ny = -basis.xy / det;
 
     return test_basis{-basis.x0, -basis.y0, nx, ny};
-}
-
-test_transform inverse_transform(const test_transform &transform)
-{
-    test_basis b = basis_from_transform(transform);
-    test_basis invb = inverse_basis(b);
-    return transform_from_basis(invb);
 }
 
 test_point point_in_basis(const test_basis &b,
@@ -350,13 +343,6 @@ test_point point_in_basis(const test_basis &b,
     result.x = p.x * Xx + p.y * Yx + b.x0;
     result.y = p.x * Xy + p.y * Yy + b.y0;
     return result;
-}
-
-test_point apply_transform_pt(const test_transform &t,
-                              const test_point &p)
-{
-    test_basis basis = basis_from_transform(t);
-    return point_in_basis(basis, p);
 }
 
 test_basis basis_in_basis(const test_basis &b0,
@@ -376,57 +362,45 @@ test_basis basis_in_basis(const test_basis &b0,
     return result;
 }
 
-test_box apply_transform_box(const test_transform &t,
-                             const test_box &b)
+test_box box_in_basis(const test_basis &t,
+                      const test_box &b)
 {
     if (b.empty())
         return b;
 
     test_box result;
-    result.add(apply_transform_pt(t, {b.x0, b.y0})); // BL
-    result.add(apply_transform_pt(t, {b.x0, b.y1})); // TL
-    result.add(apply_transform_pt(t, {b.x1, b.y1})); // TR
-    result.add(apply_transform_pt(t, {b.x1, b.y0})); // BR
+    result.add(point_in_basis(t, {b.x0, b.y0})); // BL
+    result.add(point_in_basis(t, {b.x0, b.y1})); // TL
+    result.add(point_in_basis(t, {b.x1, b.y1})); // TR
+    result.add(point_in_basis(t, {b.x1, b.y0})); // BR
     return result;
 }
 
-float apply_transform_dist(const test_transform &t, float d)
+float dist_in_basis(const test_basis &b, float d)
 {
-    return d * t.s;
-}
-
-test_transform combine_transforms(const test_transform &t0,
-                                  const test_transform &t1)
-{
-    test_basis b0 = basis_from_transform(t0);
-    test_basis b1 = basis_from_transform(t1);
-
-    test_basis combined = basis_in_basis(b0, b1);
-    test_transform result = transform_from_basis(combined);
-
-    return result;
+    return d * si_sqrtf(b.xx * b.xx + b.xy * b.xy);
 }
 
 // get transform which, when applied to points in src_idx view space
 // will produce their coordinates in dst_idx view space
-test_transform get_relative_transform(const test_data &data,
-                                      size_t src_idx, size_t dst_idx)
+test_basis get_relative_transform(const test_data &data,
+                                  size_t src_idx, size_t dst_idx)
 {
-    test_transform accum = id_transform();
+    test_basis accum = default_basis();
     if (dst_idx > src_idx)
     {
         for (size_t vi = dst_idx; vi != src_idx; --vi)
         {
-            accum = combine_transforms(accum,
-                                       inverse_transform(data.views[vi].tr));
+            accum = basis_in_basis(accum,
+                                   inverse_basis(data.views[vi].tr));
         }
     }
     else
     {
         for (size_t vi = dst_idx + 1; vi <= src_idx; ++vi)
         {
-            accum = combine_transforms(accum,
-                                       data.views[vi].tr);
+            accum = basis_in_basis(accum,
+                                   data.views[vi].tr);
         }
     }
     return accum;
@@ -438,7 +412,7 @@ test_transform get_relative_transform(const test_data &data,
 void query(size_t layer_id,
            const test_data &data, size_t pin, const test_box &viewport,
            std::vector<test_visible> &visibles,
-           std::vector<test_transform> &transforms,
+           std::vector<test_basis> &transforms,
            float negligibledist)
 {
     // ps_*** -- pin space
@@ -448,11 +422,11 @@ void query(size_t layer_id,
     {
         if (data.views[vi].li == layer_id)
         {
-            test_transform ls2ps = get_relative_transform(data, vi, pin);
-            test_transform ps2ls = get_relative_transform(data, pin, vi);
+            test_basis ls2ps = get_relative_transform(data, vi, pin);
+            test_basis ps2ls = get_relative_transform(data, pin, vi);
 
-            test_box ls_box = apply_transform_box(ps2ls, viewport);
-            float ls_negligible = apply_transform_dist(ps2ls, negligibledist);
+            test_box ls_box = box_in_basis(ps2ls, viewport);
+            float ls_negligible = dist_in_basis(ps2ls, negligibledist);
             crop(data, vi, transforms.size(), ls_box, visibles, ls_negligible);
             transforms.push_back(ls2ps);
         }
@@ -465,9 +439,9 @@ test_box query_bbox(const test_data &data, size_t pin)
 
     for (size_t vi = 0; vi < data.nviews; ++vi)
     {
-        test_transform ls2ps = get_relative_transform(data, vi, pin);
+        test_basis ls2ps = get_relative_transform(data, vi, pin);
 
-        test_box ps_view_box = apply_transform_box(ls2ps, data.views[vi].bbox);
+        test_box ps_view_box = box_in_basis(ls2ps, data.views[vi].bbox);
         ps_accum_box.add_box(ps_view_box);
     }
 

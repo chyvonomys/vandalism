@@ -369,7 +369,7 @@ void add_quad(std::vector<output_data::Vertex> &quads,
 void fill_quads(std::vector<output_data::Vertex>& quads,
                 const test_point *points, size_t N,
                 size_t si,
-                const test_transform& tform,
+                const test_basis& tform,
                 const Vandalism::Brush& brush,
                 float depthStep)
 {
@@ -400,10 +400,10 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
                 float2 p1l = curr + side1;
                 float2 p1r = curr - side1;
 
-                test_point a = apply_transform_pt(tform, {p0r.x, p0r.y});
-                test_point b = apply_transform_pt(tform, {p0l.x, p0l.y});
-                test_point c = apply_transform_pt(tform, {p1l.x, p1l.y});
-                test_point d = apply_transform_pt(tform, {p1r.x, p1r.y});
+                test_point a = point_in_basis(tform, {p0r.x, p0r.y});
+                test_point b = point_in_basis(tform, {p0l.x, p0l.y});
+                test_point c = point_in_basis(tform, {p1l.x, p1l.y});
+                test_point d = point_in_basis(tform, {p1r.x, p1r.y});
 
                 bool eraser = (cb1.type == 1);
 
@@ -429,10 +429,10 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
             float2 tl = curr - right + up;
             float2 tr = curr + right + up;
 
-            test_point a = apply_transform_pt(tform, {bl.x, bl.y});
-            test_point b = apply_transform_pt(tform, {tl.x, tl.y});
-            test_point c = apply_transform_pt(tform, {tr.x, tr.y});
-            test_point d = apply_transform_pt(tform, {br.x, br.y});
+            test_point a = point_in_basis(tform, {bl.x, bl.y});
+            test_point b = point_in_basis(tform, {tl.x, tl.y});
+            test_point c = point_in_basis(tform, {tr.x, tr.y});
+            test_point d = point_in_basis(tform, {br.x, br.y});
 
             bool eraser = (cb.type == 1);
 
@@ -445,7 +445,7 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
 
 void stroke_to_quads(const test_point* begin, const test_point* end,
                      std::vector<output_data::Vertex>& quads,
-                     size_t stroke_id, const test_transform& tform,
+                     size_t stroke_id, const test_basis& tform,
                      const Vandalism::Brush& brush)
 {
     static Vandalism::Brush s_debug_brush
@@ -491,7 +491,7 @@ void collect_bake_data(const test_data& bake_data,
                        u8 layer_id)
 {
     static std::vector<test_visible> s_visibles;
-    static std::vector<test_transform> s_transforms;
+    static std::vector<test_basis> s_transforms;
 
     s_visibles.clear();
     s_transforms.clear();
@@ -507,7 +507,7 @@ void collect_bake_data(const test_data& bake_data,
     for (u32 visIdx = 0; visIdx < s_visibles.size(); ++visIdx)
     {
         const test_visible& vis = s_visibles[visIdx];
-        const test_transform& tform = s_transforms[vis.tform_id];
+        const test_basis& tform = s_transforms[vis.tform_id];
         if (vis.ty == test_visible::STROKE)
         {
             const test_stroke& stroke = bake_data.strokes[vis.obj_id];
@@ -554,10 +554,10 @@ void collect_bake_data(const test_data& bake_data,
             test_point x{ img.tx + img.xx, img.ty + img.xy };
             test_point y{ img.tx + img.yx, img.ty + img.yy };
 
-            test_point pos = apply_transform_pt(tform, o);
+            test_point pos = point_in_basis(tform, o);
 
-            test_point ox = apply_transform_pt(tform, x);
-            test_point oy = apply_transform_pt(tform, y);
+            test_point ox = point_in_basis(tform, x);
+            test_point oy = point_in_basis(tform, y);
 
             dc.params[0] = pos.x;
             dc.params[1] = pos.y;
@@ -622,22 +622,23 @@ void build_view_dbg_buffer(ImGuiTextBuffer *buffer, const test_data &bake_data)
     for (u32 vi = 0; vi < bake_data.nviews; ++vi)
     {
         const auto &view = bake_data.views[vi];
+        test_transform tr = transform_from_basis(view.tr);
 
         buffer->append("#%d L:%ld", vi, view.li);
 
         if (view.is_pinned())
             buffer->append(" P:%ld", view.pi);
 
-        auto ty = view.tr.get_type();
+        auto ty = tr.get_type();
         switch (ty)
         {
         case ID: buffer->append(" ID"); break;
-        case PAN: buffer->append(" PAN %f,%f", view.tr.tx, view.tr.ty); break;
-        case ZOOM: buffer->append(" ZOOM %f", view.tr.s); break;
-        case ROTATE: buffer->append(" ROTATE %f", 180.0f * view.tr.a / 3.1415926535f); break;
+        case PAN: buffer->append(" PAN %f,%f", tr.tx, tr.ty); break;
+        case ZOOM: buffer->append(" ZOOM %f", tr.s); break;
+        case ROTATE: buffer->append(" ROTATE %f", 180.0f * tr.a / 3.1415926535f); break;
         case COMPLEX: buffer->append(" COMPLEX %f,%f /%f x%f",
-                                     view.tr.tx, view.tr.ty,
-                                     view.tr.s, 180.0f * view.tr.a / 3.1415926535f); break;
+                                     tr.tx, tr.ty,
+                                     180.0f * tr.a / 3.1415926535f, tr.s); break;
         }
 
         if (view.has_strokes())
@@ -755,7 +756,7 @@ void update_and_render(input_data *input, output_data *output)
         stroke_to_quads(current_data.points + stroke.pi0,
                         current_data.points + stroke.pi1,
                         g_curr_quads,
-                        currStrokeId, id_transform(), currBrush);
+                        currStrokeId, default_basis(), currBrush);
 
         u32 vtxCnt = static_cast<u32>(g_curr_quads.size());
         u32 idxCnt = vtxCnt / 4 * 6;

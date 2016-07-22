@@ -175,7 +175,7 @@ struct Vandalism
         return current_view_is_last();
     }
 
-    void append_new_view(const test_transform& tr)
+    void append_new_view(const test_basis& tr)
     {
         currentPin.viewidx = views.size();
         views.push_back(test_view(tr,
@@ -809,8 +809,8 @@ struct Vandalism
         }
         for (size_t i = 0; i < views.size(); ++i)
         {
-            os << "v " << views[i].tr.tx << ' ' << views[i].tr.ty
-               << ' ' << views[i].tr.a << ' ' << views[i].tr.s
+            os << "v " << views[i].tr.x0 << ' ' << views[i].tr.y0
+               << ' ' << views[i].tr.xx << ' ' << views[i].tr.xy
                << ' ' << views[i].si0 << ' ' << views[i].si1
                << ' ' << (!views[i].has_image() ? -1 : static_cast<i32>(views[i].ii))
                << ' ' << views[i].li
@@ -885,7 +885,7 @@ struct Vandalism
                     ss.seekg(2);
                     test_view vi(make_pan(0.0f, 0.0f), 0, 0, 0);
                     i32 imgidx;
-                    ok = !(ss >> vi.tr.tx >> vi.tr.ty >> vi.tr.a >> vi.tr.s
+                    ok = !(ss >> vi.tr.x0 >> vi.tr.y0 >> vi.tr.xx >> vi.tr.xy
                            >> vi.si0 >> vi.si1 >> imgidx >> vi.li).fail();
                     if (ok)
                     {
@@ -1055,7 +1055,7 @@ struct Vandalism
         float vpAspect = vpH / vpW;
         float bbAspect = all_box.height() / all_box.width();
 
-        test_transform fit;
+        test_basis fit;
         if (vpAspect > bbAspect)
         {
             fit = make_zoom(vpW, all_box.width());
