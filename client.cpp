@@ -616,6 +616,40 @@ bool load_image(const char *filename, ImageDesc &desc)
     return false;
 }
 
+void build_view_dbg_buffer(ImGuiTextBuffer *buffer, const test_data &bake_data)
+{
+    buffer->clear();
+    for (u32 vi = 0; vi < bake_data.nviews; ++vi)
+    {
+        const auto &view = bake_data.views[vi];
+
+        buffer->append("#%d L:%ld", vi, view.li);
+
+        if (view.is_pinned())
+            buffer->append(" P:%ld", view.pi);
+
+        auto ty = view.tr.get_type();
+        switch (ty)
+        {
+        case ID: buffer->append(" ID"); break;
+        case PAN: buffer->append(" PAN %f,%f", view.tr.tx, view.tr.ty); break;
+        case ZOOM: buffer->append(" ZOOM %f", view.tr.s); break;
+        case ROTATE: buffer->append(" ROTATE %f", 180.0f * view.tr.a / 3.1415926535f); break;
+        case COMPLEX: buffer->append(" COMPLEX %f,%f /%f x%f",
+                                     view.tr.tx, view.tr.ty,
+                                     view.tr.s, 180.0f * view.tr.a / 3.1415926535f); break;
+        }
+
+        if (view.has_strokes())
+            buffer->append(" [%ld..%ld)", view.si0, view.si1);
+
+        if (view.has_image())
+            buffer->append(" i:%ld", view.ii);
+
+        buffer->append("\n");
+    }
+}
+
 void update_and_render(input_data *input, output_data *output)
 {
     output->quit_flag = false;
@@ -680,24 +714,7 @@ void update_and_render(input_data *input, output_data *output)
         g_services->update_mesh_vb(g_bake_mesh,
                                    g_bake_quads.data(), vtxCnt);
         
-        g_viewsBuf->clear();
-        for (u32 vi = 0; vi < bake_data.nviews; ++vi)
-        {
-            const auto &view = bake_data.views[vi];
-
-            // TODO: check this pin_index nonsense with multilayers
-            bool isCurrent = (vi == g_ism->currentPin.viewidx);
-            g_viewsBuf->append("#%ld %c %c %d: %f,%f/%fx%f  (%ld..%ld)",
-                               view.li,
-                               (isCurrent ? '>' : ' '),
-                               (view.is_pinned() ? '*' : ' '),
-                               vi, view.tr.tx, view.tr.ty, view.tr.a, view.tr.s,
-                               view.si0, view.si1);
-            if (view.has_image())
-                g_viewsBuf->append(" i:%ld\n", view.ii);
-            else
-                g_viewsBuf->append("\n");
-        }
+        build_view_dbg_buffer(g_viewsBuf, bake_data);
         scrollViewsDown = true;
     }
 

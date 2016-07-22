@@ -665,33 +665,6 @@ struct Vandalism
         return result;
     }
 
-    test_transition combine_transitions(float lefta, float leftb,
-                                        float righta, float rightb,
-                                        transition_type ty)
-    {
-        test_transition result;
-        result.type = ty;
-        if (ty == TPAN)
-        {
-            result.a = lefta + righta;
-            result.b = leftb + rightb;
-        }
-        else if (ty == TZOOM)
-        {
-            result.a = lefta * righta;
-            result.b = leftb * rightb;
-
-            result.a = result.a / result.b;
-            result.b = 1.0f;
-        }
-        else if (ty == TROTATE)
-        {
-            result.a = lefta + righta;
-            result.b = 0.0f;
-        }
-        return result;
-    }
-
     void optimize_views()
     {
         // TODO: bring this back (?)
@@ -819,14 +792,6 @@ struct Vandalism
 
             set_dirty();
         }
-    }
-
-    const char *tr_type_str(transition_type tt) const
-    {
-        if (tt == TZOOM) return "zoom";
-        if (tt == TPAN) return "pan";
-        if (tt == TROTATE) return "rotate";
-        return "error";
     }
 
     void save_data(const char *filename) const

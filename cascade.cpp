@@ -72,14 +72,7 @@ struct test_stroke
     test_box bbox;
 };
 
-enum transition_type { TZOOM, TPAN, TROTATE };
-
-struct test_transition
-{
-    transition_type type;
-    float a;
-    float b;
-};
+enum tr_type { ID, PAN, ZOOM, ROTATE, COMPLEX };
 
 struct test_transform
 {
@@ -87,6 +80,19 @@ struct test_transform
     float tx;
     float ty;
     float a;
+
+    tr_type get_type() const
+    {
+        if (s == 1.0f && tx == 0.0f && ty == 0.0f && a == 0.0f)
+            return ID;
+        if (s == 1.0f && a == 0.0f)
+            return PAN;
+        if (tx == 0.0f && ty == 0.0f && a == 0.0f)
+            return ZOOM;
+        if (s == 1.0f && tx == 0.0f && ty == 0.0f)
+            return ROTATE;
+        return COMPLEX;
+    }
 };
 
 // coordinates of center (x0, y0) and x axis (xx, xy)
