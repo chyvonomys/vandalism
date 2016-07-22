@@ -8,12 +8,6 @@ struct test_point
     test_point(const float2& p, float v) : x(p.x), y(p.y), w(v) {}
 };
 
-struct test_segment
-{
-    test_point a;
-    test_point b;
-};
-
 struct test_box
 {
     float x0, x1;
@@ -397,12 +391,6 @@ test_box apply_transform_box(const test_transform &t,
 float apply_transform_dist(const test_transform &t, float d)
 {
     return d * t.s;
-}
-
-test_segment apply_transform_seg(const test_transform &t,
-                                 const test_segment &s)
-{
-    return {apply_transform_pt(t, s.a), apply_transform_pt(t, s.b)};
 }
 
 test_transform combine_transforms(const test_transform &t0,
