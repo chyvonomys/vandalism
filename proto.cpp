@@ -1074,7 +1074,7 @@ struct Pipeline
     }
 };
 
-void glfw_error_cb(int code, const char *desc)
+void glfw_error_cb(int, const char *desc)
 {
     ::printf("error: %s\n", desc);
 }
@@ -1143,7 +1143,12 @@ int main(int argc, char *argv[])
     pWindow = glfwCreateWindow(windowWidthPt, windowHeightPt,
                                "proto", nullptr, nullptr);
 
-    bool gl_ok = pWindow && load_gl_functions();
+    bool gl_ok = (pWindow != nullptr);
+
+    if (gl_ok)
+        glfwMakeContextCurrent(pWindow);
+
+    gl_ok = gl_ok && load_gl_functions();
 
     if (gl_ok)
     {
@@ -1164,8 +1169,6 @@ int main(int argc, char *argv[])
         u32 rtHeightPx = static_cast<u32>(monitorHeightPt * pxPerPtVer);
 
         ::printf("rendertarget: %d x %d px\n", rtWidthPx, rtHeightPx);
-
-        glfwMakeContextCurrent(pWindow);
 
         if (g_printGLDiagnostics)
         {
