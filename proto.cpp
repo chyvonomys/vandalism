@@ -1074,6 +1074,11 @@ struct Pipeline
     }
 };
 
+void glfw_error_cb(int code, const char *desc)
+{
+    ::printf("error: %s\n", desc);
+}
+
 int main(int argc, char *argv[])
 {
     for (int i = 1; i < argc; ++i)
@@ -1093,6 +1098,7 @@ int main(int argc, char *argv[])
         }
     }
 
+    glfwSetErrorCallback(glfw_error_cb);
     glfwInit();
 
     glfwWindowHint(GLFW_RESIZABLE, 1);
@@ -1137,30 +1143,30 @@ int main(int argc, char *argv[])
     pWindow = glfwCreateWindow(windowWidthPt, windowHeightPt,
                                "proto", nullptr, nullptr);
 
-    glfwSetScrollCallback(pWindow, &scroll_callback);
-
-    i32 windowWidthPx, windowHeightPx;
-    glfwGetFramebufferSize(pWindow, &windowWidthPx, &windowHeightPx);
-    if (g_noRetina)
-    {
-        windowWidthPx = windowWidthPt;
-        windowHeightPx = windowHeightPt;
-    }
-
-    float pxPerPtHor = static_cast<float>(windowWidthPx) / windowWidthPt;
-    float pxPerPtVer = static_cast<float>(windowHeightPx) / windowHeightPt;
-
-    u32 rtWidthPx = static_cast<u32>(monitorWidthPt * pxPerPtHor);
-    u32 rtHeightPx = static_cast<u32>(monitorHeightPt * pxPerPtVer);
-
-    ::printf("rendertarget: %d x %d px\n", rtWidthPx, rtHeightPx);
-
-    glfwMakeContextCurrent(pWindow);
-    
-    bool gl_ok = load_gl_functions();
+    bool gl_ok = pWindow && load_gl_functions();
 
     if (gl_ok)
     {
+        glfwSetScrollCallback(pWindow, &scroll_callback);
+
+        i32 windowWidthPx, windowHeightPx;
+        glfwGetFramebufferSize(pWindow, &windowWidthPx, &windowHeightPx);
+        if (g_noRetina)
+        {
+            windowWidthPx = windowWidthPt;
+            windowHeightPx = windowHeightPt;
+        }
+
+        float pxPerPtHor = static_cast<float>(windowWidthPx) / windowWidthPt;
+        float pxPerPtVer = static_cast<float>(windowHeightPx) / windowHeightPt;
+
+        u32 rtWidthPx = static_cast<u32>(monitorWidthPt * pxPerPtHor);
+        u32 rtHeightPx = static_cast<u32>(monitorHeightPt * pxPerPtVer);
+
+        ::printf("rendertarget: %d x %d px\n", rtWidthPx, rtHeightPx);
+
+        glfwMakeContextCurrent(pWindow);
+
         if (g_printGLDiagnostics)
         {
             ::printf("----------------------------\n");

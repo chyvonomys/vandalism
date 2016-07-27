@@ -21,7 +21,7 @@ TARGET=ism
 
 OBJS=client.o imgui_w.o imgui_draw_w.o imgui_demo_w.o
 
-ism: $(OBJS)
+ism: $(OBJS) proto.cpp
 	$(COMPILER) -g $(CFLAGS) -o $@ proto.cpp $(OBJS) $(LDFLAGS)
 
 .cpp.o:
