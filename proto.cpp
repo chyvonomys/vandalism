@@ -6,6 +6,8 @@
 #pragma warning(pop)
 #elif __APPLE__
 #include <mach/mach_time.h>
+#elif __linux__
+#include <time.h>
 #endif
 
 #define GLFW_INCLUDE_NONE
@@ -801,6 +803,20 @@ double get_platform_counter_freq()
 	mach_timebase_info(&time_info);
 
 	return time_info.numer / time_info.denom * 1e6;
+}
+#elif __linux__
+u64 get_platform_counter()
+{
+    timespec cnt;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &cnt);
+    ::printf("COUNTER: %ldsec %ldnsec", cnt.tv_sec, cnt.tv_nsec);
+}
+
+double get_platform_counter_freq()
+{
+    timespec res;
+    clock_getres(CLOCK_MONOTONIC_RAW, &res);
+    ::printf("RESOLUTION: %ldsec %ldnsec", res.tv_sec, res.tv_nsec);
 }
 #endif
 

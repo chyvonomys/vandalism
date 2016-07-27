@@ -624,10 +624,10 @@ void build_view_dbg_buffer(ImGuiTextBuffer *buffer, const test_data &bake_data)
         const auto &view = bake_data.views[vi];
         test_transform tr = transform_from_basis(view.tr);
 
-        buffer->append("#%d L:%ld", vi, view.li);
+        buffer->append("#%d L:%d", vi, view.li);
 
         if (view.is_pinned())
-            buffer->append(" P:%ld", view.pi);
+            buffer->append(" P:%d", view.pi);
 
         auto ty = tr.get_type();
         switch (ty)
@@ -642,10 +642,10 @@ void build_view_dbg_buffer(ImGuiTextBuffer *buffer, const test_data &bake_data)
         }
 
         if (view.has_strokes())
-            buffer->append(" [%ld..%ld)", view.si0, view.si1);
+            buffer->append(" [%d..%d)", view.si0, view.si1);
 
         if (view.has_image())
-            buffer->append(" i:%ld", view.ii);
+            buffer->append(" i:%d", view.ii);
 
         buffer->append("\n");
     }
@@ -1255,15 +1255,15 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::Separator();
 
     // TODO: multilayers support
-    ImGui::Text("ism strokes: %lu", g_ism->strokes.size());
-    ImGui::Text("ism points: %lu", g_ism->points.size());
-    ImGui::Text("ism brushes: %lu", g_ism->brushes.size());
+    ImGui::Text("ism strokes: %d", g_ism->strokes.size());
+    ImGui::Text("ism points: %d", g_ism->points.size());
+    ImGui::Text("ism brushes: %d", g_ism->brushes.size());
 
-    ImGui::Text("bake_quads v: (%lu/%lu)",
+    ImGui::Text("bake_quads v: (%d/%d)",
                 g_bake_quads.size(),
                 g_bake_quads.capacity());
 
-    ImGui::Text("curr_quads v: (%lu/%lu)",
+    ImGui::Text("curr_quads v: (%d/%d)",
                 g_curr_quads.size(),
                 g_curr_quads.capacity());
 
