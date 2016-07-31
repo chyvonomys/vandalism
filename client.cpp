@@ -668,7 +668,7 @@ void update_and_render(input_data *input, output_data *output)
     float pixel_height_in = input->vpHeightIn / input->vpHeightPx;
 
     Vandalism::Input ism_input;
-    ism_input.tool = static_cast<Vandalism::Tool>(gui_tool);
+    ism_input.tool = (input->shiftkey ? Vandalism::PAN : static_cast<Vandalism::Tool>(gui_tool));
     ism_input.mousex = mxin;
     ism_input.mousey = -myin;
     ism_input.negligibledistance = pixel_height_in;

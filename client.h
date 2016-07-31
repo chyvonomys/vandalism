@@ -47,6 +47,7 @@ struct input_data
     float rawMouseXPt, rawMouseYPt;
     float vpMouseXPt, vpMouseYPt;
     bool mouseleft;
+    bool shiftkey;
     bool scrolling;
     float scrollY;
 
