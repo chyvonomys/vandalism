@@ -619,36 +619,38 @@ bool load_image(const char *filename, ImageDesc &desc)
 void build_view_dbg_buffer(ImGuiTextBuffer *buffer, const test_data &bake_data)
 {
     buffer->clear();
+    std::stringstream ss;
     for (u32 vi = 0; vi < bake_data.nviews; ++vi)
     {
         const auto &view = bake_data.views[vi];
         test_transform tr = transform_from_basis(view.tr);
 
-        buffer->append("#%d L:%d", vi, view.li);
+        ss << '#' << vi << " L:" << view.li;
 
         if (view.is_pinned())
-            buffer->append(" P:%d", view.pi);
+            ss << " P:" << view.pi;
 
         auto ty = tr.get_type();
         switch (ty)
         {
-        case ID: buffer->append(" ID"); break;
-        case PAN: buffer->append(" PAN %f,%f", tr.tx, tr.ty); break;
-        case ZOOM: buffer->append(" ZOOM %f", tr.s); break;
-        case ROTATE: buffer->append(" ROTATE %f", 180.0f * tr.a / 3.1415926535f); break;
-        case COMPLEX: buffer->append(" COMPLEX %f,%f /%f x%f",
-                                     tr.tx, tr.ty,
-                                     180.0f * tr.a / 3.1415926535f, tr.s); break;
+        case ID: ss << " ID"; break;
+        case PAN: ss << " PAN " << tr.tx << ',' << tr.ty; break;
+        case ZOOM: ss << " ZOOM " <<  tr.s; break;
+        case ROTATE: ss << " ROTATE " << 180.0f * tr.a / 3.1415926535f; break;
+        case COMPLEX: ss << " COMPLEX " << tr.tx << ',' << tr.ty
+                         << " /" << 180.0f * tr.a / 3.1415926535f
+                         << " x" << tr.s; break;
         }
 
         if (view.has_strokes())
-            buffer->append(" [%d..%d)", view.si0, view.si1);
+            ss << " [" << view.si0 << ".." << view.si1 << ')';
 
         if (view.has_image())
-            buffer->append(" i:%d", view.ii);
+            ss << " i:" << view.ii;
 
-        buffer->append("\n");
+        ss << "\n";
     }
+    buffer->append("%s", ss.str().c_str());
 }
 
 void update_and_render(input_data *input, output_data *output)
@@ -1255,17 +1257,17 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::Separator();
 
     // TODO: multilayers support
-    ImGui::Text("ism strokes: %d", g_ism->strokes.size());
-    ImGui::Text("ism points: %d", g_ism->points.size());
-    ImGui::Text("ism brushes: %d", g_ism->brushes.size());
+    ImGui::Text("ism strokes: %d", static_cast<u32>(g_ism->strokes.size()));
+    ImGui::Text("ism points: %d", static_cast<u32>(g_ism->points.size()));
+    ImGui::Text("ism brushes: %d", static_cast<u32>(g_ism->brushes.size()));
 
     ImGui::Text("bake_quads v: (%d/%d)",
-                g_bake_quads.size(),
-                g_bake_quads.capacity());
+                static_cast<u32>(g_bake_quads.size()),
+                static_cast<u32>(g_bake_quads.capacity()));
 
     ImGui::Text("curr_quads v: (%d/%d)",
-                g_curr_quads.size(),
-                g_curr_quads.capacity());
+                static_cast<u32>(g_curr_quads.size()),
+                static_cast<u32>(g_curr_quads.capacity()));
 
     ImGui::Text("mode: %d", g_ism->currentMode);
 
