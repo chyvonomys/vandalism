@@ -174,6 +174,8 @@ i32 gui_viewIdx;
 i32 gui_tool;
 float gui_brush_color[4];
 i32 gui_brush_diameter_units;
+i32 gui_brush_spread_units;
+i32 gui_brush_angle;
 bool gui_mouse_occupied;
 bool gui_mouse_hover;
 bool gui_fake_pressure;
@@ -291,6 +293,7 @@ void setup(kernel_services *services, u32 nLayers)
     gui_grid_enabled = false;
 
     gui_brush_diameter_units = cfg_def_brush_diameter_units;
+    gui_brush_spread_units = 0;
 
     gui_eraser_alpha = 1.0f;
     gui_smooth_error_order = -3.0f;
@@ -448,12 +451,12 @@ void stroke_to_quads(const test_point* begin, const test_point* end,
                      size_t stroke_id, const test_basis& tform,
                      const Vandalism::Brush& brush)
 {
-    static Vandalism::Brush s_debug_brush
+    static Vandalism::Brush s_debug_brush =
     {
-        0.02f,
+        0.02f, 0.0f, 0.0f,
         1.0f, 0.0f, 0.0f, 1.0f,
-        0
-        };
+        false, false
+    };
     static std::vector<test_point> s_sampled_points;
 
     if (gui_present_smooth == Vandalism::FITBEZIER ||
@@ -683,6 +686,9 @@ void update_and_render(input_data *input, output_data *output)
     ism_input.eraseralpha = gui_eraser_alpha;
     ism_input.brushdiameter =
     gui_brush_diameter_units * cfg_brush_diameter_inches_per_unit;
+    ism_input.brushangle = 3.1415926535f * gui_brush_angle / 180.0f;
+    ism_input.brushspread =
+    gui_brush_spread_units * cfg_brush_diameter_inches_per_unit;
     ism_input.scrolly = input->scrollY;
     ism_input.scrolling = input->scrolling;
     ism_input.simplify = gui_draw_simplify;
@@ -898,17 +904,21 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::RadioButton("draw", &gui_tool, static_cast<i32>(Vandalism::DRAW));
     ImGui::SameLine();
     ImGui::RadioButton("erase", &gui_tool, static_cast<i32>(Vandalism::ERASE));
-    if (gui_tool == Vandalism::DRAW)
+    if (gui_tool == Vandalism::DRAW || gui_tool == Vandalism::ERASE)
     {
-        ImGui::ColorEdit4("color", gui_brush_color);
+        if (gui_tool == Vandalism::DRAW)
+        {
+            ImGui::ColorEdit4("color", gui_brush_color);
+        }
+        else
+        {
+            ImGui::SliderFloat("eraser", &gui_eraser_alpha, 0.0f, 1.0f);
+        }
         ImGui::SliderInt("diameter", &gui_brush_diameter_units,
                          cfg_min_brush_diameter_units, cfg_max_brush_diameter_units);
-    }
-    if (gui_tool == Vandalism::ERASE)
-    {
-        ImGui::SliderFloat("eraser", &gui_eraser_alpha, 0.0f, 1.0f);
-        ImGui::SliderInt("diameter", &gui_brush_diameter_units,
+        ImGui::SliderInt("spread", &gui_brush_spread_units,
                          cfg_min_brush_diameter_units, cfg_max_brush_diameter_units);
+        ImGui::SliderInt("angle", &gui_brush_angle, 0, 180);
     }
     ImGui::RadioButton("pan", &gui_tool, static_cast<i32>(Vandalism::PAN));
     ImGui::SameLine();

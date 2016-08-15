@@ -14,8 +14,11 @@ struct Vandalism
     struct Brush
     {
         float diameter;
+        float angle;
+        float spread;
         float r, g, b, a;
-        i32 type;
+        bool type;
+        bool pressure;
 
         Brush modified(float t) const
         {
@@ -143,6 +146,8 @@ struct Vandalism
         Tool tool;
         float brushred, brushgreen, brushblue, brushalpha;
         float brushdiameter;
+        float brushspread;
+        float brushangle;
         float eraseralpha;
         float negligibledistance;
     };
