@@ -369,6 +369,51 @@ void add_quad(std::vector<output_data::Vertex> &quads,
     v.x = d.x; v.y = d.y; v.u = u1; v.v = 0.0f; quads.push_back(v);
 }
 
+void add_rect(std::vector<output_data::Vertex>& quads,
+              float2 p0, float2 p1, float2 side0, float2 side1,
+              const test_basis& tform,
+              const Vandalism::Brush &brush,
+              float zindex)
+{
+    float2 p0l = p0 - side0;
+    float2 p0r = p0 + side0;
+    float2 p1l = p1 - side1;
+    float2 p1r = p1 + side1;
+
+    test_point A = point_in_basis(tform, {p0r.x, p0r.y});
+    test_point B = point_in_basis(tform, {p0l.x, p0l.y});
+    test_point C = point_in_basis(tform, {p1l.x, p1l.y});
+    test_point D = point_in_basis(tform, {p1r.x, p1r.y});
+
+    add_quad(quads,
+             A, B, C, D, zindex, (brush.type == 1 ? brush.a : 0.0f),
+             brush.r, brush.g, brush.b, (brush.type == 1 ? 0.0f : brush.a),
+             0.5f, 0.5f);
+}
+
+void add_disk(std::vector<output_data::Vertex>& quads,
+              float2 center, float2 right, float2 up,
+              const test_basis& tform,
+              const Vandalism::Brush &brush,
+              float zindex)
+{
+    float2 bl = center - right - up;
+    float2 br = center + right - up;
+    float2 tl = center - right + up;
+    float2 tr = center + right + up;
+
+    test_point A = point_in_basis(tform, {bl.x, bl.y});
+    test_point B = point_in_basis(tform, {tl.x, tl.y});
+    test_point C = point_in_basis(tform, {tr.x, tr.y});
+    test_point D = point_in_basis(tform, {br.x, br.y});
+
+    add_quad(quads,
+             A, B, C, D, zindex, (brush.type == 1 ? brush.a : 0.0f),
+             brush.r, brush.g, brush.b, (brush.type == 1 ? 0.0f : brush.a),
+             0.0f, 1.0f);
+}
+
+
 void fill_quads(std::vector<output_data::Vertex>& quads,
                 const test_point *points, size_t N,
                 size_t si,
@@ -376,49 +421,105 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
                 const Vandalism::Brush& brush,
                 float depthStep)
 {
+    if (N == 0)
+    {
+        return;
+    }
+
     float zindex = depthStep * (si + 1);
 
     if (gui_debug_draw_rects)
+    {
+        Vandalism::Brush b1 = brush.modified(points[0].w);
+
+        if (b1.spread > 0.0)
+        {
+            float2 spr1n = {si_cosf(b1.angle), si_sinf(b1.angle)};
+            float2 spr1 = b1.spread * spr1n;
+            float2 side = 0.5f * b1.diameter * perp(spr1n);
+
+            float2 p1 = {points[0].x, points[0].y};
+            add_rect(quads, p1 - spr1, p1 + spr1,
+                     side, side,
+                     tform, b1, zindex);
+        }
+
         // rectangles between points
         for (size_t i = 1; i < N; ++i)
         {
-            float2 prev = {points[i-1].x, points[i-1].y};
-            float2 curr = {points[i].x, points[i].y};
-            float2 dir = curr - prev;
+            float2 prevC = {points[i-1].x, points[i-1].y};
+            float2 currC = {points[i].x, points[i].y};
+            float2 dirC = currC - prevC;
 
-            Vandalism::Brush cb0 = brush.modified(points[i-1].w);
-
-            if (len(dir) > 0.001f)
+            if (len(dirC) > 0.001f)
             {
+                Vandalism::Brush cb0 = brush.modified(points[i-1].w);
                 Vandalism::Brush cb1 = brush.modified(points[i].w);
 
-                float2 side = perp(dir * (1.0f / len(dir)));
+                if (cb0.spread > 0.0 || cb1.spread > 0.0)
+                {
+                    float2 spr0n = {si_cosf(cb0.angle), si_sinf(cb0.angle)};
+                    float2 spr0 = cb0.spread * spr0n;
 
-                float2 side0 = 0.5f * cb0.diameter * side;
-                float2 side1 = 0.5f * cb1.diameter * side;
+                    float2 spr1n = {si_cosf(cb1.angle), si_sinf(cb1.angle)};
+                    float2 spr1 = cb1.spread * spr1n;
 
-                // x -ccw-> y
-                float2 p0l = prev + side0;
-                float2 p0r = prev - side0;
-                float2 p1l = curr + side1;
-                float2 p1r = curr - side1;
+                    float2 prevL = prevC - spr0;
+                    float2 currL = currC - spr1;
+                    float2 dirL = currL - prevL;
+                    // TODO: this is inaccurate,
+                    // multiplying this with prev and curr sizes
+                    // will not produce real tangents to circles
+                    float2 sideL = norm(perp(dirL));
 
-                test_point a = point_in_basis(tform, {p0r.x, p0r.y});
-                test_point b = point_in_basis(tform, {p0l.x, p0l.y});
-                test_point c = point_in_basis(tform, {p1l.x, p1l.y});
-                test_point d = point_in_basis(tform, {p1r.x, p1r.y});
+                    // TODO: interp color/alpha across rect
+                    // left edge
+                    add_rect(quads, prevL, currL,
+                             sideL * cb0.diameter * 0.5f,
+                             sideL * cb1.diameter * 0.5f,
+                             tform, cb0, zindex);
 
-                bool eraser = (cb1.type == 1);
+                    float2 prevR = prevC + spr0;
+                    float2 currR = currC + spr1;
+                    float2 dirR = currR - prevR;
+                    // TODO: this is inaccurate,
+                    // multiplying this with prev and curr sizes
+                    // will not produce real tangents to circles
+                    float2 sideR = norm(perp(dirR));
 
-                // TODO: interpolate color/erase/alpha across quad
-                add_quad(quads,
-                         a, b, c, d, zindex, (eraser ? cb1.a : 0.0f),
-                         cb1.r, cb1.g, cb1.b, (eraser ? 0.0f : cb1.a),
-                         0.5f, 0.5f);
+                    // TODO: interp color/alpha across rect
+                    // right edge
+                    add_rect(quads, prevR, currR,
+                             sideR * cb0.diameter * 0.5f,
+                             sideR * cb1.diameter * 0.5f,
+                             tform, cb0, zindex);
+
+                    // TODO: interp color/alpha across rect
+                    // fill
+                    add_rect(quads, prevC, currC,
+                             spr0, spr1,
+                             tform, cb0, zindex);
+
+                    // across edge
+                    float2 side = 0.5f * cb1.diameter * perp(spr1n);
+                    add_rect(quads, currC - spr1, currC + spr1,
+                             side, side,
+                             tform, cb1, zindex);
+                }
+                else
+                {
+                    float2 side = norm(perp(dirC));
+                    add_rect(quads, prevC, currC,
+                             side * cb0.diameter * 0.5f,
+                             side * cb1.diameter * 0.5f,
+                             tform, brush, zindex);
+                }
             }
         }
+    }
 
     if (gui_debug_draw_disks)
+    {
         // disks at points
         for (size_t i = 0; i < N; ++i)
         {
@@ -427,23 +528,25 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
             float2 curr = {points[i].x, points[i].y};
             float2 right = {0.5f * cb.diameter, 0.0f};
             float2 up = {0.0, 0.5f * cb.diameter};
-            float2 bl = curr - right - up;
-            float2 br = curr + right - up;
-            float2 tl = curr - right + up;
-            float2 tr = curr + right + up;
 
-            test_point a = point_in_basis(tform, {bl.x, bl.y});
-            test_point b = point_in_basis(tform, {tl.x, tl.y});
-            test_point c = point_in_basis(tform, {tr.x, tr.y});
-            test_point d = point_in_basis(tform, {br.x, br.y});
+            if (cb.spread > 0.0)
+            {
+                float2 side = {cb.spread * si_cosf(cb.angle),
+                               cb.spread * si_sinf(cb.angle)};
 
-            bool eraser = (cb.type == 1);
+                add_disk(quads, curr + side, right, up,
+                         tform, cb, zindex);
 
-            add_quad(quads,
-                     a, b, c, d, zindex, (eraser ? cb.a : 0.0f),
-                     cb.r, cb.g, cb.b, (eraser ? 0.0f : cb.a),
-                     0.0f, 1.0f);
+                add_disk(quads, curr - side, right, up,
+                         tform, cb, zindex);
+            }
+            else
+            {
+                add_disk(quads, curr, right, up,
+                         tform, cb, zindex);
+            }
         }
+    }
 }
 
 void stroke_to_quads(const test_point* begin, const test_point* end,

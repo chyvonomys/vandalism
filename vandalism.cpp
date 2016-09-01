@@ -29,6 +29,9 @@ struct Vandalism
             result.b = b;
             result.a = a * t;
             result.type = type;
+            result.pressure = pressure;
+            result.spread = spread;
+            result.angle = angle;
             return result;
         }
     };
@@ -296,6 +299,8 @@ struct Vandalism
                           input->eraseralpha : input->brushalpha);
         currentBrush.type = (input->tool == ERASE ? 1 : 0);
         currentBrush.diameter = input->brushdiameter;
+        currentBrush.angle = input->brushangle;
+        currentBrush.spread = input->brushspread;
     }
 
     void do_draw(const Input *input)

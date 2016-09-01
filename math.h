@@ -128,6 +128,11 @@ inline float2 perp(const float2 &v)
     return result;
 }
 
+inline float2 norm(const float2 &v)
+{
+    return v * (1.0f / len(v));
+}
+
 inline float cos(const float2 &a, const float2 &b)
 {
     float result;
