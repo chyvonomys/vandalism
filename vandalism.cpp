@@ -542,7 +542,6 @@ struct Vandalism
     }
 
     Mode currentMode;
-    u32 layersCnt;
 
     void update(Input *input)
     {

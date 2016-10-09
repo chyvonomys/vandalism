@@ -784,7 +784,7 @@ void update_and_render(input_data *input, output_data *output)
 
     const test_data &bake_data = g_ism->get_bake_data();
 
-    if (g_ism->visiblesChanged)
+    if (input->forceUpdate || g_ism->visiblesChanged)
     {
         // flag processed
         // TODO: make this better
@@ -820,7 +820,7 @@ void update_and_render(input_data *input, output_data *output)
 
     output->zbandwidth = cfg_depth_step;
 
-    if (g_ism->currentChanged)
+    if (input->forceUpdate || g_ism->currentChanged)
     {
         // TODO: flag processed, improve this
         g_ism->currentChanged = false;

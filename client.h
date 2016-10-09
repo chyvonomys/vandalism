@@ -62,6 +62,8 @@ struct input_data
     float rtWidthIn, rtHeightIn;
 
     i32 swWidthPx, swHeightPx;
+
+    bool forceUpdate;
 };
 
 #include "math.h"

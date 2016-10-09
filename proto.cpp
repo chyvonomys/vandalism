@@ -398,7 +398,7 @@ struct MarkerBatchTech
 
     void draw(kernel_services::MeshID mi,
               u32 offset, u32 count,
-              float scaleX, float scaleY);
+              const float2 &scale);
 
     GLuint m_program;
     GLint m_scaleLoc;
@@ -886,8 +886,11 @@ struct Pipeline
 
     void do_drawcalls(const input_data &input, const output_data &output,
                       const output_data::drawcall *drawcalls, size_t drawcall_cnt,
-                      bool gamma_on)
+                      bool gamma_on, bool multisample_on)
     {
+        float2 in2rt = { 2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn };
+        float2 in2vp = { 2.0f / input.vpWidthIn, 2.0f / input.vpHeightIn };
+
         for (size_t layerId = 0; layerId < LAYERCNT; ++layerId)
         {
             bool refreshThisLayer = false;
@@ -912,7 +915,15 @@ struct Pipeline
                 augLayerId = LAYERCNT;
             }
 
-            bakeRTMS.begin_receive();
+            if (multisample_on)
+            {
+                bakeRTMS.begin_receive();
+            }
+            else
+            {
+                layerRT[layerId].begin_receive();
+            }
+
             glClearColor(0.0, 0.0, 0.0, 1.0);
             glClearDepth(0.0);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -924,9 +935,7 @@ struct Pipeline
                 {
                     if (dc.id == output_data::BAKEBATCH)
                     {
-                        render.draw(dc.mesh_id, dc.offset, dc.count,
-                                    2.0f / input.rtWidthIn,
-                                    2.0f / input.rtHeightIn);
+                        render.draw(dc.mesh_id, dc.offset, dc.count, in2rt);
                     }
                     else if (dc.id == output_data::IMAGE)
                     {
@@ -936,18 +945,25 @@ struct Pipeline
                             {dc.params[2], dc.params[3]},
                             {dc.params[4], dc.params[5]}
                         };
-                        si.draw(textures[dc.texture_id].glid,
-                                basis,
-                                1.0f,
-                                { 2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn });
+                        si.draw(textures[dc.texture_id].glid, basis, 1.0f, in2rt);
                     }
                 }
             }
-            bakeRTMS.end_receive();
+            if (multisample_on)
+            {
+                bakeRTMS.end_receive();
+            }
+            else
+            {
+                layerRT[layerId].end_receive();
+            }
 
-            layerRT[layerId].begin_receive();
-            bakeRTMS.resolve();
-            layerRT[layerId].end_receive();
+            if (multisample_on)
+            {
+                layerRT[layerId].begin_receive();
+                bakeRTMS.resolve();
+                layerRT[layerId].end_receive();
+            }
         }
 
         // Check if we need to augment any layerRTs?
@@ -981,8 +997,7 @@ struct Pipeline
             const auto &augDC = output.drawcalls[augCallId];
             if (augDC.id == output_data::CURRENTSTROKE)
             {
-                render.draw(augDC.mesh_id, augDC.offset, augDC.count,
-                            2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
+                render.draw(augDC.mesh_id, augDC.offset, augDC.count, in2rt);
             }
             if (augDC.id == output_data::IMAGEFIT)
             {
@@ -992,8 +1007,7 @@ struct Pipeline
                     {augDC.params[2], augDC.params[3]},
                     {augDC.params[4], augDC.params[5]},
                 };
-                float2 scale = { 2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn };
-                si.draw(textures[augDC.texture_id].glid, basis, 0.5f, scale);
+                si.draw(textures[augDC.texture_id].glid, basis, 0.5f, in2rt);
             }
 
             compRT.end_receive();
@@ -1028,8 +1042,7 @@ struct Pipeline
         {
             if (output.drawcalls[i].id == output_data::GRID)
             {
-                grid.draw(output.grid_bg_color, output.grid_fg_color,
-                          { 2.0f / input.vpWidthIn, 2.0f / input.vpHeightIn });
+                grid.draw(output.grid_bg_color, output.grid_fg_color, in2vp);
             }
         }
 
@@ -1215,10 +1228,11 @@ int main(int argc, char *argv[])
 
         setup(&services, Pipeline::LAYERCNT);
 
-        signal_change_detector f9_signal, s_signal;
+        signal_change_detector f9_signal, g_signal, m_signal;
 
         bool reload_client = false;
         bool gamma_enabled = true;
+        bool multisample_enabled = true;
 
         u32 last_scroll_updated_frame = 0;
 
@@ -1246,16 +1260,23 @@ int main(int argc, char *argv[])
             glfwPollEvents();
 
             f9_signal.feed(glfwGetKey(pWindow, GLFW_KEY_F9) == GLFW_PRESS);
-            s_signal.feed(glfwGetKey(pWindow, GLFW_KEY_S) == GLFW_PRESS);
+            g_signal.feed(glfwGetKey(pWindow, GLFW_KEY_G) == GLFW_PRESS);
+            m_signal.feed(glfwGetKey(pWindow, GLFW_KEY_M) == GLFW_PRESS);
 
             if (f9_signal.is_rising_edge())
             {
                 reload_client = true;
             }
 
-            if (s_signal.is_rising_edge())
+            if (g_signal.is_rising_edge())
             {
                 gamma_enabled = !gamma_enabled;
+            }
+
+            if (m_signal.is_rising_edge())
+            {
+                multisample_enabled = !multisample_enabled;
+                input.forceUpdate = true;
             }
 
             input.mouseleft =
@@ -1347,6 +1368,8 @@ int main(int argc, char *argv[])
 
             update_and_render(&input, &output);
 
+            input.forceUpdate = false;
+
             if (output.quit_flag)
             {
                 break;
@@ -1354,7 +1377,7 @@ int main(int argc, char *argv[])
 
             p.do_drawcalls(input, output,
                            output.drawcalls, output.drawcall_cnt,
-                           gamma_enabled);
+                           gamma_enabled, multisample_enabled);
 
             TIME; // finish ---------------------------------------------------------
             
@@ -1748,8 +1771,7 @@ void MarkerBatchTech::cleanup()
     glDeleteProgram(m_program);
 }
 
-void MarkerBatchTech::draw(kernel_services::MeshID mi, u32 offset, u32 count,
-                           float scaleX, float scaleY)
+void MarkerBatchTech::draw(kernel_services::MeshID mi, u32 offset, u32 count, const float2 &scale)
 {
     if (count == 0)
     {
@@ -1761,7 +1783,7 @@ void MarkerBatchTech::draw(kernel_services::MeshID mi, u32 offset, u32 count,
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_SRC1_ALPHA);
     glUseProgram(m_program);
-    glUniform2f(m_scaleLoc, scaleX, scaleY);
+    glUniform2f(m_scaleLoc, scale.x, scale.y);
 
     glBindVertexArray(meshes[mi].vao);
 
