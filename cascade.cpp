@@ -16,28 +16,6 @@ struct test_stroke
     box2 cached_bbox;
 };
 
-enum tr_type { ID, PAN, ZOOM, ROTATE, COMPLEX };
-
-struct test_transform
-{
-    float s;
-    float2 t;
-    float a;
-
-    tr_type get_type() const
-    {
-        if (s == 1.0f && t.x == 0.0f && t.y == 0.0f && a == 0.0f)
-            return ID;
-        if (s == 1.0f && a == 0.0f)
-            return PAN;
-        if (t.x == 0.0f && t.y == 0.0f && a == 0.0f)
-            return ZOOM;
-        if (s == 1.0f && t.x == 0.0f && t.y == 0.0f)
-            return ROTATE;
-        return COMPLEX;
-    }
-};
-
 struct test_image
 {
     size_t nameidx;
@@ -190,53 +168,24 @@ void crop(const test_data &data, size_t vi, size_t ti,
     }
 }
 
-test_transform transform_from_basis(const basis2s &basis)
-{
-    test_transform result;
-    result.t = basis.o;
-    result.s = len(basis.x);
-    result.a = si_atan2(basis.x.y, basis.x.x);
-    return result;
-}
-
-basis2s basis_from_transform(const test_transform &transform)
-{
-    basis2s result;
-    result.o = transform.t;
-    result.x = transform.s * float2{ si_cosf(transform.a), si_sinf(transform.a) };
-    return result;
-}
-
 basis2s default_basis()
 {
     return{ {0.0f, 0.0f}, {1.0f, 0.0f} };
 }
 
-// TODO: remove this intermediate transform step
-test_transform id_transform()
-{
-    return{ 1.0f, {0.0f, 0.0f}, 0.0f };
-}
-
 basis2s make_zoom(float a, float b)
 {
-    test_transform result = id_transform();
-    result.s = b / a;
-    return basis_from_transform(result);
+    return{ {0.0f, 0.0f}, {b / a, 0.0f} };
 }
 
 basis2s make_pan(const float2 &p)
 {
-    test_transform result = id_transform();
-    result.t = p;
-    return basis_from_transform(result);
+    return{ p, {1.0f, 0.0f} };
 }
 
 basis2s make_rotate(float a)
 {
-    test_transform result = id_transform();
-    result.a = a;
-    return basis_from_transform(result);
+    return{ {0.0f, 0.0f}, {si_cosf(a), si_sinf(a)} };
 }
 
 basis2s inverse_basis(const basis2s &basis)

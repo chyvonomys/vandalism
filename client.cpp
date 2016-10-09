@@ -708,24 +708,27 @@ void build_view_dbg_buffer(ImGuiTextBuffer *buffer, const test_data &bake_data)
     for (u32 vi = 0; vi < bake_data.nviews; ++vi)
     {
         const auto &view = bake_data.views[vi];
-        test_transform tr = transform_from_basis(view.tr);
 
         ss << '#' << vi << " L:" << view.li;
 
         if (view.is_pinned())
             ss << " P:" << view.pi;
 
-        auto ty = tr.get_type();
-        switch (ty)
-        {
-        case ID: ss << " ID"; break;
-        case PAN: ss << " PAN " << tr.t.x << ',' << tr.t.y; break;
-        case ZOOM: ss << " ZOOM " <<  tr.s; break;
-        case ROTATE: ss << " ROTATE " << 180.0f * tr.a / 3.1415926535f; break;
-        case COMPLEX: ss << " COMPLEX " << tr.t.x << ',' << tr.t.y
-                         << " /" << 180.0f * tr.a / 3.1415926535f
-                         << " x" << tr.s; break;
-        }
+        float2 t = view.tr.o;
+        float s = len(view.tr.x);
+        float a = si_atan2(view.tr.x.y, view.tr.x.x);
+
+        if (s == 1.0f && t.x == 0.0f && t.y == 0.0f && a == 0.0f)
+            ss << " ID";
+        else if (s == 1.0f && a == 0.0f)
+            ss << " PAN " << t.x << ',' << t.y;
+        else if (t.x == 0.0f && t.y == 0.0f && a == 0.0f)
+            ss << " ZOOM " <<  s;
+        else if (s == 1.0f && t.x == 0.0f && t.y == 0.0f)
+            ss << " ROTATE " << 180.0f * a / 3.1415926535f;
+        else ss << " COMPLEX " << t.x << ',' << t.y
+                         << " /" << 180.0f * a / 3.1415926535f
+                         << " x" << s;
 
         if (view.has_strokes())
             ss << " [" << view.si0 << ".." << view.si1 << ')';
