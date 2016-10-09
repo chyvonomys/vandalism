@@ -19,7 +19,6 @@
 
 #include <vector>
 #include "client.h"
-#include "math.h"
 
 struct initr_item
 {
@@ -312,8 +311,7 @@ struct FSTexturePresenter
 {
     void setup(FSQuad *quad);
     void draw(GLuint tex, GLenum srcFactor, GLenum dstFactor,
-              float x, float y,
-              float x_, float y_,
+              const float2 &pre, const float2 &post,
               float s, float a,
               float vpW, float vpH,
               float rtW, float rtH);
@@ -332,10 +330,8 @@ struct FSTexturePresenter
 struct StrokeImageTech
 {
     void setup(FSQuad *quad);
-    void draw(GLuint tex, float x, float y,
-              float xx, float xy, float yx, float yy,
-              float alpha,
-              float scaleX, float scaleY);
+    void draw(GLuint tex, const basis2r &basis,
+              float alpha, const float2 &scale);
     void cleanup();
 
     FSQuad *m_quad;
@@ -349,8 +345,7 @@ struct StrokeImageTech
 struct FSGrid
 {
     void setup(FSQuad *quad);
-    void draw(const float *bgcolor, const float *fgcolor,
-              float scaleX, float scaleY);
+    void draw(const color3f &bgcolor, const color3f &fgcolor, const float2 &scale);
     void cleanup();
 
     GLuint m_fullscreenProgram;
@@ -935,13 +930,16 @@ struct Pipeline
                     }
                     else if (dc.id == output_data::IMAGE)
                     {
+                        basis2r basis =
+                        {
+                            {dc.params[0], dc.params[1]},
+                            {dc.params[2], dc.params[3]},
+                            {dc.params[4], dc.params[5]}
+                        };
                         si.draw(textures[dc.texture_id].glid,
-                                dc.params[0], dc.params[1],
-                                dc.params[2], dc.params[3],
-                                dc.params[4], dc.params[5],
+                                basis,
                                 1.0f,
-                                2.0f / input.rtWidthIn,
-                                2.0f / input.rtHeightIn);
+                                { 2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn });
                     }
                 }
             }
@@ -975,8 +973,7 @@ struct Pipeline
             augLayerId = drawcalls[augCallId].layer_id;
 
             fs.draw(layerRT[augLayerId].m_tex, GL_ONE, GL_ZERO,
-                    0.0f, 0.0f,
-                    0.0f, 0.0f,
+                    { 0.0f, 0.0f }, { 0.0f, 0.0f },
                     1.0f, 0.0f,
                     input.rtWidthIn, input.rtHeightIn,
                     input.rtWidthIn, input.rtHeightIn);
@@ -989,12 +986,14 @@ struct Pipeline
             }
             if (augDC.id == output_data::IMAGEFIT)
             {
-                si.draw(textures[augDC.texture_id].glid,
-                        augDC.params[0], augDC.params[1],
-                        augDC.params[2], augDC.params[3],
-                        augDC.params[4], augDC.params[5],
-                        0.5f,
-                        2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn);
+                basis2r basis =
+                {
+                    {augDC.params[0], augDC.params[1]},
+                    {augDC.params[2], augDC.params[3]},
+                    {augDC.params[4], augDC.params[5]},
+                };
+                float2 scale = { 2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn };
+                si.draw(textures[augDC.texture_id].glid, basis, 0.5f, scale);
             }
 
             compRT.end_receive();
@@ -1015,7 +1014,7 @@ struct Pipeline
             glEnable(GL_FRAMEBUFFER_SRGB);
         }
 
-        glClearColor(output.bg_red, output.bg_green, output.bg_blue, 1.0);
+        glClearColor(output.bg_color.r, output.bg_color.g, output.bg_color.b, 1.0);
         glClear(GL_COLOR_BUFFER_BIT);
 
         // viewport is centered in window
@@ -1030,7 +1029,7 @@ struct Pipeline
             if (output.drawcalls[i].id == output_data::GRID)
             {
                 grid.draw(output.grid_bg_color, output.grid_fg_color,
-                          2.0f / input.vpWidthIn, 2.0f / input.vpHeightIn);
+                          { 2.0f / input.vpWidthIn, 2.0f / input.vpHeightIn });
             }
         }
 
@@ -1045,8 +1044,7 @@ struct Pipeline
                                   compRT : layerRT[layerId]).m_tex;
 
                     fs.draw(tex, GL_ONE, GL_SRC_ALPHA,
-                            output.preTranslateX, output.preTranslateY,
-                            output.postTranslateX, output.postTranslateY,
+                            output.preTranslate, output.postTranslate,
                             output.scale, output.rotate,
                             input.vpWidthIn, input.vpHeightIn,
                             input.rtWidthIn, input.rtHeightIn);
@@ -1601,8 +1599,7 @@ void FSTexturePresenter::cleanup()
 }
 
 void FSTexturePresenter::draw(GLuint tex, GLenum blendSrc, GLenum blendDst,
-                              float x, float y,
-                              float x_, float y_,
+                              const float2 &pre, const float2 &post,
                               float s, float a,
                               float vpW, float vpH,
                               float rtW, float rtH)
@@ -1610,8 +1607,8 @@ void FSTexturePresenter::draw(GLuint tex, GLenum blendSrc, GLenum blendDst,
     glEnable(GL_BLEND);
     glBlendFunc(blendSrc, blendDst);
     glUseProgram(m_fullscreenProgram);
-    glUniform2f(m_preTranslationLoc, x, y);
-    glUniform2f(m_postTranslationLoc, x_, y_);
+    glUniform2f(m_preTranslationLoc, pre.x, pre.y);
+    glUniform2f(m_postTranslationLoc, post.x, post.y);
     glUniform1f(m_scaleLoc, s);
     glUniform1f(m_rotationLoc, a);
     glUniform2f(m_rtSizeLoc, rtW, rtH);
@@ -1683,13 +1680,12 @@ void FSGrid::setup(FSQuad *quad)
     m_scaleLoc = glGetUniformLocation(m_fullscreenProgram, "u_scale");
 }
 
-void FSGrid::draw(const float *bgcolor, const float *fgcolor,
-                  float scaleX, float scaleY)
+void FSGrid::draw(const color3f &bgcolor, const color3f &fgcolor, const float2 &scale)
 {
     glUseProgram(m_fullscreenProgram);
-    glUniform3f(m_bgColorLoc, bgcolor[0], bgcolor[1], bgcolor[2]);
-    glUniform3f(m_fgColorLoc, fgcolor[0], fgcolor[1], fgcolor[2]);
-    glUniform2f(m_scaleLoc, scaleX, scaleY);
+    glUniform3f(m_bgColorLoc, bgcolor.r, bgcolor.g, bgcolor.b);
+    glUniform3f(m_fgColorLoc, fgcolor.r, fgcolor.g, fgcolor.b);
+    glUniform2f(m_scaleLoc, scale.x, scale.y);
     m_quad->draw();
     glUseProgram(0);
 }
@@ -1836,18 +1832,15 @@ void StrokeImageTech::cleanup()
     glDeleteProgram(m_fullscreenProgram);
 }
 
-void StrokeImageTech::draw(GLuint tex,
-                           float x, float y,
-                           float xx, float xy, float yx, float yy,
-                           float alpha,
-                           float scaleX, float scaleY)
+void StrokeImageTech::draw(GLuint tex, const basis2r &basis,
+                           float alpha, const float2 &scale)
 {
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_SRC1_ALPHA);
     glUseProgram(m_fullscreenProgram);
-    glUniform2f(m_posLoc, x, y);
-    glUniform4f(m_axesLoc, xx, xy, yx, yy);
-    glUniform2f(m_scaleLoc, scaleX, scaleY);
+    glUniform2f(m_posLoc, basis.o.x, basis.o.y);
+    glUniform4f(m_axesLoc, basis.x.x, basis.x.y, basis.y.x, basis.y.y);
+    glUniform2f(m_scaleLoc, scale.x, scale.y);
     glUniform1f(m_alphaLoc, alpha);
     glBindTexture(GL_TEXTURE_2D, tex);
     m_quad->draw();

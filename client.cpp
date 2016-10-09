@@ -1,7 +1,6 @@
 #include <string>
 #include <vector>
 #include "client.h"
-#include "math.h"
 
 #ifdef __clang__
 #pragma clang diagnostic push
@@ -172,7 +171,7 @@ Vandalism *g_ism = nullptr;
 bool gui_showAllViews;
 i32 gui_viewIdx;
 i32 gui_tool;
-float gui_brush_color[4];
+color4f gui_brush_color;
 i32 gui_brush_diameter_units;
 i32 gui_brush_spread_units;
 i32 gui_brush_angle;
@@ -185,9 +184,9 @@ bool gui_debug_draw_disks;
 bool gui_draw_simplify;
 i32 gui_draw_smooth;
 i32 gui_present_smooth;
-float gui_background_color[3];
-float gui_grid_bg_color[3];
-float gui_grid_fg_color[3];
+color3f gui_background_color;
+color3f gui_grid_bg_color;
+color3f gui_grid_fg_color;
 bool gui_grid_enabled;
 float gui_eraser_alpha;
 float gui_smooth_error_order;
@@ -273,22 +272,10 @@ void setup(kernel_services *services, u32 nLayers)
     gui_viewIdx = 0;
     gui_tool = static_cast<i32>(Vandalism::DRAW);
 
-    gui_brush_color[0] = 1.0f;
-    gui_brush_color[1] = 1.0f;
-    gui_brush_color[2] = 1.0f;
-    gui_brush_color[3] = 1.0f;
-
-    gui_background_color[0] = 0.3f;
-    gui_background_color[1] = 0.3f;
-    gui_background_color[2] = 0.3f;
-
-    gui_grid_bg_color[0] = 0.0f;
-    gui_grid_bg_color[1] = 0.0f;
-    gui_grid_bg_color[2] = 0.5f;
-
-    gui_grid_fg_color[0] = 0.5f;
-    gui_grid_fg_color[1] = 0.5f;
-    gui_grid_fg_color[2] = 1.0f;
+    gui_brush_color = { 1.0, 1.0f, 1.0f, 1.0f };
+    gui_background_color = { 0.3f, 0.3f, 0.3f };
+    gui_grid_bg_color = { 0.0f, 0.0f, 0.5f };
+    gui_grid_fg_color = { 0.5f, 0.5f, 1.0f };
 
     gui_grid_enabled = false;
 
@@ -352,7 +339,7 @@ void cleanup()
 // TODO: optimize with triangle fans/strips maybe?
 
 void add_quad(std::vector<output_data::Vertex> &quads,
-              test_point a, test_point b, test_point c, test_point d,
+              float2 a, float2 b, float2 c, float2 d,
               float zindex, float ec,
               float rc, float gc, float bc, float ac,
               float u0, float u1)
@@ -371,29 +358,24 @@ void add_quad(std::vector<output_data::Vertex> &quads,
 
 void add_rect(std::vector<output_data::Vertex>& quads,
               float2 p0, float2 p1, float2 side0, float2 side1,
-              const test_basis& tform,
+              const basis2s& tform,
               const Vandalism::Brush &brush,
               float zindex)
 {
-    float2 p0l = p0 - side0;
-    float2 p0r = p0 + side0;
-    float2 p1l = p1 - side1;
-    float2 p1r = p1 + side1;
-
-    test_point A = point_in_basis(tform, {p0r.x, p0r.y});
-    test_point B = point_in_basis(tform, {p0l.x, p0l.y});
-    test_point C = point_in_basis(tform, {p1l.x, p1l.y});
-    test_point D = point_in_basis(tform, {p1r.x, p1r.y});
+    float2 A = point_in_basis(tform, p0 + side0);
+    float2 B = point_in_basis(tform, p0 - side0);
+    float2 C = point_in_basis(tform, p1 - side1);
+    float2 D = point_in_basis(tform, p1 + side1);
 
     add_quad(quads,
-             A, B, C, D, zindex, (brush.type == 1 ? brush.a : 0.0f),
-             brush.r, brush.g, brush.b, (brush.type == 1 ? 0.0f : brush.a),
+             A, B, C, D, zindex, (brush.type == 1 ? brush.color.a : 0.0f),
+             brush.color.r, brush.color.g, brush.color.b, (brush.type == 1 ? 0.0f : brush.color.a),
              0.5f, 0.5f);
 }
 
 void add_disk(std::vector<output_data::Vertex>& quads,
               float2 center, float2 right, float2 up,
-              const test_basis& tform,
+              const basis2s& tform,
               const Vandalism::Brush &brush,
               float zindex)
 {
@@ -402,14 +384,14 @@ void add_disk(std::vector<output_data::Vertex>& quads,
     float2 tl = center - right + up;
     float2 tr = center + right + up;
 
-    test_point A = point_in_basis(tform, {bl.x, bl.y});
-    test_point B = point_in_basis(tform, {tl.x, tl.y});
-    test_point C = point_in_basis(tform, {tr.x, tr.y});
-    test_point D = point_in_basis(tform, {br.x, br.y});
+    float2 A = point_in_basis(tform, bl);
+    float2 B = point_in_basis(tform, tl);
+    float2 C = point_in_basis(tform, tr);
+    float2 D = point_in_basis(tform, br);
 
     add_quad(quads,
-             A, B, C, D, zindex, (brush.type == 1 ? brush.a : 0.0f),
-             brush.r, brush.g, brush.b, (brush.type == 1 ? 0.0f : brush.a),
+             A, B, C, D, zindex, (brush.type == 1 ? brush.color.a : 0.0f),
+             brush.color.r, brush.color.g, brush.color.b, (brush.type == 1 ? 0.0f : brush.color.a),
              0.0f, 1.0f);
 }
 
@@ -417,7 +399,7 @@ void add_disk(std::vector<output_data::Vertex>& quads,
 void fill_quads(std::vector<output_data::Vertex>& quads,
                 const test_point *points, size_t N,
                 size_t si,
-                const test_basis& tform,
+                const basis2s& tform,
                 const Vandalism::Brush& brush,
                 float depthStep)
 {
@@ -551,7 +533,7 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
 
 void stroke_to_quads(const test_point* begin, const test_point* end,
                      std::vector<output_data::Vertex>& quads,
-                     size_t stroke_id, const test_basis& tform,
+                     size_t stroke_id, const basis2s& tform,
                      const Vandalism::Brush& brush)
 {
     static Vandalism::Brush s_debug_brush =
@@ -597,14 +579,14 @@ void collect_bake_data(const test_data& bake_data,
                        u8 layer_id)
 {
     static std::vector<test_visible> s_visibles;
-    static std::vector<test_basis> s_transforms;
+    static std::vector<basis2s> s_transforms;
 
     s_visibles.clear();
     s_transforms.clear();
-    test_box viewbox = {-0.5f * width_in,
-                        +0.5f * width_in,
-                        -0.5f * height_in,
-                        +0.5f * height_in};
+    box2 viewbox = {-0.5f * width_in,
+                    +0.5f * width_in,
+                    -0.5f * height_in,
+                    +0.5f * height_in};
 
     query(layer_id, bake_data, g_ism->currentPin.viewidx,
           viewbox, s_visibles, s_transforms,
@@ -613,7 +595,7 @@ void collect_bake_data(const test_data& bake_data,
     for (u32 visIdx = 0; visIdx < s_visibles.size(); ++visIdx)
     {
         const test_visible& vis = s_visibles[visIdx];
-        const test_basis& tform = s_transforms[vis.tform_id];
+        const basis2s& tform = s_transforms[vis.tform_id];
         if (vis.ty == test_visible::STROKE)
         {
             const test_stroke& stroke = bake_data.strokes[vis.obj_id];
@@ -656,15 +638,12 @@ void collect_bake_data(const test_data& bake_data,
             dc.count = 0; // not used
             dc.layer_id = layer_id;
 
-            test_point o{ img.tx, img.ty };
-            test_point x{ img.tx + img.xx, img.ty + img.xy };
-            test_point y{ img.tx + img.yx, img.ty + img.yy };
+            float2 pos = point_in_basis(tform, img.basis.o);
 
-            test_point pos = point_in_basis(tform, o);
+            float2 ox = point_in_basis(tform, img.basis.o + img.basis.x);
+            float2 oy = point_in_basis(tform, img.basis.o + img.basis.y);
 
-            test_point ox = point_in_basis(tform, x);
-            test_point oy = point_in_basis(tform, y);
-
+            // TODO: this is ugly
             dc.params[0] = pos.x;
             dc.params[1] = pos.y;
 
@@ -740,10 +719,10 @@ void build_view_dbg_buffer(ImGuiTextBuffer *buffer, const test_data &bake_data)
         switch (ty)
         {
         case ID: ss << " ID"; break;
-        case PAN: ss << " PAN " << tr.tx << ',' << tr.ty; break;
+        case PAN: ss << " PAN " << tr.t.x << ',' << tr.t.y; break;
         case ZOOM: ss << " ZOOM " <<  tr.s; break;
         case ROTATE: ss << " ROTATE " << 180.0f * tr.a / 3.1415926535f; break;
-        case COMPLEX: ss << " COMPLEX " << tr.tx << ',' << tr.ty
+        case COMPLEX: ss << " COMPLEX " << tr.t.x << ',' << tr.t.y
                          << " /" << 180.0f * tr.a / 3.1415926535f
                          << " x" << tr.s; break;
         }
@@ -777,15 +756,12 @@ void update_and_render(input_data *input, output_data *output)
 
     Vandalism::Input ism_input;
     ism_input.tool = (input->shiftkey ? Vandalism::PAN : static_cast<Vandalism::Tool>(gui_tool));
-    ism_input.mousex = mxin;
-    ism_input.mousey = -myin;
+    ism_input.mousePos.x = mxin;
+    ism_input.mousePos.y = -myin;
     ism_input.negligibledistance = pixel_height_in;
     ism_input.mousedown = input->mouseleft && !mouse_in_ui;
     ism_input.fakepressure = gui_fake_pressure;
-    ism_input.brushred = gui_brush_color[0];
-    ism_input.brushgreen = gui_brush_color[1];
-    ism_input.brushblue = gui_brush_color[2];
-    ism_input.brushalpha = gui_brush_color[3];
+    ism_input.brushcolor = gui_brush_color;
     ism_input.eraseralpha = gui_eraser_alpha;
     ism_input.brushdiameter =
     gui_brush_diameter_units * cfg_brush_diameter_inches_per_unit;
@@ -830,24 +806,14 @@ void update_and_render(input_data *input, output_data *output)
         scrollViewsDown = true;
     }
 
-    output->preTranslateX  = g_ism->preShiftX;
-    output->preTranslateY  = g_ism->preShiftY;
-    output->postTranslateX = g_ism->postShiftX;
-    output->postTranslateY = g_ism->postShiftY;
+    output->preTranslate  = g_ism->preShift;
+    output->postTranslate = g_ism->postShift;
     output->scale          = g_ism->zoomCoeff;
     output->rotate         = g_ism->rotateAngle;
 
-    output->bg_red   = gui_background_color[0];
-    output->bg_green = gui_background_color[1];
-    output->bg_blue  = gui_background_color[2];
-
-    output->grid_bg_color[0] = gui_grid_bg_color[0];
-    output->grid_bg_color[1] = gui_grid_bg_color[1];
-    output->grid_bg_color[2] = gui_grid_bg_color[2];
-
-    output->grid_fg_color[0] = gui_grid_fg_color[0];
-    output->grid_fg_color[1] = gui_grid_fg_color[1];
-    output->grid_fg_color[2] = gui_grid_fg_color[2];
+    output->bg_color = gui_background_color;
+    output->grid_bg_color = gui_grid_bg_color;
+    output->grid_fg_color = gui_grid_fg_color;
 
     output->zbandwidth = cfg_depth_step;
 
@@ -891,8 +857,8 @@ void update_and_render(input_data *input, output_data *output)
     float uiResHor = static_cast<float>(input->vpWidthPt);
     float uiResVer = static_cast<float>(input->vpHeightPt);
 
-    float fXPx = (g_ism->firstX / input->vpWidthIn + 0.5f) * uiResHor;
-    float fYPx = (0.5f - g_ism->firstY / input->vpHeightIn) * uiResVer;
+    float fXPx = (g_ism->firstPos.x / input->vpWidthIn + 0.5f) * uiResHor;
+    float fYPx = (0.5f - g_ism->firstPos.y / input->vpHeightIn) * uiResVer;
 
     // TODO: do not update this each frame
     ImDrawVert vtx;
@@ -1011,7 +977,7 @@ void update_and_render(input_data *input, output_data *output)
     {
         if (gui_tool == Vandalism::DRAW)
         {
-            ImGui::ColorEdit4("color", gui_brush_color);
+            ImGui::ColorEdit4("color", &gui_brush_color.r);
         }
         else
         {
@@ -1046,12 +1012,12 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::Separator();
     // BACKGROUND
 
-    ImGui::ColorEdit3("background", gui_background_color);
+    ImGui::ColorEdit3("background", &gui_background_color.r);
     ImGui::Checkbox("grid", &gui_grid_enabled);
     if (gui_grid_enabled)
     {
-        ImGui::ColorEdit3("grid bg", gui_grid_bg_color);
-        ImGui::ColorEdit3("grid fg", gui_grid_fg_color);
+        ImGui::ColorEdit3("grid bg", &gui_grid_bg_color.r);
+        ImGui::ColorEdit3("grid fg", &gui_grid_fg_color.r);
 
         output_data::drawcall dc;
         dc.id = output_data::GRID;
@@ -1363,7 +1329,7 @@ void update_and_render(input_data *input, output_data *output)
 
     ImGui::Separator();
 
-    ImGui::Text("shift-inch: (%g, %g)", g_ism->postShiftX, g_ism->postShiftY);
+    ImGui::Text("shift-inch: (%g, %g)", g_ism->postShift.x, g_ism->postShift.y);
     ImGui::Text("zoom-coeff: %g", g_ism->zoomCoeff);
     ImGui::Text("rotate-angle: %g", g_ism->rotateAngle);
 

@@ -64,6 +64,8 @@ struct input_data
     i32 swWidthPx, swHeightPx;
 };
 
+#include "math.h"
+
 struct output_data
 {
     // TODO: should be somehow generated from layout
@@ -77,19 +79,15 @@ struct output_data
     bool quit_flag;
 
     // baked texture quad manipulations
-    float preTranslateX;
-    float preTranslateY;
-    float postTranslateX;
-    float postTranslateY;
+    float2 preTranslate;
+    float2 postTranslate;
     float scale;
     float rotate;
 
-    float bg_red;
-    float bg_green;
-    float bg_blue;
+    color3f bg_color;
+    color3f grid_bg_color;
+    color3f grid_fg_color;
 
-    float grid_bg_color[3];
-    float grid_fg_color[3];
     float grid_translation[2];
     float grid_zoom;
 

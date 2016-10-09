@@ -88,14 +88,14 @@ test_point t_points1[] =
 
 test_stroke t_strokes1[] =
 {
-    {0, 2,   0,   test_box()},
-    {2, 4,   0,   test_box()}
+    {0, 2,   0,   box2()},
+    {2, 4,   0,   box2()}
 };
 
 test_view t_views1[] =
 {
-    test_view(make_pan(0.0f, 0.0f), 0, 1, 0),
-    test_view(make_pan(1.0f, 0.0f), 1, 2, 0)
+    test_view(make_pan({0.0f, 0.0f}), 0, 1, 0),
+    test_view(make_pan({1.0f, 0.0f}), 1, 2, 0)
 };
 const size_t NVIEWS1 = 2;
 const size_t PIN1 = 1;
@@ -116,24 +116,24 @@ test_point t_points2[] =
 
 test_stroke t_strokes2[] =
 {
-    { 0,  2,   0,   test_box()},
-    { 2,  4,   0,   test_box()},
-    { 4,  6,   0,   test_box()},
-    { 6,  8,   0,   test_box()},
-    { 8, 10,   0,   test_box()},
-    {10, 12,   0,   test_box()},
-    {12, 14,   0,   test_box()},
-    {14, 16,   0,   test_box()}
+    { 0,  2,   0,   box2()},
+    { 2,  4,   0,   box2()},
+    { 4,  6,   0,   box2()},
+    { 6,  8,   0,   box2()},
+    { 8, 10,   0,   box2()},
+    {10, 12,   0,   box2()},
+    {12, 14,   0,   box2()},
+    {14, 16,   0,   box2()}
 };
 
 test_view t_views2[] =
 {
-    test_view(make_pan(0.0f, 0.0f), 0, 2, 0),
-    test_view(make_pan(5.0f, 0.0f), 2, 4, 0),
-    test_view(make_pan(5.0f, 0.0f), 4, 6, 0),
-    test_view(make_pan(-5.0f, 0.0f), 6, 6, 0),
+    test_view(make_pan({0.0f, 0.0f}), 0, 2, 0),
+    test_view(make_pan({5.0f, 0.0f}), 2, 4, 0),
+    test_view(make_pan({5.0f, 0.0f}), 4, 6, 0),
+    test_view(make_pan({-5.0f, 0.0f}), 6, 6, 0),
     test_view(make_zoom(1.0f, 5.0f), 6, 8, 0),
-    test_view(make_pan(-1.0f, 0.0f), 8, 8, 0),
+    test_view(make_pan({-1.0f, 0.0f}), 8, 8, 0),
     test_view(make_zoom(5.0f, 3.0f), 8, 8, 0)
 };
 const size_t NVIEWS2 = 7;
@@ -149,12 +149,12 @@ test_point t_points3[] =
 
 test_stroke t_strokes3[] =
 {
-    {0, 2,   0,   test_box()}
+    {0, 2,   0,   box2()}
 };
 
 test_view t_views3[] =
 {
-    test_view(make_pan(0.0f, 0.0f), 0, 1, 0),
+    test_view(make_pan({0.0f, 0.0f}), 0, 1, 0),
     test_view(make_zoom(2.0f, 1.0f), 1, 1, 0)
 };
 const size_t NVIEWS3 = 2;

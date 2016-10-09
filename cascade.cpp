@@ -8,68 +8,12 @@ struct test_point
     test_point(const float2& p, float v) : x(p.x), y(p.y), w(v) {}
 };
 
-struct test_box
-{
-    float x0, x1;
-    float y0, y1;
-
-    test_box() :
-        x0(FLT_MAX), x1(-FLT_MAX),
-        y0(FLT_MAX), y1(-FLT_MAX)
-    {}
-
-    test_box(float l, float r, float b, float t) :
-        x0(l), x1(r),
-        y0(b), y1(t)
-    {}
-
-    void grow(float s)
-    {
-        x0 -= s;
-        x1 += s;
-        y0 -= s;
-        y1 += s;
-    }
-
-    void add(const test_point &p)
-    {
-        if (p.x > x1) x1 = p.x;
-        if (p.x < x0) x0 = p.x;
-        if (p.y > y1) y1 = p.y;
-        if (p.y < y0) y0 = p.y;
-    }
-
-    void add_box(const test_box &b)
-    {
-        if (!b.empty())
-        {
-            add(test_point(b.x0, b.y0));
-            add(test_point(b.x1, b.y1));
-        }
-    }
-
-    bool empty() const
-    {
-        return x0 > x1 || y0 > y1;
-    }
-
-    float width() const
-    {
-        return x1 - x0;
-    }
-
-    float height() const
-    {
-        return y1 - y0;
-    }
-};
-
 struct test_stroke
 {
     size_t pi0;
     size_t pi1;
     size_t brush_id;
-    test_box bbox;
+    box2 cached_bbox;
 };
 
 enum tr_type { ID, PAN, ZOOM, ROTATE, COMPLEX };
@@ -77,57 +21,36 @@ enum tr_type { ID, PAN, ZOOM, ROTATE, COMPLEX };
 struct test_transform
 {
     float s;
-    float tx;
-    float ty;
+    float2 t;
     float a;
 
     tr_type get_type() const
     {
-        if (s == 1.0f && tx == 0.0f && ty == 0.0f && a == 0.0f)
+        if (s == 1.0f && t.x == 0.0f && t.y == 0.0f && a == 0.0f)
             return ID;
         if (s == 1.0f && a == 0.0f)
             return PAN;
-        if (tx == 0.0f && ty == 0.0f && a == 0.0f)
+        if (t.x == 0.0f && t.y == 0.0f && a == 0.0f)
             return ZOOM;
-        if (s == 1.0f && tx == 0.0f && ty == 0.0f)
+        if (s == 1.0f && t.x == 0.0f && t.y == 0.0f)
             return ROTATE;
         return COMPLEX;
     }
 };
 
-// coordinates of center (x0, y0) and x axis (xx, xy)
-// y axis is (-xy, xx)
-struct test_basis
-{
-    float x0;
-    float y0;
-    float xx;
-    float xy;
-};
-
-// TODO: refine this
 struct test_image
 {
     size_t nameidx;
-    float tx;
-    float ty;
-    float xx;
-    float xy;
-    float yx;
-    float yy;
+    basis2r basis;
 
-    test_box get_bbox() const
+    box2 get_bbox() const
     {
-        test_point p00{ tx,           ty };
-        test_point p10{ tx + xx,      ty + xy };
-        test_point p01{ tx +      yx, ty +      yy };
-        test_point p11{ tx + xx + yx, ty + xy + yy };
+        box2 bbox;
 
-        test_box bbox;
-        bbox.add(p00);
-        bbox.add(p10);
-        bbox.add(p01);
-        bbox.add(p11);
+        bbox.add(basis.o);
+        bbox.add(basis.o + basis.x);
+        bbox.add(basis.o + basis.y);
+        bbox.add(basis.o + basis.y + basis.x);
 
         return bbox;
     }
@@ -137,15 +60,15 @@ const size_t NPOS = static_cast<size_t>(-1);
 
 struct test_view
 {
-    test_basis tr;
+    basis2s tr;
     size_t si0;
     size_t si1;
     size_t ii;
     size_t li;
     size_t pi;
-    test_box bbox;
-    test_box imgbbox;
-    test_view(const test_basis& t, size_t s0, size_t s1, size_t l)
+    box2 cached_bbox;
+    box2 cached_imgbbox;
+    test_view(const basis2s& t, size_t s0, size_t s1, size_t l)
         : tr(t), si0(s0), si1(s1), ii(NPOS), li(l), pi(NPOS)
     {}
 
@@ -205,26 +128,24 @@ bool liang_barsky(float L, float R, float B, float T,
     return true;
 }
 
-bool intersects(const test_box &viewport,
-                const test_point &p0,
-                const test_point &p1)
+bool intersects(const box2 &viewport, const float2 &p0, const float2 &p1)
 {
-    return liang_barsky(viewport.x0, viewport.x1, viewport.y0, viewport.y1,
+    return liang_barsky(viewport.min.x, viewport.max.x, viewport.min.y, viewport.max.y,
                         p0.x, p0.y, p1.x, p1.y);
 }
 
-bool overlaps(const test_box &b1, const test_box &b2)
+bool overlaps(const box2 &b1, const box2 &b2)
 {
     if (b1.empty() || b2.empty()) return false;
-    if (b1.y0 > b2.y1) return false;
-    if (b2.y0 > b1.y1) return false;
-    if (b1.x0 > b2.x1) return false;
-    if (b2.x0 > b1.x1) return false;
+    if (b1.min.y > b2.max.y) return false;
+    if (b2.min.y > b1.max.y) return false;
+    if (b1.min.x > b2.max.x) return false;
+    if (b2.min.x > b1.max.x) return false;
     return true;
 }
 
 void crop(const test_data &data, size_t vi, size_t ti,
-          const test_box &viewport,
+          const box2 &viewport,
           std::vector<test_visible> &visibles,
           float negligibledist)
 {
@@ -233,9 +154,9 @@ void crop(const test_data &data, size_t vi, size_t ti,
     if (view.has_image())
     {
         // TODO: why do we check with negligibledist here?
-        if (overlaps(viewport, view.imgbbox) &&
-            view.imgbbox.width() > negligibledist &&
-            view.imgbbox.height() > negligibledist)
+        if (overlaps(viewport, view.cached_imgbbox) &&
+            view.cached_imgbbox.width() > negligibledist &&
+            view.cached_imgbbox.height() > negligibledist)
         {
             test_visible vis;
             vis.ty = test_visible::IMAGE;
@@ -246,18 +167,18 @@ void crop(const test_data &data, size_t vi, size_t ti,
     }
 
     // TODO: why do we check with negligibledist here?
-    if (overlaps(viewport, view.bbox) &&
-        view.bbox.width() > negligibledist &&
-        view.bbox.height() > negligibledist)
+    if (overlaps(viewport, view.cached_bbox) &&
+        view.cached_bbox.width() > negligibledist &&
+        view.cached_bbox.height() > negligibledist)
     {
 
         for (size_t si = view.si0; si < view.si1; ++si)
         {
             test_stroke stroke = data.strokes[si];
             // TODO: why do we check with negligibledist here?
-            if (overlaps(viewport, stroke.bbox) &&
-                stroke.bbox.width() > negligibledist &&
-                stroke.bbox.height() > negligibledist)
+            if (overlaps(viewport, stroke.cached_bbox) &&
+                stroke.cached_bbox.width() > negligibledist &&
+                stroke.cached_bbox.height() > negligibledist)
             {
                 test_visible vis;
                 vis.ty = test_visible::STROKE;
@@ -269,124 +190,111 @@ void crop(const test_data &data, size_t vi, size_t ti,
     }
 }
 
-test_transform transform_from_basis(const test_basis &basis)
+test_transform transform_from_basis(const basis2s &basis)
 {
     test_transform result;
-    result.tx = basis.x0;
-    result.ty = basis.y0;
-    result.s = si_sqrtf(basis.xx * basis.xx + basis.xy * basis.xy);
-    result.a = si_atan2(basis.xy, basis.xx);
+    result.t = basis.o;
+    result.s = len(basis.x);
+    result.a = si_atan2(basis.x.y, basis.x.x);
     return result;
 }
 
-test_basis basis_from_transform(const test_transform &transform)
+basis2s basis_from_transform(const test_transform &transform)
 {
-    test_basis result;
-    result.x0 = transform.tx;
-    result.y0 = transform.ty;
-    result.xx = transform.s * si_cosf(transform.a);
-    result.xy = transform.s * si_sinf(transform.a);
+    basis2s result;
+    result.o = transform.t;
+    result.x = transform.s * float2{ si_cosf(transform.a), si_sinf(transform.a) };
     return result;
 }
 
-test_basis default_basis()
+basis2s default_basis()
 {
-    return {0.0f, 0.0f, 1.0f, 0.0f};
+    return{ {0.0f, 0.0f}, {1.0f, 0.0f} };
 }
 
+// TODO: remove this intermediate transform step
 test_transform id_transform()
 {
-    return {1.0f, 0.0f, 0.0f, 0.0f};
+    return{ 1.0f, {0.0f, 0.0f}, 0.0f };
 }
 
-test_basis make_zoom(float a, float b)
+basis2s make_zoom(float a, float b)
 {
     test_transform result = id_transform();
     result.s = b / a;
     return basis_from_transform(result);
 }
 
-test_basis make_pan(float a, float b)
+basis2s make_pan(const float2 &p)
 {
     test_transform result = id_transform();
-    result.tx = a;
-    result.ty = b;
+    result.t = p;
     return basis_from_transform(result);
 }
 
-test_basis make_rotate(float a)
+basis2s make_rotate(float a)
 {
     test_transform result = id_transform();
     result.a = a;
     return basis_from_transform(result);
 }
 
-test_basis inverse_basis(const test_basis &basis)
+basis2s inverse_basis(const basis2s &basis)
 {
-    float det = basis.xx * basis.xx + basis.xy * basis.xy;
+    float det = basis.x.x * basis.x.x + basis.x.y * basis.x.y;
 
-    float nx = basis.xx / det;
-    float ny = -basis.xy / det;
+    float nx = basis.x.x / det;
+    float ny = -basis.x.y / det;
 
-    return test_basis{-basis.x0, -basis.y0, nx, ny};
+    return basis2s{ -basis.o, {nx, ny} };
 }
 
-test_point point_in_basis(const test_basis &b,
-                          const test_point &p)
+float2 point_in_basis(const basis2s &b, const float2 &p)
 {
-    float Xx =  b.xx;
-    float Xy =  b.xy;
-    float Yx = -b.xy;
-    float Yy =  b.xx;
+    float Xx = b.x.x;
+    float Xy = b.x.y;
+    float Yx = b.get_y().x;
+    float Yy = b.get_y().y;
 
-    test_point result;
-    result.x = p.x * Xx + p.y * Yx + b.x0;
-    result.y = p.x * Xy + p.y * Yy + b.y0;
-    return result;
+    return
+    {
+        p.x * Xx + p.y * Yx + b.o.x,
+        p.x * Xy + p.y * Yy + b.o.y
+    };
 }
 
-test_basis basis_in_basis(const test_basis &b0,
-                          const test_basis &b1)
+basis2s basis_in_basis(const basis2s &b0, const basis2s &b1)
 {
-    test_point b1o = {b1.x0, b1.y0};
-    test_point b1x = {b1.x0 + b1.xx, b1.y0 + b1.xy};
-
-    test_point b1o_ = point_in_basis(b0, b1o);
-    test_point b1x_ = point_in_basis(b0, b1x);
+    float2 b1o_ = point_in_basis(b0, b1.o);
+    float2 b1x_ = point_in_basis(b0, b1.o + b1.x);
     
-    test_basis result;
-    result.x0 = b1o_.x;
-    result.y0 = b1o_.y;
-    result.xx = b1x_.x - b1o_.x;
-    result.xy = b1x_.y - b1o_.y;
-    return result;
+    return{ b1o_, b1x_ - b1o_ };
 }
 
-test_box box_in_basis(const test_basis &t,
-                      const test_box &b)
+box2 box_in_basis(const basis2s &t, const box2 &b)
 {
     if (b.empty())
         return b;
 
-    test_box result;
-    result.add(point_in_basis(t, {b.x0, b.y0})); // BL
-    result.add(point_in_basis(t, {b.x0, b.y1})); // TL
-    result.add(point_in_basis(t, {b.x1, b.y1})); // TR
-    result.add(point_in_basis(t, {b.x1, b.y0})); // BR
+    box2 result;
+    result.add(point_in_basis(t, b.min)); // BL
+    result.add(point_in_basis(t, b.get_tl())); // TL
+    result.add(point_in_basis(t, b.max)); // TR
+    result.add(point_in_basis(t, b.get_br())); // BR
     return result;
 }
 
-float dist_in_basis(const test_basis &b, float d)
+float dist_in_basis(const basis2s &b, float d)
 {
-    return d * si_sqrtf(b.xx * b.xx + b.xy * b.xy);
+    return d * len(b.x);
 }
 
 // get transform which, when applied to points in src_idx view space
 // will produce their coordinates in dst_idx view space
-test_basis get_relative_transform(const test_data &data,
-                                  size_t src_idx, size_t dst_idx)
+basis2s get_relative_transform(const test_data &data,
+                              size_t src_idx, size_t dst_idx)
 {
-    test_basis accum = default_basis();
+    basis2s accum = default_basis();
     if (dst_idx > src_idx)
     {
         for (size_t vi = dst_idx; vi != src_idx; --vi)
@@ -410,9 +318,9 @@ test_basis get_relative_transform(const test_data &data,
 // along with needed transforms, that are inside viewport
 // which is in pin's view local space
 void query(size_t layer_id,
-           const test_data &data, size_t pin, const test_box &viewport,
+           const test_data &data, size_t pin, const box2 &viewport,
            std::vector<test_visible> &visibles,
-           std::vector<test_basis> &transforms,
+           std::vector<basis2s> &transforms,
            float negligibledist)
 {
     // ps_*** -- pin space
@@ -422,10 +330,10 @@ void query(size_t layer_id,
     {
         if (data.views[vi].li == layer_id)
         {
-            test_basis ls2ps = get_relative_transform(data, vi, pin);
-            test_basis ps2ls = get_relative_transform(data, pin, vi);
+            basis2s ls2ps = get_relative_transform(data, vi, pin);
+            basis2s ps2ls = get_relative_transform(data, pin, vi);
 
-            test_box ls_box = box_in_basis(ps2ls, viewport);
+            box2 ls_box = box_in_basis(ps2ls, viewport);
             float ls_negligible = dist_in_basis(ps2ls, negligibledist);
             crop(data, vi, transforms.size(), ls_box, visibles, ls_negligible);
             transforms.push_back(ls2ps);
@@ -433,28 +341,26 @@ void query(size_t layer_id,
     }
 }
 
-test_box query_bbox(const test_data &data, size_t pin)
+box2 query_bbox(const test_data &data, size_t pin)
 {
-    test_box ps_accum_box;
+    box2 ps_accum_box;
 
     for (size_t vi = 0; vi < data.nviews; ++vi)
     {
-        test_basis ls2ps = get_relative_transform(data, vi, pin);
+        basis2s ls2ps = get_relative_transform(data, vi, pin);
 
-        test_box ps_view_box = box_in_basis(ls2ps, data.views[vi].bbox);
+        box2 ps_view_box = box_in_basis(ls2ps, data.views[vi].cached_bbox);
         ps_accum_box.add_box(ps_view_box);
     }
 
     return ps_accum_box;
 }
 
-float dist_to_seg(const test_point& p,
-                  const test_point& p1, const test_point& p2)
+float dist_to_seg(const float2 &p,
+                  const float2 &p1, const float2 &p2)
 {
-    float dx = p2.x - p1.x;
-    float dy = p2.y - p1.y;
-    return ::fabsf(dy * p.x - dx * p.y + p2.x * p1.y - p2.y * p1.x)
-    / ::sqrtf(dy * dy + dx * dx);
+    float2 d = p2 - p1;
+    return ::fabsf(d.y * p.x - d.x * p.y + p2.x * p1.y - p2.y * p1.x) / len(d);
 }
 
 void ramer_douglas_peucker(const test_point* from, const test_point* to,
@@ -475,10 +381,13 @@ void ramer_douglas_peucker(const test_point* from, const test_point* to,
 
     float max_dist = 0.0f;
     const test_point* max_pt = 0;
+    float2 frompt{ from->x, from->y };
+    float2 topt{ to->x, to->y };
     for (const test_point* p = from + 1; p != to; ++p)
     {
         // TODO: this may be actually not exactly what we need here
-        float d = dist_to_seg(*p, *from, *to);
+        float2 pt{ p->x, p->y };
+        float d = dist_to_seg(pt, frompt, topt);
 
         if (d > max_dist)
         {
@@ -659,13 +568,13 @@ void smooth_stroke(const test_point* input, size_t N,
     }
 }
 
-test_box get_strokes_bbox(const test_data &data, size_t vi)
+box2 get_strokes_bbox(const test_data &data, size_t vi)
 {
-    test_box result;
+    box2 result;
     const test_view &v = data.views[vi];
     for (size_t si = v.si0; si < v.si1; ++si)
     {
-        result.add_box(data.strokes[si].bbox);
+        result.add_box(data.strokes[si].cached_bbox);
     }
     return result;
 }

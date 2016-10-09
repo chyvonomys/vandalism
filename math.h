@@ -193,3 +193,94 @@ inline double si_clampd(double x, double x0, double x1)
 }
 
 const float si_pi = 3.1415926535f;
+
+struct box2
+{
+    float2 min, max;
+
+    box2() :
+        min{ FLT_MAX,  FLT_MAX },
+        max{ -FLT_MAX, -FLT_MAX }
+    {}
+
+    box2(float l, float r, float b, float t) :
+        min{ l, b },
+        max{ r, t }
+    {}
+
+    void grow(float s)
+    {
+        min.x -= s;
+        max.x += s;
+        min.y -= s;
+        max.x += s;
+    }
+
+    void add(const float2 &p)
+    {
+        if (p.x > max.x) max.x = p.x;
+        if (p.x < min.x) min.x = p.x;
+        if (p.y > max.y) max.y = p.y;
+        if (p.y < min.y) min.y = p.y;
+    }
+
+    void add_box(const box2 &b)
+    {
+        if (!b.empty())
+        {
+            add(b.min);
+            add(b.max);
+        }
+    }
+
+    bool empty() const
+    {
+        return min.x > max.x || min.y > max.y;
+    }
+
+    float width() const
+    {
+        return max.x - min.x;
+    }
+
+    float height() const
+    {
+        return max.y - min.y;
+    }
+
+    float2 get_tl() const
+    {
+        return{ min.x, max.y };
+    }
+
+    float2 get_br() const
+    {
+        return{ max.x, min.y };
+    }
+};
+
+// basis with perpendicular y and x axes
+// NOTE: y is 90 degrees ccw x
+struct basis2s
+{
+    float2 o;
+    float2 x;
+    float2 get_y() const { return{ -x.y, x.x }; }
+};
+
+struct basis2r
+{
+    float2 o;
+    float2 x;
+    float2 y;
+};
+
+struct color3f
+{
+    float r, g, b;
+};
+
+struct color4f
+{
+    float r, g, b, a;
+};

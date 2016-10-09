@@ -16,7 +16,7 @@ struct Vandalism
         float diameter;
         float angle;
         float spread;
-        float r, g, b, a;
+        color4f color;
         bool type;
         bool pressure;
 
@@ -24,10 +24,8 @@ struct Vandalism
         {
             Brush result;
             result.diameter = diameter * t;
-            result.r = r;
-            result.g = g;
-            result.b = b;
-            result.a = a * t;
+            result.color = color;
+            result.color.a *= t;
             result.type = type;
             result.pressure = pressure;
             result.spread = spread;
@@ -67,43 +65,25 @@ struct Vandalism
     bool currentChanged;
 
     // PAN related
-
-    float panStartX;
-    float panStartY;
-    float preShiftX;
-    float preShiftY;
-    float postShiftX;
-    float postShiftY;
+    float2 panStart;
+    float2 preShift;
+    float2 postShift;
 
     // ZOOM related
-
     float zoomStartX;
     float zoomCoeff;
 
     // ROTATE related
-
     float rotateStartX;
     float rotateAngle;
 
     // FIRST/SECOND related
-
-    float firstX;
-    float firstY;
-
-    float secondX0;
-    float secondY0;
-    float secondX1;
-    float secondY1;
+    float2 firstPos;
+    float2 secondPos0;
+    float2 secondPos1;
 
     // SCROLL related
-
     float scrollY0;
-
-    struct Pan
-    {
-        float dx;
-        float dy;
-    };
 
     enum Mode
     {
@@ -138,8 +118,7 @@ struct Vandalism
 
     struct Input
     {
-        float mousex;
-        float mousey;
+        float2 mousePos;
         float scrolly;
         bool scrolling;
         bool mousedown;
@@ -147,7 +126,7 @@ struct Vandalism
         bool simplify;
         Smooth smooth;
         Tool tool;
-        float brushred, brushgreen, brushblue, brushalpha;
+        color4f brushcolor;
         float brushdiameter;
         float brushspread;
         float brushangle;
@@ -183,7 +162,7 @@ struct Vandalism
         return current_view_is_last();
     }
 
-    void append_new_view(const test_basis& tr)
+    void append_new_view(const basis2s &tr)
     {
         currentPin.viewidx = views.size();
         views.push_back(test_view(tr,
@@ -193,10 +172,8 @@ struct Vandalism
 
     void remove_alterations()
     {
-        preShiftX = 0.0f;
-        preShiftY = 0.0f;
-        postShiftX = 0.0f;
-        postShiftY = 0.0f;
+        preShift = { 0.0f, 0.0f };
+        postShift = { 0.0f, 0.0f };
 
         zoomCoeff = 1.0f;
         rotateAngle = 0.0f;
@@ -208,14 +185,14 @@ struct Vandalism
 
     void start_rotate(const Input *input)
     {
-        rotateStartX = input->mousex;
+        rotateStartX = input->mousePos.x;
     }
     
     void done_rotate(const Input *input)
     {
         if (append_allowed())
         {
-            float dx = input->mousex - rotateStartX;
+            float dx = input->mousePos.x - rotateStartX;
             float angle = si_pi * dx;
 
             append_new_view(make_rotate(-angle));
@@ -226,25 +203,25 @@ struct Vandalism
     
     void do_rotate(const Input *input)
     {
-        float dx = input->mousex - rotateStartX;
+        float dx = input->mousePos.x - rotateStartX;
         rotateAngle = si_pi * dx;
     }
 
     void start_zoom(const Input *input)
     {
-        zoomStartX = input->mousex;
+        zoomStartX = input->mousePos.x;
     }
 
     void do_zoom(const Input *input)
     {
-        zoomCoeff = input->mousex / zoomStartX;
+        zoomCoeff = input->mousePos.x / zoomStartX;
     }
 
     void done_zoom(const Input *input)
     {
         if (append_allowed())
         {
-            append_new_view(make_zoom(input->mousex, zoomStartX));
+            append_new_view(make_zoom(input->mousePos.x, zoomStartX));
         }
 
         common_done();
@@ -252,22 +229,19 @@ struct Vandalism
 
     void start_pan(const Input *input)
     {
-        panStartX = input->mousex;
-        panStartY = input->mousey;
+        panStart = input->mousePos;
     }
 
     void do_pan(const Input *input)
     {
-        postShiftX = input->mousex - panStartX;
-        postShiftY = input->mousey - panStartY;
+        postShift = input->mousePos - panStart;
     }
 
     void done_pan(const Input *input)
     {
         if (append_allowed())
         {
-            append_new_view(make_pan(panStartX - input->mousex,
-                                     panStartY - input->mousey));
+            append_new_view(make_pan(panStart - input->mousePos));
         }
         common_done();
     }
@@ -279,24 +253,26 @@ struct Vandalism
 
     void start_draw(const Input *input)
     {
+        float2 pos = input->mousePos;
         Point point;
-        point.x = input->mousex;
-        point.y = input->mousey;
+        point.x = pos.x;
+        point.y = pos.y;
         point.w = input->fakepressure ? pressure_func(0) : 1.0f;
 
         currentPoints.clear();
         currentPoints.push_back(point);
         currentStroke.pi0 = 0;
         currentStroke.pi1 = 1;
-        currentStroke.bbox = test_box();
-        currentStroke.bbox.add(point);
+        currentStroke.cached_bbox = box2();
+        currentStroke.cached_bbox.add(pos);
         currentStroke.brush_id = NPOS;
 
-        currentBrush.r = input->brushred;
-        currentBrush.g = input->brushgreen;
-        currentBrush.b = input->brushblue;
-        currentBrush.a = (input->tool == ERASE ?
-                          input->eraseralpha : input->brushalpha);
+        currentBrush.color = input->brushcolor;
+        if (input->tool == ERASE)
+        {
+            currentBrush.color.a = input->eraseralpha;
+        }
+
         currentBrush.type = (input->tool == ERASE ? 1 : 0);
         currentBrush.diameter = input->brushdiameter;
         currentBrush.angle = input->brushangle;
@@ -305,9 +281,10 @@ struct Vandalism
 
     void do_draw(const Input *input)
     {
+        float2 pos = input->mousePos;
         Point point;
-        point.x = input->mousex;
-        point.y = input->mousey;
+        point.x = pos.x;
+        point.y = pos.y;
 
         float dx = point.x - currentPoints.back().x;
         float dy = point.y - currentPoints.back().y;
@@ -317,7 +294,7 @@ struct Vandalism
             size_t ptIdx = currentPoints.size();
             point.w = input->fakepressure ? pressure_func(ptIdx) : 1.0f;
             currentPoints.push_back(point);
-            currentStroke.bbox.add(point);
+            currentStroke.cached_bbox.add(pos);
             currentStroke.pi1 += 1;
             currentChanged = true;
         }
@@ -336,11 +313,11 @@ struct Vandalism
                 brushes.push_back(currentBrush);
             }
 
-            currentStroke.bbox.grow(0.5f * currentBrush.diameter);
+            currentStroke.cached_bbox.grow(0.5f * currentBrush.diameter);
 
             if (views[currentPin.viewidx].li != currentPin.layeridx)
             {
-                append_new_view(make_pan(0.0f, 0.0f));
+                append_new_view(make_pan({ 0.0f, 0.0f }));
             }
 
             strokes.push_back(currentStroke);
@@ -375,48 +352,39 @@ struct Vandalism
 
             strokes.back().pi1 = points.size();
 
-            views[currentPin.viewidx].bbox.add_box(currentStroke.bbox);
+            views[currentPin.viewidx].cached_bbox.add_box(currentStroke.cached_bbox);
             views[currentPin.viewidx].si1 += 1;
         }
 
         currentStroke.pi0 = 0;
         currentStroke.pi1 = 0;
-        currentStroke.bbox = test_box();
+        currentStroke.cached_bbox = box2();
 
         common_done();
     }
 
     void place1(const Input *input)
     {
-        firstX = input->mousex;
-        firstY = input->mousey;
+        firstPos = input->mousePos;
     }
 
     void start_move2(const Input *input)
     {
-        secondX0 = input->mousex;
-        secondY0 = input->mousey;
+        secondPos0 = input->mousePos;
     }
 
     void do_move2(const Input *input)
     {
-        secondX1 = input->mousex;
-        secondY1 = input->mousey;
+        secondPos1 = input->mousePos;
 
-        float2 f = {firstX, firstY};
-        float2 s0 = {secondX0, secondY0};
-        float2 s1 = {secondX1, secondY1};
-
-        float2 d0 = s0 - f;
-        float2 d1 = s1 - f;
+        float2 d0 = secondPos0 - firstPos;
+        float2 d1 = secondPos1 - firstPos;
 
         float a0 = static_cast<float>(::atan2f(d0.y, d0.x));
         float a1 = static_cast<float>(::atan2f(d1.y, d1.x));
 
-        preShiftX = -f.x;
-        preShiftY = -f.y;
-        postShiftX = f.x;
-        postShiftY = f.y;
+        preShift = -firstPos;
+        postShift = firstPos;
 
         zoomCoeff = len(d1) / len(d0);
         rotateAngle = a1 - a0;
@@ -426,23 +394,18 @@ struct Vandalism
     {
         if (append_allowed())
         {
-            secondX1 = input->mousex;
-            secondY1 = input->mousey;
+            secondPos1 = input->mousePos;
 
-            float2 f = {firstX, firstY};
-            float2 s0 = {secondX0, secondY0};
-            float2 s1 = {secondX1, secondY1};
-
-            float2 d0 = s0 - f;
-            float2 d1 = s1 - f;
+            float2 d0 = secondPos0 - firstPos;
+            float2 d1 = secondPos1 - firstPos;
 
             float a0 = static_cast<float>(::atan2f(d0.y, d0.x));
             float a1 = static_cast<float>(::atan2f(d1.y, d1.x));
 
-            append_new_view(make_pan(f.x, f.y));
+            append_new_view(make_pan(firstPos));
             append_new_view(make_rotate(a0 - a1));
             append_new_view(make_zoom(len(d1), len(d0)));
-            append_new_view(make_pan(-f.x, -f.y));
+            append_new_view(make_pan(-firstPos));
         }
 
         common_done();
@@ -451,10 +414,8 @@ struct Vandalism
     void start_scroll(const Input *input)
     {
         scrollY0 = input->scrolly;
-        preShiftX = -input->mousex;
-        preShiftY = -input->mousey;
-        postShiftX = input->mousex;
-        postShiftY = input->mousey;
+        preShift = -input->mousePos;
+        postShift = input->mousePos;
     }
 
     void do_scroll(const Input *input)
@@ -470,9 +431,9 @@ struct Vandalism
 
         if (append_allowed())
         {
-            append_new_view(make_pan(postShiftX, postShiftY));
+            append_new_view(make_pan(postShift));
             append_new_view(make_zoom(zoomCoeff, 1.0f));
-            append_new_view(make_pan(preShiftX, preShiftY));
+            append_new_view(make_pan(preShift));
         }
 
         common_done();
@@ -493,7 +454,7 @@ struct Vandalism
     {
         if (append_allowed())
         {
-            append_new_view(make_pan(0.0f, 0.0f));
+            append_new_view(make_pan({ 0.0f, 0.0f }));
 
             size_t imageId = image_name_idx(name);
             if (imageId == imageNames.size())
@@ -501,12 +462,11 @@ struct Vandalism
                 imageNames.push_back(name);
             }
 
-            test_image i = {imageId,
-                            -0.5f * imageW, -0.5f * imageH,
-                            imageW, 0.0f,
-                            0.0f, imageH};
+            basis2r basis{ {-0.5f * imageW, -0.5f * imageH}, {imageW, 0.0f}, {0.0f, imageH} };
+            test_image i = { imageId, basis };
 
-            views.back().imgbbox = i.get_bbox();
+            // TODO: why do we keep imgbbox?
+            views.back().cached_imgbbox = i.get_bbox();
             views.back().ii = images.size();
             images.push_back(i);
         }
@@ -630,8 +590,7 @@ struct Vandalism
 
         setup_default_view();
 
-        firstX = 0.0f;
-        firstY = 0.0f;
+        firstPos = { 0.0f, 0.0f };
 
         remove_alterations();
         set_dirty();
@@ -787,7 +746,7 @@ struct Vandalism
                 strokes.pop_back();
                 --views.back().si1;
                 size_t vi = views.size() - 1;
-                views.back().bbox = get_strokes_bbox(get_bake_data(), vi);
+                views.back().cached_bbox = get_strokes_bbox(get_bake_data(), vi);
             }
             return STROKE;
         }
@@ -819,8 +778,8 @@ struct Vandalism
         }
         for (size_t i = 0; i < views.size(); ++i)
         {
-            os << "v " << views[i].tr.x0 << ' ' << views[i].tr.y0
-               << ' ' << views[i].tr.xx << ' ' << views[i].tr.xy
+            os << "v " << views[i].tr.o.x << ' ' << views[i].tr.o.y
+               << ' ' << views[i].tr.x.x << ' ' << views[i].tr.x.y
                << ' ' << views[i].si0 << ' ' << views[i].si1
                << ' ' << (!views[i].has_image() ? -1 : static_cast<i32>(views[i].ii))
                << ' ' << views[i].li
@@ -830,16 +789,16 @@ struct Vandalism
         for (size_t i = 0; i < brushes.size(); ++i)
         {
             os << "b " << brushes[i].type << ' ' << brushes[i].diameter << ' '
-               << brushes[i].r << ' ' << brushes[i].g << ' '
-               << brushes[i].b << ' ' << brushes[i].a << '\n';
+               << brushes[i].color.r << ' ' << brushes[i].color.g << ' '
+               << brushes[i].color.b << ' ' << brushes[i].color.a << '\n';
         }
         // TODO: maybe reuse 'basis' vectors approach here and in views
         for (size_t i = 0; i < images.size(); ++i)
         {
             os << "i \"" << imageNames[images[i].nameidx] << '\"'
-                << ' ' << images[i].tx << ' ' << images[i].ty
-                << ' ' << images[i].xx << ' ' << images[i].xy
-                << ' ' << images[i].yx << ' ' << images[i].yy << '\n';
+                << ' ' << images[i].basis.o.x << ' ' << images[i].basis.o.y
+                << ' ' << images[i].basis.x.x << ' ' << images[i].basis.x.y
+                << ' ' << images[i].basis.y.x << ' ' << images[i].basis.y.y << '\n';
         }
     }
 
@@ -893,9 +852,9 @@ struct Vandalism
                 {
                     std::istringstream ss(line);
                     ss.seekg(2);
-                    test_view vi(make_pan(0.0f, 0.0f), 0, 0, 0);
+                    test_view vi(make_pan({ 0.0f, 0.0f }), 0, 0, 0);
                     i32 imgidx;
-                    ok = !(ss >> vi.tr.x0 >> vi.tr.y0 >> vi.tr.xx >> vi.tr.xy
+                    ok = !(ss >> vi.tr.o.x >> vi.tr.o.y >> vi.tr.x.x >> vi.tr.x.y
                            >> vi.si0 >> vi.si1 >> imgidx >> vi.li).fail();
                     if (ok)
                     {
@@ -909,7 +868,7 @@ struct Vandalism
                     ss.seekg(2);
                     Brush br;
                     ok = !(ss >> br.type >> br.diameter
-                           >> br.r >> br.g >> br.b >> br.a).fail();
+                           >> br.color.r >> br.color.g >> br.color.b >> br.color.a).fail();
                     if (ok)
                     {
                         newBrushes.push_back(br);
@@ -943,8 +902,8 @@ struct Vandalism
                         ss.seekg(static_cast<std::streamoff>(secondq + 1));
 
                         Image img;
-                        ok = !(ss >> img.tx >> img.ty
-                               >> img.xx >> img.xy >> img.yx >> img.yy).fail();
+                        ok = !(ss >> img.basis.o.x >> img.basis.o.y
+                               >> img.basis.x.x >> img.basis.x.y >> img.basis.y.x >> img.basis.y.y).fail();
                         if (ok)
                         {
                             img.nameidx = 0;
@@ -981,11 +940,11 @@ struct Vandalism
             Stroke& ns = newStrokes[si];
             for (size_t pi = ns.pi0; pi < ns.pi1; ++pi)
             {
-                ns.bbox.add(newPoints[pi]);
+                ns.cached_bbox.add({ newPoints[pi].x, newPoints[pi].y });
             }
             // TODO: invalid for non circular brushes
             // diameter should be max bbox of drawn point shape
-            ns.bbox.grow(0.5f * newBrushes[ns.brush_id].diameter);
+            ns.cached_bbox.grow(0.5f * newBrushes[ns.brush_id].diameter);
         }
 
         test_data newData;
@@ -998,10 +957,10 @@ struct Vandalism
         // calculate bboxes of views
         for (size_t vi = 0; vi < newViews.size(); ++vi)
         {
-            newViews[vi].bbox = get_strokes_bbox(newData, vi);
+            newViews[vi].cached_bbox = get_strokes_bbox(newData, vi);
             if (newViews[vi].has_image())
             {
-                newViews[vi].imgbbox = newImages[newViews[vi].ii].get_bbox();
+                newViews[vi].cached_imgbbox = newImages[newViews[vi].ii].get_bbox();
             }
         }
 
@@ -1030,7 +989,7 @@ struct Vandalism
         p0.viewidx = 0;
         pins.push_back(p0);
 
-        views.push_back(test_view(make_pan(0.0f, 0.0f), 0, 0, 0));
+        views.push_back(test_view(make_pan({ 0.0f, 0.0f }), 0, 0, 0));
         views.back().pi = 0;
 
         currentPin = {0, 0};
@@ -1057,15 +1016,15 @@ struct Vandalism
             return;
 
         currentPin.viewidx = views.size() - 1;
-        test_box all_box = query_bbox(get_bake_data(), currentPin.viewidx);
+        box2 all_box = query_bbox(get_bake_data(), currentPin.viewidx);
 
-        append_new_view(make_pan(0.5f * (all_box.x1 + all_box.x0),
-                                 0.5f * (all_box.y1 + all_box.y0)));
+        float2 center = 0.5f * (all_box.min + all_box.max);
+        append_new_view(make_pan(center));
 
         float vpAspect = vpH / vpW;
         float bbAspect = all_box.height() / all_box.width();
 
-        test_basis fit;
+        basis2s fit;
         if (vpAspect > bbAspect)
         {
             fit = make_zoom(vpW, all_box.width());
