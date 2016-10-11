@@ -807,12 +807,16 @@ void update_and_render(input_data *input, output_data *output)
 
     if (input->forceUpdate || g_ism->visiblesChanged)
     {
+        // TODO: this should not happen once per every stroke
+        // implement some intermediate 'uncommited' strokes
+
         // flag processed
         // TODO: make this better
         g_ism->visiblesChanged = false;
 
         g_bake_quads.clear();
 
+        // TODO: collect only active layers
         for (u8 layerIdx = 0; layerIdx < gui_layer_cnt; ++layerIdx)
         {
             collect_bake_data(bake_data,
@@ -843,6 +847,9 @@ void update_and_render(input_data *input, output_data *output)
 
     if (input->forceUpdate || g_ism->currentChanged)
     {
+        // TODO: this overwrites whole stroke on each update
+        // maybe it can be only appended?
+
         // TODO: flag processed, improve this
         g_ism->currentChanged = false;
 
