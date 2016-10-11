@@ -5,11 +5,13 @@
 #include <iostream>
 #include "cascade.cpp"
 
-struct Vandalism
+struct Masterpiece
 {
+public:
     typedef test_point Point;
     typedef test_stroke Stroke;
     typedef test_image Image;
+    typedef test_view View;
 
     struct Brush
     {
@@ -18,21 +20,96 @@ struct Vandalism
         float spread;
         color4f color;
         bool type;
-        bool pressure;
-
-        Brush modified(float t) const
-        {
-            Brush result;
-            result.diameter = diameter * t;
-            result.color = color;
-            result.color.a *= t;
-            result.type = type;
-            result.pressure = pressure;
-            result.spread = spread;
-            result.angle = angle;
-            return result;
-        }
     };
+
+private:
+    std::vector<Point> points;
+    std::vector<Stroke> strokes;
+    std::vector<View> views;
+    // One image name can be referenced by many images
+    // Image is actually an image + placement.
+    // image<->imagename is like stroke<->brush
+    std::vector<Image> images;
+
+    // TODO: replace string with abstract `source`
+    std::vector<std::string> imageNames;
+
+    std::vector<Brush> brushes;
+
+private:
+    void append_new_view(const basis2s &basis, size_t layeridx)
+    {
+        views.push_back(View(basis, strokes.size(), strokes.size(), layeridx));
+    }
+
+    size_t image_name_idx(const char *name)
+    {
+        size_t result = 0;
+        for (; result < imageNames.size(); ++result)
+        {
+            if (imageNames[result] == name)
+                break;
+        }
+        return result;
+    }
+
+public:
+    void change_view(const basis2s &basis, size_t layeridx)
+    {
+        // TODO: combination of views
+        append_new_view(basis, layeridx);
+    }
+
+    void place_image(const char *name, float imageW, float imageH)
+    {
+        append_new_view(make_pan({ 0.0f, 0.0f }), views.back().li);
+
+        size_t imageId = image_name_idx(name);
+        if (imageId == imageNames.size())
+        {
+            imageNames.push_back(name);
+        }
+
+        basis2r basis{ { -0.5f * imageW, -0.5f * imageH },{ imageW, 0.0f },{ 0.0f, imageH } };
+        test_image i = { imageId, basis };
+
+        // TODO: why do we keep imgbbox?
+        views.back().cached_imgbbox = i.get_bbox();
+        views.back().ii = images.size();
+        images.push_back(i);
+    }
+
+    void add_stroke(size_t layeridx, const Brush &brush, const Stroke &newStroke, const std::vector<Point> &newPoints)
+    {
+        // TODO: keep only unique?
+        if (brushes.empty() ||
+            ::memcmp(&brushes.back(), &brush, sizeof(Brush)) != 0)
+        {
+            brushes.push_back(brush);
+        }
+
+        if (views.back().li != layeridx)
+        {
+            append_new_view(make_pan({ 0.0f, 0.0f }), layeridx);
+        }
+
+        strokes.push_back(newStroke);
+        strokes.back().cached_bbox.grow(0.5f * brush.diameter);
+        strokes.back().brush_id = brushes.size() - 1;
+        strokes.back().pi0 = points.size();
+        //TODO: append
+        strokes.back().pi1 = points.size();
+
+        views.back().cached_bbox.add_box(strokes.back().cached_bbox);
+        views.back().si1 += 1;
+    }
+};
+
+// TODO: commited stroke count, non-commited stroke count (for avoiding re-baking after each new stroke)
+
+struct Vandalism
+{
+    Masterpiece art;
 
     struct Pin
     {
@@ -40,25 +117,13 @@ struct Vandalism
         size_t viewidx;
     };
 
-    std::vector<Point> points;
-    std::vector<Stroke> strokes;
-    std::vector<test_view> views;
-    // One image name can be referenced by many images
-    // Image is actually an image + placement.
-    // image<->imagename is like stroke<->brush
-    std::vector<Image> images;
-
-    std::vector<std::string> imageNames;
-
-    std::vector<Brush> brushes;
-
     std::vector<Pin> pins;
 
     Pin currentPin;
 
-    std::vector<Point> currentPoints;
-    Stroke currentStroke;
-    Brush currentBrush;
+    std::vector<Masterpiece::Point> currentPoints;
+    Masterpiece::Stroke currentStroke;
+    Masterpiece::Brush currentBrush;
 
     // TODO: change this
     bool visiblesChanged;
@@ -154,14 +219,14 @@ struct Vandalism
 
     bool current_view_is_last() const
     {
-        return currentPin.viewidx + 1 == views.size();
+        return currentPin.viewidx + 1 == art.views.size();
     }
 
     bool append_allowed() const
     {
         return current_view_is_last();
     }
-
+    /*
     void append_new_view(const basis2s &tr)
     {
         currentPin.viewidx = views.size();
@@ -169,6 +234,7 @@ struct Vandalism
                                   strokes.size(), strokes.size(),
                                   currentPin.layeridx));
     }
+    */
 
     void remove_alterations()
     {
@@ -195,7 +261,7 @@ struct Vandalism
             float dx = input->mousePos.x - rotateStartX;
             float angle = si_pi * dx;
 
-            append_new_view(make_rotate(-angle));
+            art.change_view(make_rotate(-angle), currentPin.layeridx);
         }
 
         common_done();
@@ -221,7 +287,7 @@ struct Vandalism
     {
         if (append_allowed())
         {
-            append_new_view(make_zoom(input->mousePos.x, zoomStartX));
+            art.change_view(make_zoom(input->mousePos.x, zoomStartX), currentPin.layeridx);
         }
 
         common_done();
@@ -241,7 +307,7 @@ struct Vandalism
     {
         if (append_allowed())
         {
-            append_new_view(make_pan(panStart - input->mousePos));
+            art.change_view(make_pan(panStart - input->mousePos), currentPin.layeridx);
         }
         common_done();
     }
@@ -254,7 +320,7 @@ struct Vandalism
     void start_draw(const Input *input)
     {
         float2 pos = input->mousePos;
-        Point point;
+        Masterpiece::Point point;
         point.x = pos.x;
         point.y = pos.y;
         point.w = input->fakepressure ? pressure_func(0) : 1.0f;
@@ -282,7 +348,7 @@ struct Vandalism
     void do_draw(const Input *input)
     {
         float2 pos = input->mousePos;
-        Point point;
+        Masterpiece::Point point;
         point.x = pos.x;
         point.y = pos.y;
 
@@ -306,32 +372,14 @@ struct Vandalism
     {
         if (append_allowed())
         {
-            // TODO: keep only unique?
-            if (brushes.empty() ||
-                ::memcmp(&brushes.back(), &currentBrush, sizeof(Brush)) != 0)
-            {
-                brushes.push_back(currentBrush);
-            }
-
-            currentStroke.cached_bbox.grow(0.5f * currentBrush.diameter);
-
-            if (views[currentPin.viewidx].li != currentPin.layeridx)
-            {
-                append_new_view(make_pan({ 0.0f, 0.0f }));
-            }
-
-            strokes.push_back(currentStroke);
-            strokes.back().brush_id = brushes.size() - 1;
-            strokes.back().pi0 = points.size();
-
             if (input->simplify)
             {
                 std::vector<test_point> simplified;
                 ramer_douglas_peucker(currentPoints.data(),
-                                      currentPoints.data() +
-                                      currentPoints.size() - 1,
-                                      simplified,
-                                      0.1f * currentBrush.diameter);
+                    currentPoints.data() +
+                    currentPoints.size() - 1,
+                    simplified,
+                    0.1f * currentBrush.diameter);
                 std::cout << "simplify " << currentPoints.size() << " -> " << simplified.size() << std::endl;
                 currentPoints = simplified;
             }
@@ -340,20 +388,17 @@ struct Vandalism
                 input->smooth == HERMITE)
             {
                 smooth_stroke(currentPoints.data(),
-                              currentPoints.size(),
-                              points, input->negligibledistance,
-                              input->smooth == FITBEZIER);
+                    currentPoints.size(),
+                    points, input->negligibledistance,
+                    input->smooth == FITBEZIER);
             }
             else if (input->smooth == NONE)
             {
                 std::copy(currentPoints.cbegin(), currentPoints.cend(),
-                          std::back_inserter(points));
+                    std::back_inserter(points));
             }
 
-            strokes.back().pi1 = points.size();
-
-            views[currentPin.viewidx].cached_bbox.add_box(currentStroke.cached_bbox);
-            views[currentPin.viewidx].si1 += 1;
+            art.add_stroke(currentPin.layeridx, currentBrush, currentStroke, currentPoints);
         }
 
         currentStroke.pi0 = 0;
@@ -439,36 +484,14 @@ struct Vandalism
         common_done();
     }
 
-    size_t image_name_idx(const char *name)
-    {
-        size_t result = 0;
-        for (; result < imageNames.size(); ++result)
-        {
-            if (imageNames[result] == name)
-                break;
-        }
-        return result;
-    }
+
     
     void place_image(const char *name, float imageW, float imageH)
     {
         if (append_allowed())
         {
-            append_new_view(make_pan({ 0.0f, 0.0f }));
+            art.place_image(name, imageW, imageH);
 
-            size_t imageId = image_name_idx(name);
-            if (imageId == imageNames.size())
-            {
-                imageNames.push_back(name);
-            }
-
-            basis2r basis{ {-0.5f * imageW, -0.5f * imageH}, {imageW, 0.0f}, {0.0f, imageH} };
-            test_image i = { imageId, basis };
-
-            // TODO: why do we keep imgbbox?
-            views.back().cached_imgbbox = i.get_bbox();
-            views.back().ii = images.size();
-            images.push_back(i);
         }
 
         set_dirty();
@@ -996,13 +1019,8 @@ struct Vandalism
 
     void clear()
     {
-        brushes.clear();
+        art.clear();
         pins.clear();
-        imageNames.clear();
-        points.clear();
-        strokes.clear();
-        images.clear();
-        views.clear();
 
         setup_default_view();
 
@@ -1011,7 +1029,7 @@ struct Vandalism
 
     void show_all(float vpW, float vpH)
     {
-        if (strokes.empty())
+        if (art.empty())
             return;
 
         currentPin.viewidx = views.size() - 1;
