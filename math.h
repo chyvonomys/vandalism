@@ -1,4 +1,5 @@
 #include <cmath> // fabs, sqrt
+#include <cfloat> // FLT_MAX FLT_MIN
 
 struct float2
 {

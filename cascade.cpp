@@ -43,15 +43,13 @@ struct test_view
     size_t si1;
     size_t ii;
     size_t li;
-    //size_t pi;
     box2 cached_bbox;
     box2 cached_imgbbox;
     test_view(const basis2s& t, size_t s0, size_t s1, size_t l)
-        : tr(t), si0(s0), si1(s1), ii(NPOS), li(l), pi(NPOS)
+        : tr(t), si0(s0), si1(s1), ii(NPOS), li(l)
     {}
 
     bool has_image() const { return ii != NPOS; }
-    //bool is_pinned() const { return pi != NPOS; }
     bool has_strokes() const { return si1 > si0; }
 };
 

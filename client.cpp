@@ -41,15 +41,17 @@ kernel_services *g_services = nullptr;
 kernel_services::TexID g_font_texture_id;
 
 std::vector<kernel_services::MeshID> g_ui_meshes;
-// TODO: these images must reflect 1-to-1 imageNames from ism
-// NOTE: ism doesn't need to know abount any texid or dimensions
+
 struct ImageDesc
 {
     kernel_services::TexID texid;
     u32 width;
     u32 height;
 };
+// TODO: next two vectors have same size
+// image ids in art are indexes in those vectors
 std::vector<ImageDesc> g_loaded_images;
+std::vector<std::string> g_loaded_image_names;
 std::vector<output_data::drawcall> g_drawcalls;
 
 kernel_services::MeshID g_lines_mesh;
@@ -91,6 +93,18 @@ void clear_loaded_images()
         g_services->delete_texture(g_loaded_images[i].texid);
     }
     g_loaded_images.clear();
+    g_loaded_image_names.clear();
+}
+
+size_t image_name_idx(const char *name)
+{
+    size_t result = 0;
+    for (; result < g_loaded_image_names.size(); ++result)
+    {
+        if (g_loaded_image_names[result] == name)
+            break;
+    }
+    return result;
 }
 
 // TODO: ImDrawIdx vs u16 in proto.cpp
@@ -359,7 +373,7 @@ void add_quad(std::vector<output_data::Vertex> &quads,
 void add_rect(std::vector<output_data::Vertex>& quads,
               float2 p0, float2 p1, float2 side0, float2 side1,
               const basis2s& tform,
-              const Vandalism::Brush &brush,
+              const Masterpiece::Brush &brush,
               float zindex)
 {
     float2 A = point_in_basis(tform, p0 + side0);
@@ -376,7 +390,7 @@ void add_rect(std::vector<output_data::Vertex>& quads,
 void add_disk(std::vector<output_data::Vertex>& quads,
               float2 center, float2 right, float2 up,
               const basis2s& tform,
-              const Vandalism::Brush &brush,
+              const Masterpiece::Brush &brush,
               float zindex)
 {
     float2 bl = center - right - up;
@@ -395,12 +409,18 @@ void add_disk(std::vector<output_data::Vertex>& quads,
              0.0f, 1.0f);
 }
 
+void modify_brush(Masterpiece::Brush b, float w)
+{
+    b.color.a *= w;
+    b.diameter *= w;
+    b.spread *= w;
+}
 
 void fill_quads(std::vector<output_data::Vertex>& quads,
                 const test_point *points, size_t N,
                 size_t si,
                 const basis2s& tform,
-                const Vandalism::Brush& brush,
+                const Masterpiece::Brush& brush,
                 float depthStep)
 {
     if (N == 0)
@@ -412,7 +432,8 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
 
     if (gui_debug_draw_rects)
     {
-        Vandalism::Brush b1 = brush.modified(points[0].w);
+        Masterpiece::Brush b1 = brush;
+        modify_brush(b1, points[0].w);
 
         if (b1.spread > 0.0)
         {
@@ -435,8 +456,10 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
 
             if (len(dirC) > 0.001f)
             {
-                Vandalism::Brush cb0 = brush.modified(points[i-1].w);
-                Vandalism::Brush cb1 = brush.modified(points[i].w);
+                Masterpiece::Brush cb0 = brush;
+                modify_brush(cb0, points[i-1].w);
+                Masterpiece::Brush cb1 = brush;
+                modify_brush(cb1, points[i].w);
 
                 if (cb0.spread > 0.0 || cb1.spread > 0.0)
                 {
@@ -505,7 +528,8 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
         // disks at points
         for (size_t i = 0; i < N; ++i)
         {
-            Vandalism::Brush cb = brush.modified(points[i].w);
+            Masterpiece::Brush cb = brush;
+            modify_brush(cb, points[i].w);
 
             float2 curr = {points[i].x, points[i].y};
             float2 right = {0.5f * cb.diameter, 0.0f};
@@ -534,13 +558,13 @@ void fill_quads(std::vector<output_data::Vertex>& quads,
 void stroke_to_quads(const test_point* begin, const test_point* end,
                      std::vector<output_data::Vertex>& quads,
                      size_t stroke_id, const basis2s& tform,
-                     const Vandalism::Brush& brush)
+                     const Masterpiece::Brush& brush)
 {
-    static Vandalism::Brush s_debug_brush =
+    static Masterpiece::Brush s_debug_brush =
     {
         0.02f, 0.0f, 0.0f,
-        1.0f, 0.0f, 0.0f, 1.0f,
-        false, false
+        {1.0f, 0.0f, 0.0f, 1.0f},
+        false
     };
     static std::vector<test_point> s_sampled_points;
 
@@ -588,7 +612,7 @@ void collect_bake_data(const test_data& bake_data,
                     -0.5f * height_in,
                     +0.5f * height_in};
 
-    query(layer_id, bake_data, g_ism->currentPin.viewidx,
+    query(layer_id, bake_data, g_ism->currentView,
           viewbox, s_visibles, s_transforms,
           pixel_height_in);
 
@@ -598,8 +622,8 @@ void collect_bake_data(const test_data& bake_data,
         const basis2s& tform = s_transforms[vis.tform_id];
         if (vis.ty == test_visible::STROKE)
         {
-            const test_stroke& stroke = bake_data.strokes[vis.obj_id];
-            const Vandalism::Brush& brush = g_ism->brushes[stroke.brush_id];
+            const test_stroke& s = bake_data.strokes[vis.obj_id];
+            const Masterpiece::Brush& brush = g_ism->art.get_brush(s.brush_id);
 
             size_t before = g_bake_quads.size();
             if (g_drawcalls.empty() ||
@@ -618,8 +642,8 @@ void collect_bake_data(const test_data& bake_data,
                 g_drawcalls.push_back(dc);
             }
 
-            stroke_to_quads(bake_data.points + stroke.pi0,
-                            bake_data.points + stroke.pi1,
+            stroke_to_quads(bake_data.points + s.pi0,
+                            bake_data.points + s.pi1,
                             g_bake_quads, vis.obj_id, tform, brush);
             size_t after = g_bake_quads.size();
 
@@ -710,9 +734,6 @@ void build_view_dbg_buffer(ImGuiTextBuffer *buffer, const test_data &bake_data)
         const auto &view = bake_data.views[vi];
 
         ss << '#' << vi << " L:" << view.li;
-
-        if (view.is_pinned())
-            ss << " P:" << view.pi;
 
         float2 t = view.tr.o;
         float s = len(view.tr.x);
@@ -826,12 +847,12 @@ void update_and_render(input_data *input, output_data *output)
         g_ism->currentChanged = false;
 
         const test_data& current_data = g_ism->get_current_data();
-        const Vandalism::Brush& currBrush = g_ism->get_current_brush();
+        const Masterpiece::Brush& currBrush = g_ism->get_current_brush();
         size_t currStrokeId = g_ism->get_current_stroke_id();
 
         g_curr_quads.clear();
 
-        const Vandalism::Stroke& stroke = current_data.strokes[0];
+        const Masterpiece::Stroke& stroke = current_data.strokes[0];
 
         stroke_to_quads(current_data.points + stroke.pi0,
                         current_data.points + stroke.pi1,
@@ -1001,9 +1022,9 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::SameLine();
     ImGui::RadioButton("pivot", &gui_tool, static_cast<i32>(Vandalism::SECOND));
 
-    Vandalism::Undoee undoee = g_ism->undoable();
+    Undoee undoee = g_ism->undoable();
     const char *undolabels[] = { "", "Undo last stroke", "Undo image insertion", "Undo view change" };
-    if (undoee != Vandalism::NOTHING)
+    if (undoee != NOTHING)
     {
         ImGui::SameLine();
         if (ImGui::Button(undolabels[undoee]))
@@ -1114,7 +1135,7 @@ void update_and_render(input_data *input, output_data *output)
         ImGui::SameLine();
         if (ImGui::Button("Save"))
         {
-            g_ism->save_data(cfg_default_file);
+            g_ism->save_data(cfg_default_file, g_loaded_image_names);
         }
         ImGui::SameLine();
         if (ImGui::Button("Load"))
@@ -1123,12 +1144,12 @@ void update_and_render(input_data *input, output_data *output)
             {
                 clear_loaded_images();
 
-                g_ism->load_data(cfg_default_file);
+                g_ism->load_data(cfg_default_file, g_loaded_image_names);
 
-                for (size_t i = 0; i < g_ism->imageNames.size(); ++i)
+                for (size_t i = 0; i < g_loaded_image_names.size(); ++i)
                 {
                     ImageDesc desc;
-                    if (load_image(g_ism->imageNames[i].c_str(), desc))
+                    if (load_image(g_loaded_image_names[i].c_str(), desc))
                     {
                         g_loaded_images.push_back(desc);
                     }
@@ -1209,8 +1230,8 @@ void update_and_render(input_data *input, output_data *output)
             if (ImGui::Button("Insert image"))
             {
                 g_fit_img.name = cfg_default_image_file;
-                size_t ism_img_name_idx = g_ism->image_name_idx(g_fit_img.name.c_str());
-                if (ism_img_name_idx < g_ism->imageNames.size())
+                size_t ism_img_name_idx = image_name_idx(g_fit_img.name.c_str());
+                if (ism_img_name_idx < g_loaded_image_names.size())
                 {
                     const ImageDesc &desc = g_loaded_images[ism_img_name_idx];
                     float image_aspect = static_cast<float>(desc.height) / static_cast<float>(desc.width);
@@ -1257,7 +1278,7 @@ void update_and_render(input_data *input, output_data *output)
             ImGui::SameLine();
             if (ImGui::Button("Place image"))
             {
-                g_ism->place_image(g_fit_img.name.c_str(),
+                g_ism->place_image(image_name_idx(g_fit_img.name.c_str()),
                                    g_fit_img.width_in, g_fit_img.height_in);
 
                 g_image_fitting = false;
@@ -1339,9 +1360,9 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::Separator();
 
     // TODO: multilayers support
-    ImGui::Text("ism strokes: %d", static_cast<u32>(g_ism->strokes.size()));
-    ImGui::Text("ism points: %d", static_cast<u32>(g_ism->points.size()));
-    ImGui::Text("ism brushes: %d", static_cast<u32>(g_ism->brushes.size()));
+    ImGui::Text("ism strokes: %d", static_cast<u32>(g_ism->art.num_strokes()));
+    ImGui::Text("ism points: %d", static_cast<u32>(g_ism->art.num_points()));
+    ImGui::Text("ism brushes: %d", static_cast<u32>(g_ism->art.num_brushes()));
 
     ImGui::Text("bake_quads v: (%d/%d)",
                 static_cast<u32>(g_bake_quads.size()),

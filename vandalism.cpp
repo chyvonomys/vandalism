@@ -5,6 +5,14 @@
 #include <iostream>
 #include "cascade.cpp"
 
+enum Undoee
+{
+    NOTHING,
+    STROKE,
+    IMAGE,
+    VIEW
+};
+
 struct Masterpiece
 {
 public:
@@ -26,14 +34,7 @@ private:
     std::vector<Point> points;
     std::vector<Stroke> strokes;
     std::vector<View> views;
-    // One image name can be referenced by many images
-    // Image is actually an image + placement.
-    // image<->imagename is like stroke<->brush
     std::vector<Image> images;
-
-    // TODO: replace string with abstract `source`
-    std::vector<std::string> imageNames;
-
     std::vector<Brush> brushes;
 
 private:
@@ -42,35 +43,277 @@ private:
         views.push_back(View(basis, strokes.size(), strokes.size(), layeridx));
     }
 
-    size_t image_name_idx(const char *name)
+public:
+    void clear()
     {
-        size_t result = 0;
-        for (; result < imageNames.size(); ++result)
-        {
-            if (imageNames[result] == name)
-                break;
-        }
-        return result;
+        points.clear();
+        strokes.clear();
+        views.clear();
+        images.clear();
+        brushes.clear();
     }
 
-public:
+    void reset()
+    {
+        clear();
+        views.push_back(test_view(make_pan({ 0.0f, 0.0f }), 0, 0, 0));
+    }
+
+    bool load(const char *filename, std::vector<std::string> &imgNames)
+    {
+        clear();
+
+        std::ifstream is(filename);
+        std::string line;
+
+        bool ok = true;
+        size_t lineNum = 0;
+
+        while (ok && std::getline(is, line))
+        {
+            ++lineNum;
+            if (!line.empty())
+            {
+                if (line.empty())
+                {
+                    ok = false;
+                }
+                else if (*line.c_str() == 'p')
+                {
+                    std::istringstream ss(line);
+                    ss.seekg(2);
+                    test_point pt;
+                    ok = !(ss >> pt.x >> pt.y >> pt.w).fail();
+                    if (ok)
+                    {
+                        points.push_back(pt);
+                    }
+                }
+                else if (*line.c_str() == 's')
+                {
+                    std::istringstream ss(line);
+                    ss.seekg(2);
+                    test_stroke st;
+                    ok = !(ss >> st.pi0 >> st.pi1 >> st.brush_id).fail();
+                    if (ok)
+                    {
+                        strokes.push_back(st);
+                    }
+                }
+                else if (*line.c_str() == 'v')
+                {
+                    std::istringstream ss(line);
+                    ss.seekg(2);
+                    test_view vi(make_pan({ 0.0f, 0.0f }), 0, 0, 0);
+                    i32 imgidx;
+                    ok = !(ss >> vi.tr.o.x >> vi.tr.o.y >> vi.tr.x.x >> vi.tr.x.y
+                           >> vi.si0 >> vi.si1 >> imgidx >> vi.li).fail();
+                    if (ok)
+                    {
+                        vi.ii = (imgidx == -1 ? NPOS : static_cast<u32>(imgidx));
+                        views.push_back(vi);
+                    }
+                }
+                else if (*line.c_str() == 'b')
+                {
+                    std::istringstream ss(line);
+                    ss.seekg(2);
+                    Brush br;
+                    ok = !(ss >> br.type >> br.diameter
+                           >> br.color.r >> br.color.g >> br.color.b >> br.color.a).fail();
+                    if (ok)
+                    {
+                        brushes.push_back(br);
+                    }
+                }
+                else if (*line.c_str() == '#')
+                {
+                    // skip
+                }
+                else if (*line.c_str() == 'i')
+                {
+                    size_t firstq = 0;
+                    while (firstq < line.size())
+                    {
+                        if (line[firstq] == '\"') break;
+                        ++firstq;
+                    }
+                    size_t secondq = firstq + 1;
+                    while (secondq < line.size())
+                    {
+                        if (line[secondq] == '\"') break;
+                        ++secondq;
+                    }
+
+                    if (firstq < line.size() && secondq < line.size())
+                    {
+                        std::string name;
+                        name.assign(&line[firstq + 1], &line[secondq]);
+
+                        std::istringstream ss(line);
+                        ss.seekg(static_cast<std::streamoff>(secondq + 1));
+
+                        Image img;
+                        ok = !(ss >> img.basis.o.x >> img.basis.o.y
+                               >> img.basis.x.x >> img.basis.x.y >> img.basis.y.x >> img.basis.y.y).fail();
+                        if (ok)
+                        {
+                            img.nameidx = 0;
+                            for (; img.nameidx < imgNames.size(); ++img.nameidx)
+                            {
+                                if (imgNames[img.nameidx] == name)
+                                    break;
+                            }
+                            if (img.nameidx == imgNames.size())
+                            {
+                                // 'did not found'
+                                imgNames.push_back(name);
+                            }
+                            images.push_back(img);
+                        }
+                    }
+                    else
+                    {
+                        ok = false;
+                    }
+                }
+                else
+                {
+                    ok = false;
+                }
+            }
+        }
+
+        // TODO: validation
+
+        // calculate bboxes of strokes
+        for (size_t si = 0; si < strokes.size(); ++si)
+        {
+            Stroke& ns = strokes[si];
+            for (size_t pi = ns.pi0; pi < ns.pi1; ++pi)
+            {
+                ns.cached_bbox.add({ points[pi].x, points[pi].y });
+            }
+            // TODO: invalid for non circular brushes
+            // diameter should be max bbox of drawn point shape
+            ns.cached_bbox.grow(0.5f * brushes[ns.brush_id].diameter);
+        }
+
+        // calculate bboxes of views
+        for (size_t vi = 0; vi < views.size(); ++vi)
+        {
+            views[vi].cached_bbox = get_strokes_bbox(get_data(), vi);
+            if (views[vi].has_image())
+            {
+                views[vi].cached_imgbbox = images[views[vi].ii].get_bbox();
+            }
+        }
+
+        return ok;
+    }
+    
+    void save(const char *filename, const std::vector<std::string> &imgNames) const
+    {
+        std::ofstream os(filename);
+
+        for (size_t i = 0; i < points.size(); ++i)
+        {
+            os << "p " << points[i].x << ' ' << points[i].y << ' ' << points[i].w << '\n';
+        }
+        for (size_t i = 0; i < strokes.size(); ++i)
+        {
+            os << "s " << strokes[i].pi0 << ' ' << strokes[i].pi1
+               << ' ' << strokes[i].brush_id << ' ' << '\n';
+        }
+        for (size_t i = 0; i < views.size(); ++i)
+        {
+            os << "v " << views[i].tr.o.x << ' ' << views[i].tr.o.y
+               << ' ' << views[i].tr.x.x << ' ' << views[i].tr.x.y
+               << ' ' << views[i].si0 << ' ' << views[i].si1
+               << ' ' << (!views[i].has_image() ? -1 : static_cast<i32>(views[i].ii))
+               << ' ' << views[i].li
+               << '\n';
+        }
+        // TODO: maybe separate codes for regular brush, eraser, etc
+        for (size_t i = 0; i < brushes.size(); ++i)
+        {
+            os << "b " << brushes[i].type << ' ' << brushes[i].diameter << ' '
+               << brushes[i].color.r << ' ' << brushes[i].color.g << ' '
+               << brushes[i].color.b << ' ' << brushes[i].color.a << '\n';
+        }
+        // TODO: maybe reuse 'basis' vectors approach here and in views
+        for (size_t i = 0; i < images.size(); ++i)
+        {
+            os << "i \"" << imgNames[images[i].nameidx] << '\"'
+                << ' ' << images[i].basis.o.x << ' ' << images[i].basis.o.y
+                << ' ' << images[i].basis.x.x << ' ' << images[i].basis.x.y
+                << ' ' << images[i].basis.y.x << ' ' << images[i].basis.y.y << '\n';
+        }
+    }
+
+    Undoee check_undo(bool really)    
+    {
+        // TODO: view may now contain image, fix these conditions
+        if (views.back().si1 == views.back().si0)
+        {
+            if (views.size() > 1)
+            {
+                if (!views.back().has_image())
+                {
+                    if (really)
+                    {
+                        // TODO: if we maintain parallel view in all layers,
+                        // then we pop back in other layers?
+                        views.pop_back();
+                    }
+                    return VIEW;
+                }
+                else
+                {
+                    if (really)
+                    {
+                        images.pop_back();
+                        views.back().ii = NPOS;
+                    }
+                    return IMAGE;
+                }
+            }
+        }
+        else if (views.back().has_strokes())
+        {
+            if (really)
+            {
+                size_t deleteCnt = strokes.back().pi1 - strokes.back().pi0;
+                for (size_t i = 0; i < deleteCnt; ++i)
+                {
+                    points.pop_back();
+                }
+                strokes.pop_back();
+                --views.back().si1;
+                size_t vi = views.size() - 1;
+                views.back().cached_bbox = get_strokes_bbox(get_data(), vi);
+            }
+            return STROKE;
+        }
+        return NOTHING;
+    }
+
     void change_view(const basis2s &basis, size_t layeridx)
     {
         // TODO: combination of views
         append_new_view(basis, layeridx);
     }
 
-    void place_image(const char *name, float imageW, float imageH)
+    void place_image(size_t imageId, float imageW, float imageH, size_t layeridx)
     {
-        append_new_view(make_pan({ 0.0f, 0.0f }), views.back().li);
+        append_new_view(make_pan({ 0.0f, 0.0f }), layeridx);
 
-        size_t imageId = image_name_idx(name);
-        if (imageId == imageNames.size())
+        basis2r basis =
         {
-            imageNames.push_back(name);
-        }
-
-        basis2r basis{ { -0.5f * imageW, -0.5f * imageH },{ imageW, 0.0f },{ 0.0f, imageH } };
+            { -0.5f * imageW, -0.5f * imageH },
+            { imageW, 0.0f },
+            { 0.0f, imageH }
+        };
         test_image i = { imageId, basis };
 
         // TODO: why do we keep imgbbox?
@@ -96,13 +339,36 @@ public:
         strokes.push_back(newStroke);
         strokes.back().cached_bbox.grow(0.5f * brush.diameter);
         strokes.back().brush_id = brushes.size() - 1;
+
         strokes.back().pi0 = points.size();
-        //TODO: append
+        std::copy(newPoints.cbegin(), newPoints.cend(),
+                  std::back_inserter(points));
         strokes.back().pi1 = points.size();
 
         views.back().cached_bbox.add_box(strokes.back().cached_bbox);
         views.back().si1 += 1;
     }
+
+    test_data get_data() const
+    {
+        test_data result =
+        {
+            points.data(),
+            strokes.data(),
+            images.data(),
+            views.data(),
+            views.size()
+        };
+        return result;
+    }
+
+    const Brush &get_brush(size_t i) const { return brushes[i]; }
+
+    size_t num_points() const { return points.size(); }
+    size_t num_strokes() const { return strokes.size(); }
+    size_t num_views() const { return views.size(); }
+    size_t num_images() const { return images.size(); }
+    size_t num_brushes() const { return brushes.size(); }
 };
 
 // TODO: commited stroke count, non-commited stroke count (for avoiding re-baking after each new stroke)
@@ -111,15 +377,8 @@ struct Vandalism
 {
     Masterpiece art;
 
-    struct Pin
-    {
-        u8 layeridx;
-        size_t viewidx;
-    };
-
-    std::vector<Pin> pins;
-
-    Pin currentPin;
+    u8 currentLayer;
+    size_t currentView;
 
     std::vector<Masterpiece::Point> currentPoints;
     Masterpiece::Stroke currentStroke;
@@ -209,17 +468,17 @@ struct Vandalism
 
     void set_current_layer(u8 id)
     {
-        currentPin.layeridx = id;
+        currentLayer = id;
     }
 
     u8 get_current_layer_id() const
     {
-        return currentPin.layeridx;
+        return currentLayer;
     }
 
     bool current_view_is_last() const
     {
-        return currentPin.viewidx + 1 == art.views.size();
+        return currentView + 1 == art.num_views();
     }
 
     bool append_allowed() const
@@ -261,7 +520,8 @@ struct Vandalism
             float dx = input->mousePos.x - rotateStartX;
             float angle = si_pi * dx;
 
-            art.change_view(make_rotate(-angle), currentPin.layeridx);
+            art.change_view(make_rotate(-angle), currentLayer);
+            currentView = art.num_views() - 1;
         }
 
         common_done();
@@ -287,7 +547,9 @@ struct Vandalism
     {
         if (append_allowed())
         {
-            art.change_view(make_zoom(input->mousePos.x, zoomStartX), currentPin.layeridx);
+            art.change_view(make_zoom(input->mousePos.x, zoomStartX),
+                            currentLayer);
+            currentView = art.num_views() - 1;
         }
 
         common_done();
@@ -307,7 +569,9 @@ struct Vandalism
     {
         if (append_allowed())
         {
-            art.change_view(make_pan(panStart - input->mousePos), currentPin.layeridx);
+            art.change_view(make_pan(panStart - input->mousePos),
+                            currentLayer);
+            currentView = art.num_views() - 1;
         }
         common_done();
     }
@@ -387,18 +651,17 @@ struct Vandalism
             if (input->smooth == FITBEZIER ||
                 input->smooth == HERMITE)
             {
+                std::vector<test_point> smoothed;
                 smooth_stroke(currentPoints.data(),
                     currentPoints.size(),
-                    points, input->negligibledistance,
+                    smoothed, input->negligibledistance,
                     input->smooth == FITBEZIER);
-            }
-            else if (input->smooth == NONE)
-            {
-                std::copy(currentPoints.cbegin(), currentPoints.cend(),
-                    std::back_inserter(points));
+                currentPoints = smoothed;
             }
 
-            art.add_stroke(currentPin.layeridx, currentBrush, currentStroke, currentPoints);
+            art.add_stroke(currentLayer, currentBrush,
+                           currentStroke, currentPoints);
+            currentView = art.num_views() - 1;
         }
 
         currentStroke.pi0 = 0;
@@ -447,10 +710,11 @@ struct Vandalism
             float a0 = static_cast<float>(::atan2f(d0.y, d0.x));
             float a1 = static_cast<float>(::atan2f(d1.y, d1.x));
 
-            append_new_view(make_pan(firstPos));
-            append_new_view(make_rotate(a0 - a1));
-            append_new_view(make_zoom(len(d1), len(d0)));
-            append_new_view(make_pan(-firstPos));
+            art.change_view(make_pan(firstPos), currentLayer);
+            art.change_view(make_rotate(a0 - a1), currentLayer);
+            art.change_view(make_zoom(len(d1), len(d0)), currentLayer);
+            art.change_view(make_pan(-firstPos), currentLayer);
+            currentView = art.num_views() - 1;
         }
 
         common_done();
@@ -476,22 +740,21 @@ struct Vandalism
 
         if (append_allowed())
         {
-            append_new_view(make_pan(postShift));
-            append_new_view(make_zoom(zoomCoeff, 1.0f));
-            append_new_view(make_pan(preShift));
+            art.change_view(make_pan(postShift), currentLayer);
+            art.change_view(make_zoom(zoomCoeff, 1.0f), currentLayer);
+            art.change_view(make_pan(preShift), currentLayer);
+            currentView = art.num_views() - 1;
         }
 
         common_done();
     }
-
-
     
-    void place_image(const char *name, float imageW, float imageH)
+    void place_image(size_t imageId, float imageW, float imageH)
     {
         if (append_allowed())
         {
-            art.place_image(name, imageW, imageH);
-
+            art.place_image(imageId, imageW, imageH, currentLayer);
+            currentView = art.num_views() - 1;
         }
 
         set_dirty();
@@ -610,15 +873,13 @@ struct Vandalism
         currentStroke.pi0 = 0;
         currentStroke.pi1 = 0;
 
-        setup_default_view();
-
         firstPos = { 0.0f, 0.0f };
 
         remove_alterations();
-        set_dirty();
+        clear();
     }
 
-    const Brush& get_current_brush() const
+    const Masterpiece::Brush& get_current_brush() const
     {
         return currentBrush;
     }
@@ -626,20 +887,12 @@ struct Vandalism
     // TODO: does this need to be here?
     size_t get_current_stroke_id() const
     {
-        return strokes.size();
+        return art.num_strokes();
     }
 
     test_data get_bake_data() const
     {
-        test_data result =
-        {
-            points.data(),
-            strokes.data(),
-            images.data(),
-            views.data(),
-            views.size()
-        };
-        return result;
+        return art.get_data();
     }
 
     test_data get_current_data() const
@@ -656,60 +909,6 @@ struct Vandalism
         return result;
     }
 
-    void optimize_views()
-    {
-        // TODO: bring this back (?)
-        /*
-        if (views.size() > 1)
-        {
-            std::vector<test_view> optimized;
-            optimized.reserve(views.size());
-
-            optimized.push_back(views[0]);
-
-            for (size_t i = 1; i < views.size(); ++i)
-            {
-                auto& prev = optimized.back();
-                const auto& curr = views[i];
-                if (!prev.is_pined() && !prev.has_strokes() &&
-                    prev.tr.type == curr.tr.type && i != currentViewIdx)
-                {
-                    prev.bbox = curr.bbox;
-                    prev.pin_index = curr.pin_index;
-                    prev.si0 = curr.si0;
-                    prev.si1 = curr.si1;
-                    prev.tr = combine_transitions(prev.tr.a, prev.tr.b,
-                                                  curr.tr.a, curr.tr.b,
-                                                  prev.tr.type);
-                }
-                else
-                {
-                    if (i == currentViewIdx)
-                    {
-                        currentViewIdx = optimized.size();
-                    }
-                    optimized.push_back(curr);
-                }
-                // indexes change while optimizing, update
-                if (curr.is_pinned())
-                {
-                    pins[curr.pin_index] = optimized.size() - 1;
-                }
-            }
-            views = optimized;
-            set_dirty();
-        }
-        */
-    }
-
-    enum Undoee
-    {
-        NOTHING,
-        STROKE,
-        IMAGE,
-        VIEW
-    };
-
     Undoee undoable()
     {
         return check_undo(false);
@@ -717,8 +916,9 @@ struct Vandalism
 
     void undo()
     {
-        if (check_undo(true))
+        if (check_undo(true) != NOTHING)
         {
+            currentView = art.num_views() - 1;
             set_dirty();
         }
     }
@@ -729,314 +929,58 @@ struct Vandalism
         {
             return NOTHING;
         }
-        // TODO: view may now contain image, fix these conditions
-        else if (views.back().si1 == views.back().si0)
-        {
-            if (views.size() > 1)
-            {
-                if (!views.back().has_image())
-                {
-                    if (really)
-                    {
-                        // TODO: if we maintain parallel view in all layers,
-                        // then we pop back in other layers?
-                        views.pop_back();
-                        --currentPin.viewidx;
-                    }
-                    return VIEW;
-                }
-                else
-                {
-                    if (really)
-                    {
-                        images.pop_back();
-                        views.back().ii = NPOS;
-                    }
-                    return IMAGE;
-                }
-            }
-        }
-        else if (views.back().has_strokes())
-        {
-            if (really)
-            {
-                size_t deleteCnt = strokes.back().pi1 - strokes.back().pi0;
-                for (size_t i = 0; i < deleteCnt; ++i)
-                {
-                    points.pop_back();
-                }
-                strokes.pop_back();
-                --views.back().si1;
-                size_t vi = views.size() - 1;
-                views.back().cached_bbox = get_strokes_bbox(get_bake_data(), vi);
-            }
-            return STROKE;
-        }
-        return NOTHING;
+        return art.check_undo(really);
     }
 
     void set_view(size_t idx)
     {
-        if (idx < views.size())
+        if (idx < art.num_views())
         {
-            currentPin.viewidx = idx;
+            currentView = idx;
 
             set_dirty();
         }
     }
 
-    void save_data(const char *filename) const
+    void save_data(const char *filename,
+                   const std::vector<std::string> &imgNames) const
     {
-        std::ofstream os(filename);
-
-        for (size_t i = 0; i < points.size(); ++i)
-        {
-            os << "p " << points[i].x << ' ' << points[i].y << ' ' << points[i].w << '\n';
-        }
-        for (size_t i = 0; i < strokes.size(); ++i)
-        {
-            os << "s " << strokes[i].pi0 << ' ' << strokes[i].pi1
-               << ' ' << strokes[i].brush_id << ' ' << '\n';
-        }
-        for (size_t i = 0; i < views.size(); ++i)
-        {
-            os << "v " << views[i].tr.o.x << ' ' << views[i].tr.o.y
-               << ' ' << views[i].tr.x.x << ' ' << views[i].tr.x.y
-               << ' ' << views[i].si0 << ' ' << views[i].si1
-               << ' ' << (!views[i].has_image() ? -1 : static_cast<i32>(views[i].ii))
-               << ' ' << views[i].li
-               << '\n';
-        }
-        // TODO: maybe separate codes for regular brush, eraser, etc
-        for (size_t i = 0; i < brushes.size(); ++i)
-        {
-            os << "b " << brushes[i].type << ' ' << brushes[i].diameter << ' '
-               << brushes[i].color.r << ' ' << brushes[i].color.g << ' '
-               << brushes[i].color.b << ' ' << brushes[i].color.a << '\n';
-        }
-        // TODO: maybe reuse 'basis' vectors approach here and in views
-        for (size_t i = 0; i < images.size(); ++i)
-        {
-            os << "i \"" << imageNames[images[i].nameidx] << '\"'
-                << ' ' << images[i].basis.o.x << ' ' << images[i].basis.o.y
-                << ' ' << images[i].basis.x.x << ' ' << images[i].basis.x.y
-                << ' ' << images[i].basis.y.x << ' ' << images[i].basis.y.y << '\n';
-        }
+        art.save(filename, imgNames);
     }
 
-    void load_data(const char *filename)
+    void load_data(const char *filename, std::vector<std::string> &imgNames)
     {
-        std::ifstream is(filename);
-        std::string line;
+        Masterpiece newArt;
 
-        std::vector<Point> newPoints;
-        std::vector<Stroke> newStrokes;
-        std::vector<Image> newImages;
-        std::vector<test_view> newViews;
-        std::vector<Brush> newBrushes;
-        std::vector<std::string> newImageNames;
-
-        bool ok = true;
-        size_t lineNum = 0;
-
-        while (ok && std::getline(is, line))
+        if (newArt.load(filename, imgNames))
         {
-            ++lineNum;
-            if (!line.empty())
-            {
-                if (line.empty())
-                {
-                    ok = false;
-                }
-                else if (*line.c_str() == 'p')
-                {
-                    std::istringstream ss(line);
-                    ss.seekg(2);
-                    test_point pt;
-                    ok = !(ss >> pt.x >> pt.y >> pt.w).fail();
-                    if (ok)
-                    {
-                        newPoints.push_back(pt);
-                    }
-                }
-                else if (*line.c_str() == 's')
-                {
-                    std::istringstream ss(line);
-                    ss.seekg(2);
-                    test_stroke st;
-                    ok = !(ss >> st.pi0 >> st.pi1 >> st.brush_id).fail();
-                    if (ok)
-                    {
-                        newStrokes.push_back(st);
-                    }
-                }
-                else if (*line.c_str() == 'v')
-                {
-                    std::istringstream ss(line);
-                    ss.seekg(2);
-                    test_view vi(make_pan({ 0.0f, 0.0f }), 0, 0, 0);
-                    i32 imgidx;
-                    ok = !(ss >> vi.tr.o.x >> vi.tr.o.y >> vi.tr.x.x >> vi.tr.x.y
-                           >> vi.si0 >> vi.si1 >> imgidx >> vi.li).fail();
-                    if (ok)
-                    {
-                        vi.ii = (imgidx == -1 ? NPOS : static_cast<u32>(imgidx));
-                        newViews.push_back(vi);
-                    }
-                }
-                else if (*line.c_str() == 'b')
-                {
-                    std::istringstream ss(line);
-                    ss.seekg(2);
-                    Brush br;
-                    ok = !(ss >> br.type >> br.diameter
-                           >> br.color.r >> br.color.g >> br.color.b >> br.color.a).fail();
-                    if (ok)
-                    {
-                        newBrushes.push_back(br);
-                    }
-                }
-                else if (*line.c_str() == '#')
-                {
-                    // skip
-                }
-                else if (*line.c_str() == 'i')
-                {
-                    size_t firstq = 0;
-                    while (firstq < line.size())
-                    {
-                        if (line[firstq] == '\"') break;
-                        ++firstq;
-                    }
-                    size_t secondq = firstq + 1;
-                    while (secondq < line.size())
-                    {
-                        if (line[secondq] == '\"') break;
-                        ++secondq;
-                    }
+            art = newArt;
 
-                    if (firstq < line.size() && secondq < line.size())
-                    {
-                        std::string name;
-                        name.assign(&line[firstq + 1], &line[secondq]);
-
-                        std::istringstream ss(line);
-                        ss.seekg(static_cast<std::streamoff>(secondq + 1));
-
-                        Image img;
-                        ok = !(ss >> img.basis.o.x >> img.basis.o.y
-                               >> img.basis.x.x >> img.basis.x.y >> img.basis.y.x >> img.basis.y.y).fail();
-                        if (ok)
-                        {
-                            img.nameidx = 0;
-                            for (; img.nameidx < newImageNames.size(); ++img.nameidx)
-                            {
-                                if (newImageNames[img.nameidx] == name)
-                                    break;
-                            }
-                            if (img.nameidx == newImageNames.size())
-                            {
-                                // 'did not found'
-                                newImageNames.push_back(name);
-                            }
-                            newImages.push_back(img);
-                        }
-                    }
-                    else
-                    {
-                        ok = false;
-                    }
-                }
-                else
-                {
-                    ok = false;
-                }
-            }
-        }
-
-        // TODO: validation
-
-        // calculate bboxes of strokes
-        for (size_t si = 0; si < newStrokes.size(); ++si)
-        {
-            Stroke& ns = newStrokes[si];
-            for (size_t pi = ns.pi0; pi < ns.pi1; ++pi)
-            {
-                ns.cached_bbox.add({ newPoints[pi].x, newPoints[pi].y });
-            }
-            // TODO: invalid for non circular brushes
-            // diameter should be max bbox of drawn point shape
-            ns.cached_bbox.grow(0.5f * newBrushes[ns.brush_id].diameter);
-        }
-
-        test_data newData;
-        newData.points = newPoints.data();
-        newData.strokes = newStrokes.data();
-        newData.images = newImages.data();
-        newData.views = newViews.data();
-        newData.nviews = newViews.size();
-
-        // calculate bboxes of views
-        for (size_t vi = 0; vi < newViews.size(); ++vi)
-        {
-            newViews[vi].cached_bbox = get_strokes_bbox(newData, vi);
-            if (newViews[vi].has_image())
-            {
-                newViews[vi].cached_imgbbox = newImages[newViews[vi].ii].get_bbox();
-            }
-        }
-
-        if (ok)
-        {
-            // TODO: support for multiple layers
-            clear();
-
-            imageNames = newImageNames;
-            brushes = newBrushes;
-            views = newViews;
-            images = newImages;
-            points = newPoints;
-            strokes = newStrokes;
-
-            currentPin.viewidx = views.size() - 1;
+            currentView = art.num_views() - 1;
 
             set_dirty();
         }
-    }
-
-    void setup_default_view()
-    {
-        Pin p0;
-        p0.layeridx = 0;
-        p0.viewidx = 0;
-        pins.push_back(p0);
-
-        views.push_back(test_view(make_pan({ 0.0f, 0.0f }), 0, 0, 0));
-        views.back().pi = 0;
-
-        currentPin = {0, 0};
     }
 
     void clear()
     {
-        art.clear();
-        pins.clear();
+        art.reset();
 
-        setup_default_view();
+        currentView = 0;
 
         set_dirty();
     }
 
     void show_all(float vpW, float vpH)
     {
-        if (art.empty())
+        if (art.num_strokes() == 0 && art.num_images() == 0)
             return;
 
-        currentPin.viewidx = views.size() - 1;
-        box2 all_box = query_bbox(get_bake_data(), currentPin.viewidx);
+        currentView = art.num_views() - 1;
+        box2 all_box = query_bbox(get_bake_data(), currentView);
 
         float2 center = 0.5f * (all_box.min + all_box.max);
-        append_new_view(make_pan(center));
+        art.change_view(make_pan(center), currentLayer);
 
         float vpAspect = vpH / vpW;
         float bbAspect = all_box.height() / all_box.width();
@@ -1050,7 +994,8 @@ struct Vandalism
         {
             fit = make_zoom(vpH, all_box.height());
         }
-        append_new_view(fit);
+        art.change_view(fit, currentLayer);
+        currentView = art.num_views() - 1;
 
         set_dirty();
     }
