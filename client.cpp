@@ -55,7 +55,8 @@ std::vector<std::string> g_loaded_image_names;
 std::vector<output_data::drawcall> g_drawcalls;
 
 kernel_services::MeshID g_lines_mesh;
-kernel_services::MeshID g_bake_mesh;
+std::vector<kernel_services::MeshID> g_bake_meshes;
+size_t g_max_bake_mesh_idx;
 kernel_services::MeshID g_curr_mesh;
 
 std::vector<ImDrawVert> g_lines_vb;
@@ -232,6 +233,7 @@ ImGuiTextBuffer *g_viewsBuf;
 
 std::vector<output_data::Vertex> g_bake_quads;
 std::vector<output_data::Vertex> g_curr_quads;
+const size_t VTX_PER_MESH = 65536;
 
 void setup(kernel_services *services, u32 nLayers)
 {
@@ -261,15 +263,20 @@ void setup(kernel_services *services, u32 nLayers)
 
     g_services = services;
 
-    const u32 BAKE_QUADS_CNT = 5000;
-    const u32 CURR_QUADS_CNT = 500;
+    const u32 BAKE_MESHES_CNT = 5;
+    const u32 BAKE_QUADS_CNT = 16384;
+    const u32 CURR_QUADS_CNT = 16384;
 
     g_bake_quads.reserve(BAKE_QUADS_CNT * 4);
     g_curr_quads.reserve(CURR_QUADS_CNT * 4);
 
-    g_bake_mesh =
-    g_services->create_quad_mesh(*g_services->stroke_vertex_layout,
-                                 BAKE_QUADS_CNT * 4);
+    for (u32 i = 0; i < BAKE_MESHES_CNT; ++i)
+    {
+        g_bake_meshes.push_back(g_services->
+            create_quad_mesh(*g_services->stroke_vertex_layout,
+                BAKE_QUADS_CNT * 4));
+    }
+
     g_curr_mesh =
     g_services->create_quad_mesh(*g_services->stroke_vertex_layout,
                                  CURR_QUADS_CNT * 4);
@@ -336,7 +343,11 @@ void cleanup()
         g_services->delete_mesh(g_ui_meshes[i]);
     }
 
-    g_services->delete_mesh(g_bake_mesh);
+    for (size_t i = 0; i < g_bake_meshes.size(); ++i)
+    {
+        g_services->delete_mesh(g_bake_meshes[i]);
+    }   
+
     g_services->delete_mesh(g_curr_mesh);
     g_services->delete_mesh(g_lines_mesh);
 
@@ -597,6 +608,43 @@ void stroke_to_quads(const test_point* begin, const test_point* end,
     }
 }
 
+void append_bake_drawcalls(u8 layer_id,
+                           std::vector<output_data::drawcall> &drawcalls,
+                           size_t &vertexCount,
+                           const std::vector<kernel_services::MeshID> &meshes,
+                           size_t &currMeshIdx)
+{
+    if (vertexCount > 0)
+    {
+        if (drawcalls.empty() ||
+            drawcalls.back().id != output_data::BAKEBATCH ||
+            drawcalls.back().layer_id != layer_id ||
+            drawcalls.back().count == VTX_PER_MESH / 4 * 6)
+        {
+            bool nextMesh = drawcalls.empty() || drawcalls.back().count == VTX_PER_MESH / 4 * 6;
+            u32 offset = nextMesh ? 0 : drawcalls.back().offset + drawcalls.back().count;
+
+            if (nextMesh) ++currMeshIdx;
+
+            output_data::drawcall dc;
+            dc.id = output_data::BAKEBATCH;
+            dc.mesh_id = meshes[currMeshIdx-1];
+            dc.texture_id = 0; // not used
+            dc.offset = offset;
+            dc.count = 0;
+            dc.layer_id = layer_id;
+
+            drawcalls.push_back(dc);
+        }
+
+        size_t room = VTX_PER_MESH - drawcalls.back().count / 6 * 4;
+        size_t portion = (vertexCount >= room ? room : vertexCount);
+
+        drawcalls.back().count += static_cast<u32>(portion / 4 * 6);
+        vertexCount -= portion;
+    }
+}
+
 void collect_bake_data(const test_data& bake_data,
                        float width_in, float height_in,
                        float pixel_height_in,
@@ -625,30 +673,17 @@ void collect_bake_data(const test_data& bake_data,
             const test_stroke& s = bake_data.strokes[vis.obj_id];
             const Masterpiece::Brush& brush = g_ism->art.get_brush(s.brush_id);
 
-            size_t before = g_bake_quads.size();
-            if (g_drawcalls.empty() ||
-                g_drawcalls.back().id != output_data::BAKEBATCH ||
-                (g_drawcalls.back().id == output_data::BAKEBATCH &&
-                 g_drawcalls.back().layer_id != layer_id))
-            {
-                output_data::drawcall dc;
-                dc.id = output_data::BAKEBATCH;
-                dc.mesh_id = g_bake_mesh;
-                dc.texture_id = 0; // not used
-                dc.offset = static_cast<u32>(before / 4 * 6);
-                dc.count = 0;
-                dc.layer_id = layer_id;
-
-                g_drawcalls.push_back(dc);
-            }
-
+            size_t vtxCountBefore = g_bake_quads.size();
             stroke_to_quads(bake_data.points + s.pi0,
-                            bake_data.points + s.pi1,
-                            g_bake_quads, vis.obj_id, tform, brush);
-            size_t after = g_bake_quads.size();
+                bake_data.points + s.pi1,
+                g_bake_quads, vis.obj_id, tform, brush);
+            size_t vtxCountAfter = g_bake_quads.size();
 
-            size_t idxCnt = (after - before) / 4 * 6;
-            g_drawcalls.back().count += static_cast<u32>(idxCnt);
+            size_t remaining = vtxCountAfter - vtxCountBefore;
+            while (remaining > 0)
+            {
+                append_bake_drawcalls(layer_id, g_drawcalls, remaining, g_bake_meshes, g_max_bake_mesh_idx);
+            }
         }
         else if (vis.ty == test_visible::IMAGE)
         {
@@ -685,7 +720,7 @@ void collect_bake_data(const test_data& bake_data,
     {
         output_data::drawcall dc;
         dc.id = output_data::BAKEBATCH;
-        dc.mesh_id = g_bake_mesh;
+        dc.mesh_id = g_bake_meshes[g_max_bake_mesh_idx];
         dc.texture_id = 0; // not used
         dc.offset = 0;
         dc.count = 0;
@@ -815,20 +850,28 @@ void update_and_render(input_data *input, output_data *output)
         g_ism->visiblesChanged = false;
 
         g_bake_quads.clear();
+        g_max_bake_mesh_idx = 0;
 
         // TODO: collect only active layers
         for (u8 layerIdx = 0; layerIdx < gui_layer_cnt; ++layerIdx)
         {
             collect_bake_data(bake_data,
-                              input->rtWidthIn, input->rtHeightIn,
-                              pixel_height_in,
-                              layerIdx);
+                input->rtWidthIn, input->rtHeightIn,
+                pixel_height_in,
+                layerIdx);
         }
 
-        u32 vtxCnt = static_cast<u32>(g_bake_quads.size());
+        size_t remaining = g_bake_quads.size();
+        size_t mesh_idx = 0;
+        while (remaining > 0)
+        {
+            size_t portion = (remaining >= VTX_PER_MESH ? VTX_PER_MESH : remaining);
 
-        g_services->update_mesh_vb(g_bake_mesh,
-                                   g_bake_quads.data(), vtxCnt);
+            g_services->update_mesh_vb(g_bake_meshes[mesh_idx],
+                g_bake_quads.data() + mesh_idx * VTX_PER_MESH, static_cast<u32>(portion));
+            remaining -= portion;
+            ++mesh_idx;
+        }
         
         build_view_dbg_buffer(g_viewsBuf, bake_data);
         scrollViewsDown = true;
@@ -836,8 +879,8 @@ void update_and_render(input_data *input, output_data *output)
 
     output->preTranslate  = g_ism->preShift;
     output->postTranslate = g_ism->postShift;
-    output->scale          = g_ism->zoomCoeff;
-    output->rotate         = g_ism->rotateAngle;
+    output->scale = g_ism->zoomCoeff;
+    output->rotate = g_ism->rotateAngle;
 
     output->bg_color = gui_background_color;
     output->grid_bg_color = gui_grid_bg_color;
