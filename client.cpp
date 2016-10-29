@@ -56,6 +56,7 @@ std::vector<output_data::drawcall> g_drawcalls;
 
 kernel_services::MeshID g_lines_mesh;
 std::vector<kernel_services::MeshID> g_bake_meshes;
+std::vector<u32> g_bake_mesh_sizes;
 size_t g_max_bake_mesh_idx;
 kernel_services::MeshID g_curr_mesh;
 
@@ -276,6 +277,8 @@ void setup(kernel_services *services, u32 nLayers)
             create_quad_mesh(*g_services->stroke_vertex_layout,
                 BAKE_QUADS_CNT * 4));
     }
+
+    g_bake_mesh_sizes.resize(BAKE_MESHES_CNT);
 
     g_curr_mesh =
     g_services->create_quad_mesh(*g_services->stroke_vertex_layout,
@@ -612,6 +615,7 @@ void append_bake_drawcalls(u8 layer_id,
                            std::vector<output_data::drawcall> &drawcalls,
                            size_t &vertexCount,
                            const std::vector<kernel_services::MeshID> &meshes,
+                           std::vector<u32> &meshSizes,
                            size_t &currMeshIdx)
 {
     if (vertexCount > 0)
@@ -619,10 +623,10 @@ void append_bake_drawcalls(u8 layer_id,
         if (drawcalls.empty() ||
             drawcalls.back().id != output_data::BAKEBATCH ||
             drawcalls.back().layer_id != layer_id ||
-            drawcalls.back().count == VTX_PER_MESH / 4 * 6)
+            meshSizes[currMeshIdx] == VTX_PER_MESH)
         {
-            bool nextMesh = drawcalls.empty() || drawcalls.back().count == VTX_PER_MESH / 4 * 6;
-            u32 offset = nextMesh ? 0 : drawcalls.back().offset + drawcalls.back().count;
+            bool nextMesh = drawcalls.empty() || meshSizes[currMeshIdx] == VTX_PER_MESH;
+            u32 offset = nextMesh ? 0 : meshSizes[currMeshIdx] / 4 * 6;
 
             if (nextMesh) ++currMeshIdx;
 
@@ -637,11 +641,12 @@ void append_bake_drawcalls(u8 layer_id,
             drawcalls.push_back(dc);
         }
 
-        size_t room = VTX_PER_MESH - drawcalls.back().count / 6 * 4;
+        size_t room = VTX_PER_MESH - meshSizes[currMeshIdx];
         size_t portion = (vertexCount >= room ? room : vertexCount);
 
         drawcalls.back().count += static_cast<u32>(portion / 4 * 6);
         vertexCount -= portion;
+        meshSizes[currMeshIdx] += portion;
     }
 }
 
@@ -682,7 +687,8 @@ void collect_bake_data(const test_data& bake_data,
             size_t remaining = vtxCountAfter - vtxCountBefore;
             while (remaining > 0)
             {
-                append_bake_drawcalls(layer_id, g_drawcalls, remaining, g_bake_meshes, g_max_bake_mesh_idx);
+                append_bake_drawcalls(layer_id, g_drawcalls, remaining,
+                                      g_bake_meshes, g_bake_mesh_sizes, g_max_bake_mesh_idx);
             }
         }
         else if (vis.ty == test_visible::IMAGE)
@@ -720,7 +726,7 @@ void collect_bake_data(const test_data& bake_data,
     {
         output_data::drawcall dc;
         dc.id = output_data::BAKEBATCH;
-        dc.mesh_id = g_bake_meshes[g_max_bake_mesh_idx];
+        dc.mesh_id = 0; // doesn't matter
         dc.texture_id = 0; // not used
         dc.offset = 0;
         dc.count = 0;
@@ -851,6 +857,7 @@ void update_and_render(input_data *input, output_data *output)
 
         g_bake_quads.clear();
         g_max_bake_mesh_idx = 0;
+        std::fill(g_bake_mesh_sizes.begin(), g_bake_mesh_sizes.end(), 0);
 
         // TODO: collect only active layers
         for (u8 layerIdx = 0; layerIdx < gui_layer_cnt; ++layerIdx)
