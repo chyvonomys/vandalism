@@ -234,7 +234,7 @@ ImGuiTextBuffer *g_viewsBuf;
 
 std::vector<output_data::Vertex> g_bake_quads;
 std::vector<output_data::Vertex> g_curr_quads;
-const size_t VTX_PER_MESH = 65536;
+const u32 VTX_PER_MESH = 65536;
 
 void setup(kernel_services *services, u32 nLayers)
 {
@@ -613,26 +613,27 @@ void stroke_to_quads(const test_point* begin, const test_point* end,
 
 void append_bake_drawcalls(u8 layer_id,
                            std::vector<output_data::drawcall> &drawcalls,
-                           size_t &vertexCount,
+                           u32 &vertexCount,
                            const std::vector<kernel_services::MeshID> &meshes,
                            std::vector<u32> &meshSizes,
-                           size_t &currMeshIdx)
+                           size_t &meshesUsed)
 {
     if (vertexCount > 0)
     {
         if (drawcalls.empty() ||
             drawcalls.back().id != output_data::BAKEBATCH ||
             drawcalls.back().layer_id != layer_id ||
-            meshSizes[currMeshIdx] == VTX_PER_MESH)
+            meshesUsed == 0 ||
+            meshSizes[meshesUsed - 1] == VTX_PER_MESH)
         {
-            bool nextMesh = drawcalls.empty() || meshSizes[currMeshIdx] == VTX_PER_MESH;
-            u32 offset = nextMesh ? 0 : meshSizes[currMeshIdx] / 4 * 6;
+            bool nextMesh = (meshesUsed == 0 || meshSizes[meshesUsed - 1] == VTX_PER_MESH);
+            u32 offset = nextMesh ? 0 : meshSizes[meshesUsed - 1] / 4 * 6;
 
-            if (nextMesh) ++currMeshIdx;
+            if (nextMesh) ++meshesUsed;
 
             output_data::drawcall dc;
             dc.id = output_data::BAKEBATCH;
-            dc.mesh_id = meshes[currMeshIdx-1];
+            dc.mesh_id = meshes[meshesUsed - 1];
             dc.texture_id = 0; // not used
             dc.offset = offset;
             dc.count = 0;
@@ -641,12 +642,12 @@ void append_bake_drawcalls(u8 layer_id,
             drawcalls.push_back(dc);
         }
 
-        size_t room = VTX_PER_MESH - meshSizes[currMeshIdx];
-        size_t portion = (vertexCount >= room ? room : vertexCount);
+        u32 room = VTX_PER_MESH - meshSizes[meshesUsed - 1];
+        u32 portion = (vertexCount >= room ? room : vertexCount);
 
-        drawcalls.back().count += static_cast<u32>(portion / 4 * 6);
+        drawcalls.back().count += portion / 4 * 6;
         vertexCount -= portion;
-        meshSizes[currMeshIdx] += portion;
+        meshSizes[meshesUsed - 1] += portion;
     }
 }
 
@@ -684,7 +685,7 @@ void collect_bake_data(const test_data& bake_data,
                 g_bake_quads, vis.obj_id, tform, brush);
             size_t vtxCountAfter = g_bake_quads.size();
 
-            size_t remaining = vtxCountAfter - vtxCountBefore;
+            u32 remaining = vtxCountAfter - vtxCountBefore;
             while (remaining > 0)
             {
                 append_bake_drawcalls(layer_id, g_drawcalls, remaining,
