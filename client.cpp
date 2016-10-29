@@ -1306,6 +1306,8 @@ void update_and_render(input_data *input, output_data *output)
                     if (load_image(g_fit_img.name.c_str(), desc))
                     {
                         g_loaded_images.push_back(desc);
+                        g_loaded_image_names.push_back(g_fit_img.name);
+
                         float image_aspect = static_cast<float>(desc.height) / static_cast<float>(desc.width);
 
                         g_fit_img.texid = desc.texid;
