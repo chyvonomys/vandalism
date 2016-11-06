@@ -236,7 +236,7 @@ std::vector<output_data::Vertex> g_bake_quads;
 std::vector<output_data::Vertex> g_curr_quads;
 const u32 VTX_PER_MESH = 65536;
 
-void setup(kernel_services *services, u32 nLayers)
+void setup(kernel_services *services)
 {
     ImGuiIO& io = ImGui::GetIO();
     io.RenderDrawListsFn = RenderImGuiDrawLists;
@@ -323,12 +323,12 @@ void setup(kernel_services *services, u32 nLayers)
 
     gui_goto_idx = 0;
 
-    for (u8 i = 0; i < nLayers; ++i)
+    for (u8 i = 0; i < 255; ++i)
     {
         gui_layer_active[i] = true;
     }
     gui_current_layer = 0;
-    gui_layer_cnt = static_cast<i32>(nLayers);
+    gui_layer_cnt = static_cast<i32>(255);
 
     g_image_fitting = false;
     g_image_capturing = INACTIVE;
@@ -893,8 +893,10 @@ void update_and_render(input_data *input, output_data *output)
     output->bg_color = gui_background_color;
     output->grid_bg_color = gui_grid_bg_color;
     output->grid_fg_color = gui_grid_fg_color;
+    output->grid_on = false;
 
     output->zbandwidth = cfg_depth_step;
+    output->capture_on = false;
 
     if (input->forceUpdate || g_ism->currentChanged)
     {
@@ -1101,15 +1103,7 @@ void update_and_render(input_data *input, output_data *output)
         ImGui::ColorEdit3("grid bg", &gui_grid_bg_color.r);
         ImGui::ColorEdit3("grid fg", &gui_grid_fg_color.r);
 
-        output_data::drawcall dc;
-        dc.id = output_data::GRID;
-        dc.texture_id = 0; // not used
-        dc.mesh_id = 0; // not used
-        dc.offset = 0; // not used
-        dc.count = 0; // not used
-        dc.layer_id = 0xFF;
-
-        g_drawcalls.push_back(dc);
+        output->grid_on = true;
     }
 
     ImGui::Separator();
@@ -1255,17 +1249,9 @@ void update_and_render(input_data *input, output_data *output)
             ImGui::SameLine();
             if (ImGui::Button("Save capture"))
             {
-                output_data::drawcall captdc;
-                captdc.id = output_data::CAPTURE;
-                captdc.params[0] = cfg_capture_width_in;
-                captdc.params[1] = cfg_capture_height_in;
-                captdc.texture_id = 0;
-                captdc.mesh_id = 0;
-                captdc.offset = 0;
-                captdc.count = 0;
-                captdc.layer_id = static_cast<u8>(gui_current_layer);
-
-                g_drawcalls.push_back(captdc);
+                output->capture_on = true;
+                output->capture_width = cfg_capture_width_in;
+                output->capture_height = cfg_capture_height_in;
 
                 g_image_capturing = CAPTURE;
             }
@@ -1365,19 +1351,6 @@ void update_and_render(input_data *input, output_data *output)
         g_drawcalls.push_back(dc);
     }
 
-    output_data::drawcall pdc;
-    ::memset(&pdc, 0, sizeof(output_data::drawcall));
-    pdc.id = output_data::PRESENT;
-
-    for (u8 i = 0; i < gui_layer_cnt; ++i)
-    {
-        if (gui_layer_active[i])
-        {
-            pdc.layer_id = i;
-            g_drawcalls.push_back(pdc);
-        }
-    }
-    
     output->quit_flag = ImGui::Button("Quit");
 
     if (!g_ism->append_allowed())
@@ -1459,10 +1432,7 @@ void update_and_render(input_data *input, output_data *output)
         case output_data::IMAGE: ds << "I" << lid; break;
         case output_data::BAKEBATCH: ds << "B" << lid; break;
         case output_data::CURRENTSTROKE: ds << "S" << lid; break;
-        case output_data::GRID: ds << "G"; break;
         case output_data::IMAGEFIT: ds << "F" << lid; break;
-        case output_data::CAPTURE: ds << "C" << lid; break;
-        case output_data::PRESENT: ds << "P" << lid; break;
         }
         if (i + 1 < g_drawcalls.size())
         {

@@ -52,3 +52,20 @@ DSTb'   DSTb          SRCb
 DSTa' = DSTa * SRCa + SRCa * 1   <--- don't care what is in FB's alpha for now
 
 glBlendFunc(GL_ONE, GL_SRC_ALPHA)
+
+* Compose intermediate buffers *
+
+SRCrgb -- accumulated premultiplied color
+SRCa   -- amount of bg
+
+DSTrgb -- accumulated premult color
+DSTa   -- amount of bg
+
+DSTr'   DSTr          SRCr	 
+DSTg' = DSTg * SRCa + SRCg * 1
+DSTb'   DSTb          SRCb	 
+                              
+DSTa' = DSTa * SRCa + SRCa * 0
+
+glBlendFund(GL_ONE, GL_SRC_ALPHA)  // color
+glBlendFunc(GL_ZERO, GL_SRC_ALPHA) // alpha

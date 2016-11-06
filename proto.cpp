@@ -52,6 +52,7 @@ bool initr_for_##n()                                      \
 LOAD(GLENABLE, glEnable)
 LOAD(GLDISABLE, glDisable)
 LOAD(GLBLENDFUNC, glBlendFunc)
+LOAD(GLBLENDFUNCSEPARATE, glBlendFuncSeparate)
 LOAD(GLVIEWPORT, glViewport)
 LOAD(GLCLEAR, glClear)
 LOAD(GLCLEARCOLOR, glClearColor)
@@ -315,10 +316,15 @@ struct FSTexturePresenter
               float s, float a,
               float vpW, float vpH,
               float rtW, float rtH);
+    void draw(GLuint tex, GLenum srcFactor, GLenum dstFactor);
+    void draw(GLuint tex,
+              GLenum srcFactorC, GLenum dstFactorC,
+              GLenum srcFactorA, GLenum dstFactorA);
     void cleanup();
 
     FSQuad *m_quad;
     GLuint m_fullscreenProgram;
+    GLuint m_simpleFullscreenProgram;
     GLint m_preTranslationLoc;
     GLint m_postTranslationLoc;
     GLint m_scaleLoc;
@@ -841,14 +847,16 @@ struct Pipeline
     FSTexturePresenter fs;
     StrokeImageTech si;
     FSGrid grid;
-    RenderTargetMS bakeRTMS;
-    static const u32 LAYERCNT = 4;
-    RenderTarget layerRT[LAYERCNT];
-    RenderTarget compRT;
     MarkerBatchTech render;
     UIPresenter uirender;
 
-    u32 augLayerId;
+    RenderTarget belowLayersRT;
+    RenderTarget aboveLayersRT;
+    RenderTarget currentLayerRT;
+    RenderTarget finalDrawingRT;
+
+    RenderTarget layerRT;
+    RenderTargetMS layerRTMS;
 
     void setup(u32 w, u32 h)
     {
@@ -856,34 +864,254 @@ struct Pipeline
         fs.setup(&quad);
         si.setup(&quad);
         grid.setup(&quad);
-        bakeRTMS.setup(w, h);
-        for (u32 i = 0; i < LAYERCNT; ++i)
-        {
-            layerRT[i].setup(w, h);
-        }
-        compRT.setup(w, h);
         render.setup();
         uirender.setup();
-
-        augLayerId = LAYERCNT;
+        belowLayersRT.setup(w, h);
+        aboveLayersRT.setup(w, h);
+        currentLayerRT.setup(w, h);
+        finalDrawingRT.setup(w, h);
+        layerRT.setup(w, h);
+        layerRTMS.setup(w, h);
     }
 
     void cleanup()
     {
+        layerRTMS.cleanup();
+        layerRT.cleanup();
+        finalDrawingRT.cleanup();
+        currentLayerRT.cleanup();
+        aboveLayersRT.cleanup();
+        belowLayersRT.cleanup();
         uirender.cleanup();
         render.cleanup();
-        compRT.cleanup();
-        for (u32 i = 0; i < LAYERCNT; ++i)
-        {
-            layerRT[i].cleanup();
-        }
-        bakeRTMS.cleanup();
         grid.cleanup();
         si.cleanup();
         fs.cleanup();
         quad.cleanup();
     }
 
+    struct FrameInput
+    {
+        const output_data::drawcall *drawcalls;
+        size_t drawcall_cnt;
+        bool multisample_on;
+        float2 in2rt;
+        float2 in2vp;
+    };
+
+    // build layerRT with everything assigned to a given layer
+    void build_layer(u8 layerId, FrameInput &fi)
+    {
+        if (fi.multisample_on)
+        {
+            layerRTMS.begin_receive();
+        }
+        else
+        {
+            layerRT.begin_receive();
+        }
+
+        glClearColor(0.0, 0.0, 0.0, 1.0);
+        glClearDepth(0.0);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        for (u32 j = 0; j < fi.drawcall_cnt; ++j)
+        {
+            const auto &dc = fi.drawcalls[j];
+            if (dc.layer_id == layerId)
+            {
+                if (dc.id == output_data::BAKEBATCH)
+                {
+                    render.draw(dc.mesh_id, dc.offset, dc.count, fi.in2rt);
+                }
+                else if (dc.id == output_data::IMAGE)
+                {
+                    basis2r basis =
+                    {
+                        {dc.params[0], dc.params[1]},
+                        {dc.params[2], dc.params[3]},
+                        {dc.params[4], dc.params[5]}
+                    };
+                    si.draw(textures[dc.texture_id].glid,
+                            basis, 1.0f, fi.in2rt);
+                }
+            }
+        }
+        if (fi.multisample_on)
+        {
+            layerRTMS.end_receive();
+        }
+        else
+        {
+            layerRT.end_receive();
+        }
+
+        if (fi.multisample_on)
+        {
+            layerRT.begin_receive();
+            layerRTMS.resolve();
+            layerRT.end_receive();
+        }
+    }
+    
+    void compose_layers(RenderTarget &composedRT, const std::vector<u8> &ids,
+                        FrameInput &fi)
+    {
+        composedRT.begin_receive();
+        glClearColor(0.0, 0.0, 0.0, 1.0);
+        glClear(GL_COLOR_BUFFER_BIT);
+        composedRT.end_receive();
+
+        for (u32 i = 0; i < ids.size(); ++i)
+        {
+            build_layer(ids[i], fi);
+            composedRT.begin_receive();
+            fs.draw(layerRT.m_tex,
+                    GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_SRC_ALPHA);
+            composedRT.end_receive();
+        }
+    }
+    
+    void make_frame(const input_data &input, const output_data &output,
+                    const output_data::drawcall *drawcalls, size_t drawcall_cnt,
+                    bool gamma_on, bool multisample_on)
+    {
+        FrameInput fi;
+        fi.drawcall_cnt = drawcall_cnt;
+        fi.drawcalls = drawcalls;
+        fi.multisample_on = multisample_on;
+        fi.in2rt = { 2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn };
+        fi.in2vp = { 2.0f / input.vpWidthIn, 2.0f / input.vpHeightIn };
+
+        bool rebuild_below_rt = false;
+        bool rebuild_above_rt = false;
+        bool rebuild_final_rt = false;
+        bool rebuild_current_rt = true;
+        bool augment_current_rt = false;
+
+        std::vector<u8> belowIds = {0};
+        u8 currentId = 1;
+        std::vector<u8> aboveIds = {2};
+
+        if (rebuild_below_rt)
+        {
+            compose_layers(belowLayersRT, {0}, fi);
+            rebuild_final_rt = true;
+        }
+
+        if (rebuild_above_rt)
+        {
+            compose_layers(aboveLayersRT, {2}, fi);
+            rebuild_final_rt = true;
+        }
+
+        if (rebuild_current_rt)
+        {
+            build_layer(currentId, fi);
+            augment_current_rt = true; // to blit from layerRT -> currentLayerRT
+        }
+
+        if (augment_current_rt)
+        {
+            currentLayerRT.begin_receive();
+            fs.draw(layerRT.m_tex, GL_ONE, GL_ZERO);
+            for (u32 i = 0; i < drawcall_cnt; ++i)
+            {
+                const auto &dc = output.drawcalls[i];
+                if (dc.layer_id != currentId)
+                    continue;
+                if (dc.id == output_data::CURRENTSTROKE)
+                {
+                    render.draw(dc.mesh_id, dc.offset, dc.count, fi.in2rt);
+                }
+                if (dc.id == output_data::IMAGEFIT)
+                {
+                    basis2r basis =
+                    {
+                        {dc.params[0], dc.params[1]},
+                        {dc.params[2], dc.params[3]},
+                        {dc.params[4], dc.params[5]},
+                    };
+                    si.draw(textures[dc.texture_id].glid, basis, 0.5f, fi.in2rt);
+                }
+            }
+            currentLayerRT.end_receive();
+            rebuild_final_rt = true;
+        }
+        
+        if (rebuild_final_rt)
+        {
+            finalDrawingRT.begin_receive();
+            glClearColor(0.0, 0.0, 0.0, 1.0);
+            glClear(GL_COLOR_BUFFER_BIT);
+            
+            fs.draw(belowLayersRT.m_tex, GL_ONE, GL_SRC_ALPHA);
+            fs.draw(currentLayerRT.m_tex, GL_ONE, GL_SRC_ALPHA);
+            fs.draw(aboveLayersRT.m_tex, GL_ONE, GL_SRC_ALPHA);
+
+            finalDrawingRT.end_receive();
+        }
+
+        if (output.capture_on)
+        {
+            finalDrawingRT.store_image(capture_data.data());
+            normalize_capture_data();
+        }
+
+        // ----------------------------------------------------------------
+
+        if (gamma_on)
+        {
+            glEnable(GL_FRAMEBUFFER_SRGB);
+        }
+
+        if (output.grid_on)
+        {
+            grid.draw(output.grid_bg_color, output.grid_fg_color, fi.in2vp);
+        }
+        else
+        {
+            glClearColor(output.bg_color.r,
+                         output.bg_color.g,
+                         output.bg_color.b,
+                         1.0);
+
+            glClear(GL_COLOR_BUFFER_BIT);
+        }
+
+        // viewport is centered in window
+        i32 viewportLeftPx = (input.windowWidthPx - input.vpWidthPx) / 2;
+        i32 viewportBottomPx = (input.windowHeightPx - input.vpHeightPx) / 2;
+
+        glViewport(viewportLeftPx, viewportBottomPx,
+                   input.vpWidthPx, input.vpHeightPx);
+
+        // Blit drawing with possible translations/rotations/scaling
+        fs.draw(finalDrawingRT.m_tex, GL_ONE, GL_SRC_ALPHA,
+                output.preTranslate, output.postTranslate,
+                output.scale, output.rotate,
+                input.vpWidthIn, input.vpHeightIn,
+                input.rtWidthIn, input.rtHeightIn);
+
+        // Draw UI passes
+        for (u32 i = 0; i < output.drawcall_cnt; ++i)
+        {
+            const auto &dc = output.drawcalls[i];
+            if (dc.id == output_data::UI)
+            {
+                uirender.draw(dc.texture_id, dc.mesh_id,
+                              dc.offset, dc.count,
+                              static_cast<float>(input.vpWidthPt),
+                              static_cast<float>(input.vpHeightPt));
+            }
+        }
+
+        if (gamma_on)
+        {
+            glDisable(GL_FRAMEBUFFER_SRGB);
+        }
+    }
+    /*    
     void do_drawcalls(const input_data &input, const output_data &output,
                       const output_data::drawcall *drawcalls, size_t drawcall_cnt,
                       bool gamma_on, bool multisample_on)
@@ -1023,66 +1251,8 @@ struct Pipeline
             }
         }
 
-        if (gamma_on)
-        {
-            glEnable(GL_FRAMEBUFFER_SRGB);
-        }
-
-        glClearColor(output.bg_color.r, output.bg_color.g, output.bg_color.b, 1.0);
-        glClear(GL_COLOR_BUFFER_BIT);
-
-        // viewport is centered in window
-        i32 viewportLeftPx = (input.windowWidthPx - input.vpWidthPx) / 2;
-        i32 viewportBottomPx = (input.windowHeightPx - input.vpHeightPx) / 2;
-
-        glViewport(viewportLeftPx, viewportBottomPx,
-                   input.vpWidthPx, input.vpHeightPx);
-
-        for (u32 i = 0; i < output.drawcall_cnt; ++i)
-        {
-            if (output.drawcalls[i].id == output_data::GRID)
-            {
-                grid.draw(output.grid_bg_color, output.grid_fg_color, in2vp);
-            }
-        }
-
-        for (size_t layerId = 0; layerId < LAYERCNT; ++layerId)
-        {
-            for (u32 i = 0; i < output.drawcall_cnt; ++i)
-            {
-                const auto &dc = output.drawcalls[i];
-                if (dc.id == output_data::PRESENT && dc.layer_id == layerId)
-                {
-                    GLuint tex = (layerId == augLayerId ?
-                                  compRT : layerRT[layerId]).m_tex;
-
-                    fs.draw(tex, GL_ONE, GL_SRC_ALPHA,
-                            output.preTranslate, output.postTranslate,
-                            output.scale, output.rotate,
-                            input.vpWidthIn, input.vpHeightIn,
-                            input.rtWidthIn, input.rtHeightIn);
-                    break;
-                }
-            }
-        }
-
-        for (u32 i = 0; i < output.drawcall_cnt; ++i)
-        {
-            const auto &dc = output.drawcalls[i];
-            if (dc.id == output_data::UI)
-            {
-                uirender.draw(dc.texture_id, dc.mesh_id,
-                              dc.offset, dc.count,
-                              static_cast<float>(input.vpWidthPt),
-                              static_cast<float>(input.vpHeightPt));
-            }
-        }
-
-        if (gamma_on)
-        {
-            glDisable(GL_FRAMEBUFFER_SRGB);
-        }
     }
+    */
 };
 
 void glfw_error_cb(int, const char *desc)
@@ -1226,7 +1396,7 @@ int main(int argc, char *argv[])
         services.ui_vertex_layout = &ui_vertex_layout;
         services.stroke_vertex_layout = &stroke_vertex_layout;
 
-        setup(&services, Pipeline::LAYERCNT);
+        setup(&services);
 
         signal_change_detector f9_signal, g_signal, m_signal;
 
@@ -1241,7 +1411,7 @@ int main(int argc, char *argv[])
             if (reload_client)
             {
                 cleanup();
-                setup(&services, Pipeline::LAYERCNT);
+                setup(&services);
                 reload_client = false;
                 ::memset(&input, 0, sizeof(input_data));
             }
@@ -1375,9 +1545,9 @@ int main(int argc, char *argv[])
                 break;
             }
 
-            p.do_drawcalls(input, output,
-                           output.drawcalls, output.drawcall_cnt,
-                           gamma_enabled, multisample_enabled);
+            p.make_frame(input, output,
+                         output.drawcalls, output.drawcall_cnt,
+                         gamma_enabled, multisample_enabled);
 
             TIME; // finish ---------------------------------------------------------
             
@@ -1595,6 +1765,20 @@ void FSTexturePresenter::setup(FSQuad *quad)
         "      l_textureUV = uv;                              \n"
         "  }                                                  \n";
 
+    const char *simple_vertex_src =
+        "  #version 330 core                                  \n"
+        "  out vec2 l_textureUV;                              \n"
+        "  void main()                                        \n"
+        "  {                                                  \n"
+        "      vec2 uv = vec2(gl_VertexID % 2,                \n"
+        "                     gl_VertexID / 2);               \n"
+        "      vec2 msPos = 2.0f * uv - 1.0f;                 \n"
+        "      gl_Position.xy = msPos;                        \n"
+        "      gl_Position.z = 0.0f;                          \n"
+        "      gl_Position.w = 1.0f;                          \n"
+        "      l_textureUV = uv;                              \n"
+        "  }                                                  \n";
+
     const char *fragment_src =
         "  #version 330 core                                 \n"
         "  uniform sampler2D sampler;                        \n"
@@ -1614,11 +1798,14 @@ void FSTexturePresenter::setup(FSQuad *quad)
 
     m_vpSizeLoc = glGetUniformLocation(m_fullscreenProgram, "u_vpSize");
     m_rtSizeLoc = glGetUniformLocation(m_fullscreenProgram, "u_rtSize");
+    m_simpleFullscreenProgram = ::create_program(simple_vertex_src, nullptr,
+                                                 fragment_src);
 }
 
 void FSTexturePresenter::cleanup()
 {
     glDeleteProgram(m_fullscreenProgram);
+    glDeleteProgram(m_simpleFullscreenProgram);
 }
 
 void FSTexturePresenter::draw(GLuint tex, GLenum blendSrc, GLenum blendDst,
@@ -1636,6 +1823,31 @@ void FSTexturePresenter::draw(GLuint tex, GLenum blendSrc, GLenum blendDst,
     glUniform1f(m_rotationLoc, a);
     glUniform2f(m_rtSizeLoc, rtW, rtH);
     glUniform2f(m_vpSizeLoc, vpW, vpH);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    m_quad->draw();
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glUseProgram(0);
+    glDisable(GL_BLEND);
+}
+
+void FSTexturePresenter::draw(GLuint tex, GLenum blendSrc, GLenum blendDst)
+{
+    glEnable(GL_BLEND);
+    glBlendFunc(blendSrc, blendDst);
+    glUseProgram(m_simpleFullscreenProgram);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    m_quad->draw();
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glUseProgram(0);
+    glDisable(GL_BLEND);
+}
+
+void FSTexturePresenter::draw(GLuint tex, GLenum blendSrcC, GLenum blendDstC,
+                              GLenum blendSrcA, GLenum blendDstA)
+{
+    glEnable(GL_BLEND);
+    glBlendFuncSeparate(blendSrcC, blendDstC, blendSrcA, blendDstA);
+    glUseProgram(m_simpleFullscreenProgram);
     glBindTexture(GL_TEXTURE_2D, tex);
     m_quad->draw();
     glBindTexture(GL_TEXTURE_2D, 0);

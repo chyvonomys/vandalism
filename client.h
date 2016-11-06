@@ -89,11 +89,16 @@ struct output_data
     color3f bg_color;
     color3f grid_bg_color;
     color3f grid_fg_color;
+    bool grid_on;
 
     float grid_translation[2];
     float grid_zoom;
 
     float zbandwidth;
+
+    float capture_width;
+    float capture_height;
+    bool capture_on;
 
     enum techid
     {
@@ -101,10 +106,7 @@ struct output_data
         IMAGE,
         BAKEBATCH,
         CURRENTSTROKE,
-        GRID,
-        IMAGEFIT,
-        CAPTURE,
-        PRESENT
+        IMAGEFIT
     };
 
     struct drawcall
@@ -123,5 +125,5 @@ struct output_data
 };
 
 void update_and_render(input_data *input, output_data *output);
-void setup(kernel_services *services, u32 layerCnt);
+void setup(kernel_services *services);
 void cleanup();
