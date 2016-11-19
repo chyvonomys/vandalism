@@ -328,7 +328,7 @@ void setup(kernel_services *services)
         gui_layer_active[i] = true;
     }
     gui_current_layer = 0;
-    gui_layer_cnt = static_cast<i32>(255);
+    gui_layer_cnt = static_cast<i32>(5);
 
     g_image_fitting = false;
     g_image_capturing = INACTIVE;
@@ -898,6 +898,8 @@ void update_and_render(input_data *input, output_data *output)
     output->zbandwidth = cfg_depth_step;
     output->capture_on = false;
 
+    output->currentLayer = g_ism->get_current_layer_id();
+
     if (input->forceUpdate || g_ism->currentChanged)
     {
         // TODO: this overwrites whole stroke on each update
@@ -1422,6 +1424,7 @@ void update_and_render(input_data *input, output_data *output)
                 input->windowPosXPt, input->windowPosYPt);
 
     ImGui::Separator();
+    // debug drawcalls (ImGui calls are not included)
     std::stringstream ds;
     for (size_t i = 0; i < g_drawcalls.size(); ++i)
     {

@@ -100,6 +100,8 @@ struct output_data
     float capture_height;
     bool capture_on;
 
+    u8 currentLayer;
+
     enum techid
     {
         UI,

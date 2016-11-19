@@ -18,6 +18,8 @@
 #include <cstring>
 
 #include <vector>
+#include <set>
+#include <algorithm>
 #include "client.h"
 
 struct initr_item
@@ -971,7 +973,7 @@ struct Pipeline
             composedRT.end_receive();
         }
     }
-    
+
     void make_frame(const input_data &input, const output_data &output,
                     const output_data::drawcall *drawcalls, size_t drawcall_cnt,
                     bool gamma_on, bool multisample_on)
@@ -983,31 +985,76 @@ struct Pipeline
         fi.in2rt = { 2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn };
         fi.in2vp = { 2.0f / input.vpWidthIn, 2.0f / input.vpHeightIn };
 
-        bool rebuild_below_rt = false;
-        bool rebuild_above_rt = false;
         bool rebuild_final_rt = false;
-        bool rebuild_current_rt = true;
+        bool rebuild_current_rt = false;
         bool augment_current_rt = false;
 
-        std::vector<u8> belowIds = {0};
-        u8 currentId = 1;
-        std::vector<u8> aboveIds = {2};
+        for (u32 i = 0; i < drawcall_cnt; ++i)
+        {
+            const auto &dc = output.drawcalls[i];
+            if (dc.layer_id == output.currentLayer && (dc.id == output_data::BAKEBATCH || dc.id == output_data::IMAGE))
+            {
+                rebuild_current_rt = true;
+                break;
+            }
+        }
+
+        for (u32 i = 0; i < drawcall_cnt; ++i)
+        {
+            const auto &dc = output.drawcalls[i];
+            if (dc.layer_id == output.currentLayer && (dc.id == output_data::CURRENTSTROKE || dc.id == output_data::IMAGEFIT))
+            {
+                augment_current_rt = true;
+                break;
+            }
+        }
+
+        static std::vector<u8> belowIds;
+        static std::vector<u8> aboveIds;
+        belowIds.clear();
+        aboveIds.clear();
+
+        for (u32 i = 0; i < drawcall_cnt; ++i)
+        {
+            const auto &dc = output.drawcalls[i];
+            if (dc.id == output_data::BAKEBATCH || dc.id == output_data::IMAGE)
+            {
+                if (dc.layer_id > output.currentLayer)
+                {
+                    aboveIds.push_back(dc.layer_id);
+                }
+                else if (dc.layer_id < output.currentLayer)
+                {
+                    belowIds.push_back(dc.layer_id);
+                }
+            }
+        }
+
+        std::sort(aboveIds.begin(), aboveIds.end());
+        aboveIds.erase(std::unique(aboveIds.begin(), aboveIds.end()), aboveIds.end());
+
+        std::sort(belowIds.begin(), belowIds.end());
+        belowIds.erase(std::unique(belowIds.begin(), belowIds.end()), belowIds.end());
+
+        // TODO: emptiness may also mean a rebuild?
+        bool rebuild_below_rt = !belowIds.empty();
+        bool rebuild_above_rt = !aboveIds.empty();
 
         if (rebuild_below_rt)
         {
-            compose_layers(belowLayersRT, {0}, fi);
+            compose_layers(belowLayersRT, belowIds, fi);
             rebuild_final_rt = true;
         }
 
         if (rebuild_above_rt)
         {
-            compose_layers(aboveLayersRT, {2}, fi);
+            compose_layers(aboveLayersRT, aboveIds, fi);
             rebuild_final_rt = true;
         }
 
         if (rebuild_current_rt)
         {
-            build_layer(currentId, fi);
+            build_layer(output.currentLayer, fi);
             augment_current_rt = true; // to blit from layerRT -> currentLayerRT
         }
 
@@ -1018,7 +1065,7 @@ struct Pipeline
             for (u32 i = 0; i < drawcall_cnt; ++i)
             {
                 const auto &dc = output.drawcalls[i];
-                if (dc.layer_id != currentId)
+                if (dc.layer_id != output.currentLayer)
                     continue;
                 if (dc.id == output_data::CURRENTSTROKE)
                 {
@@ -1045,6 +1092,7 @@ struct Pipeline
             glClearColor(0.0, 0.0, 0.0, 1.0);
             glClear(GL_COLOR_BUFFER_BIT);
             
+            // TODO: maybe skip drawing these if bake baked nothing (empty layers)
             fs.draw(belowLayersRT.m_tex, GL_ONE, GL_SRC_ALPHA);
             fs.draw(currentLayerRT.m_tex, GL_ONE, GL_SRC_ALPHA);
             fs.draw(aboveLayersRT.m_tex, GL_ONE, GL_SRC_ALPHA);
@@ -1111,148 +1159,6 @@ struct Pipeline
             glDisable(GL_FRAMEBUFFER_SRGB);
         }
     }
-    /*    
-    void do_drawcalls(const input_data &input, const output_data &output,
-                      const output_data::drawcall *drawcalls, size_t drawcall_cnt,
-                      bool gamma_on, bool multisample_on)
-    {
-        float2 in2rt = { 2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn };
-        float2 in2vp = { 2.0f / input.vpWidthIn, 2.0f / input.vpHeightIn };
-
-        for (size_t layerId = 0; layerId < LAYERCNT; ++layerId)
-        {
-            bool refreshThisLayer = false;
-            for (u32 i = 0; i < drawcall_cnt; ++i)
-            {
-                const auto &dc = drawcalls[i];
-                if (dc.layer_id == layerId &&
-                    (dc.id == output_data::BAKEBATCH ||
-                     dc.id == output_data::IMAGE))
-                {
-                    refreshThisLayer = true;
-                }
-            }
-
-            if (!refreshThisLayer)
-            {
-                continue;
-            }
-
-            if (layerId == augLayerId)
-            {
-                augLayerId = LAYERCNT;
-            }
-
-            if (multisample_on)
-            {
-                bakeRTMS.begin_receive();
-            }
-            else
-            {
-                layerRT[layerId].begin_receive();
-            }
-
-            glClearColor(0.0, 0.0, 0.0, 1.0);
-            glClearDepth(0.0);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-            for (u32 i = 0; i < drawcall_cnt; ++i)
-            {
-                const auto &dc = drawcalls[i];
-                if (dc.layer_id == layerId)
-                {
-                    if (dc.id == output_data::BAKEBATCH)
-                    {
-                        render.draw(dc.mesh_id, dc.offset, dc.count, in2rt);
-                    }
-                    else if (dc.id == output_data::IMAGE)
-                    {
-                        basis2r basis =
-                        {
-                            {dc.params[0], dc.params[1]},
-                            {dc.params[2], dc.params[3]},
-                            {dc.params[4], dc.params[5]}
-                        };
-                        si.draw(textures[dc.texture_id].glid, basis, 1.0f, in2rt);
-                    }
-                }
-            }
-            if (multisample_on)
-            {
-                bakeRTMS.end_receive();
-            }
-            else
-            {
-                layerRT[layerId].end_receive();
-            }
-
-            if (multisample_on)
-            {
-                layerRT[layerId].begin_receive();
-                bakeRTMS.resolve();
-                layerRT[layerId].end_receive();
-            }
-        }
-
-        // Check if we need to augment any layerRTs?
-        // TODO: augments only one layer for now.
-        u32 augCallId = LAYERCNT;
-        for (u32 i = 0; i < drawcall_cnt; ++i)
-        {
-            output_data::techid id = drawcalls[i].id;
-            if (id == output_data::CURRENTSTROKE || id == output_data::IMAGEFIT)
-            {
-                augCallId = i;
-                break;
-            }
-        }
-
-        if (augCallId != LAYERCNT)
-        {
-            compRT.begin_receive();
-            glClearColor(0.0, 0.0, 0.0, 1.0);
-            glClearDepth(0.0);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-            augLayerId = drawcalls[augCallId].layer_id;
-
-            fs.draw(layerRT[augLayerId].m_tex, GL_ONE, GL_ZERO,
-                    { 0.0f, 0.0f }, { 0.0f, 0.0f },
-                    1.0f, 0.0f,
-                    input.rtWidthIn, input.rtHeightIn,
-                    input.rtWidthIn, input.rtHeightIn);
-
-            const auto &augDC = output.drawcalls[augCallId];
-            if (augDC.id == output_data::CURRENTSTROKE)
-            {
-                render.draw(augDC.mesh_id, augDC.offset, augDC.count, in2rt);
-            }
-            if (augDC.id == output_data::IMAGEFIT)
-            {
-                basis2r basis =
-                {
-                    {augDC.params[0], augDC.params[1]},
-                    {augDC.params[2], augDC.params[3]},
-                    {augDC.params[4], augDC.params[5]},
-                };
-                si.draw(textures[augDC.texture_id].glid, basis, 0.5f, in2rt);
-            }
-
-            compRT.end_receive();
-        }
-
-        // TODO: captures only one separate layer
-        for (size_t i = 0; i < drawcall_cnt; ++i)
-        {
-            if (drawcalls[i].id == output_data::CAPTURE)
-            {
-                layerRT[drawcalls[i].layer_id].store_image(capture_data.data());
-                normalize_capture_data();
-            }
-        }
-
-    }
-    */
 };
 
 void glfw_error_cb(int, const char *desc)
