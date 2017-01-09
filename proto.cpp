@@ -849,7 +849,7 @@ struct Pipeline
     FSTexturePresenter fs;
     StrokeImageTech si;
     FSGrid grid;
-    MarkerBatchTech render;
+    MarkerBatchTech markerTech;
     UIPresenter uirender;
 
     RenderTarget belowLayersRT;
@@ -866,7 +866,7 @@ struct Pipeline
         fs.setup(&quad);
         si.setup(&quad);
         grid.setup(&quad);
-        render.setup();
+        markerTech.setup();
         uirender.setup();
         belowLayersRT.setup(w, h);
         aboveLayersRT.setup(w, h);
@@ -885,7 +885,7 @@ struct Pipeline
         aboveLayersRT.cleanup();
         belowLayersRT.cleanup();
         uirender.cleanup();
-        render.cleanup();
+        markerTech.cleanup();
         grid.cleanup();
         si.cleanup();
         fs.cleanup();
@@ -924,7 +924,7 @@ struct Pipeline
             {
                 if (dc.id == output_data::BAKEBATCH)
                 {
-                    render.draw(dc.mesh_id, dc.offset, dc.count, fi.in2rt);
+                    markerTech.draw(dc.mesh_id, dc.offset, dc.count, fi.in2rt);
                 }
                 else if (dc.id == output_data::IMAGE)
                 {
@@ -1062,6 +1062,8 @@ struct Pipeline
         {
             currentLayerRT.begin_receive();
             fs.draw(layerRT.m_tex, GL_ONE, GL_ZERO);
+            glClearDepth(0.0);
+            glClear(GL_DEPTH_BUFFER_BIT);
             for (u32 i = 0; i < drawcall_cnt; ++i)
             {
                 const auto &dc = output.drawcalls[i];
@@ -1069,7 +1071,7 @@ struct Pipeline
                     continue;
                 if (dc.id == output_data::CURRENTSTROKE)
                 {
-                    render.draw(dc.mesh_id, dc.offset, dc.count, fi.in2rt);
+                    markerTech.draw(dc.mesh_id, dc.offset, dc.count, fi.in2rt);
                 }
                 if (dc.id == output_data::IMAGEFIT)
                 {
