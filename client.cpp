@@ -211,10 +211,41 @@ bool gui_layer_active[255];
 i32 gui_layer_cnt;
 i32 gui_current_layer;
 
-u32 g_dclogidx = 0;
-const u32 DCLOGENTRIES = 10;
-std::string g_dclog[DCLOGENTRIES];
-u32 g_dclogtimes[DCLOGENTRIES] = {0};
+struct stringlog
+{
+    static const u32 SIZE = 10;
+    std::string strings[SIZE];
+    u32 times[SIZE];
+    u32 counter;
+    stringlog() : counter(0)
+    {
+        ::memset(times, 0, SIZE * sizeof(u32));
+    }
+    void append(const std::string &str)
+    {
+        if (strings[counter % SIZE] == str)
+        {
+            ++times[counter % SIZE];
+        }
+        else
+        {
+            ++counter;
+            strings[counter % SIZE] = str;
+            times[counter % SIZE] = 1;
+        }
+    }
+    const char *get_text(u32 relIdx)
+    {
+        return strings[(counter + 1 + relIdx) % SIZE].c_str();
+    }
+    u32 get_times(u32 relIdx)
+    {
+        return times[(counter + 1 + relIdx) % SIZE];
+    }
+};
+
+stringlog g_dclog;
+stringlog g_protolog;
 
 const i32 cfg_min_brush_diameter_units = 1;
 const i32 cfg_max_brush_diameter_units = 64;
@@ -1423,7 +1454,6 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::Text("win pos %d, %d pt",
                 input->windowPosXPt, input->windowPosYPt);
 
-    ImGui::Separator();
     // debug drawcalls (ImGui calls are not included)
     std::stringstream ds;
     for (size_t i = 0; i < g_drawcalls.size(); ++i)
@@ -1442,20 +1472,21 @@ void update_and_render(input_data *input, output_data *output)
             ds << " ";
         }
     }
-    if (ds.str() != g_dclog[g_dclogidx % DCLOGENTRIES])
+
+    ImGui::Separator();
+    g_dclog.append(ds.str());
+    for (u32 i = 0; i < g_dclog.SIZE; ++i)
     {
-        ++g_dclogidx;
-        g_dclog[g_dclogidx % DCLOGENTRIES] = ds.str();
-        g_dclogtimes[g_dclogidx % DCLOGENTRIES] = 1;
+        ImGui::Text("%s (%d times)",
+                    g_dclog.get_text(i), g_dclog.get_times(i));
     }
-    else
+
+    ImGui::Separator();
+    g_protolog.append(input->debugstr);
+    for (u32 i = 0; i < g_protolog.SIZE; ++i)
     {
-        ++g_dclogtimes[g_dclogidx % DCLOGENTRIES];
-    }
-    for (u32 i = 1; i <= DCLOGENTRIES; ++i)
-    {
-        u32 id = (g_dclogidx + i) % DCLOGENTRIES;
-        ImGui::Text("%s (%d times)", g_dclog[id].c_str(), g_dclogtimes[id]);
+        ImGui::Text("%s (%d times)",
+                    g_protolog.get_text(i), g_protolog.get_times(i));
     }
 
     ImGui::End();

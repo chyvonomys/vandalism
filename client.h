@@ -64,6 +64,7 @@ struct input_data
     i32 swWidthPx, swHeightPx;
 
     bool forceUpdate;
+    std::string debugstr;
 };
 
 #include "math.h"

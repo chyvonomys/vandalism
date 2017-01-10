@@ -20,6 +20,7 @@
 #include <vector>
 #include <set>
 #include <algorithm>
+#include <sstream>
 #include "client.h"
 
 struct initr_item
@@ -855,10 +856,9 @@ struct Pipeline
     RenderTarget belowLayersRT;
     RenderTarget aboveLayersRT;
     RenderTarget currentLayerRT;
-    RenderTarget finalDrawingRT;
 
-    RenderTarget layerRT;
-    RenderTargetMS layerRTMS;
+    RenderTarget tempRT;
+    RenderTargetMS tempRTMS;
 
     // Make layer that contain premult color and alpha serve as amount of bg contain default correct values.
     void clearRT(RenderTarget &rt)
@@ -880,21 +880,17 @@ struct Pipeline
         belowLayersRT.setup(w, h);
         aboveLayersRT.setup(w, h);
         currentLayerRT.setup(w, h);
-        finalDrawingRT.setup(w, h);
-        layerRT.setup(w, h);
-        layerRTMS.setup(w, h);
+        tempRT.setup(w, h);
+        tempRTMS.setup(w, h);
 
         clearRT(belowLayersRT);
         clearRT(aboveLayersRT);
-        clearRT(currentLayerRT);
-        clearRT(finalDrawingRT);
     }
 
     void cleanup()
     {
-        layerRTMS.cleanup();
-        layerRT.cleanup();
-        finalDrawingRT.cleanup();
+        tempRTMS.cleanup();
+        tempRT.cleanup();
         currentLayerRT.cleanup();
         aboveLayersRT.cleanup();
         belowLayersRT.cleanup();
@@ -916,15 +912,15 @@ struct Pipeline
     };
 
     // build layerRT with everything assigned to a given layer
-    void build_layer(u8 layerId, FrameInput &fi)
+    void build_layer(RenderTarget &rt, u8 layerId, FrameInput &fi)
     {
         if (fi.multisample_on)
         {
-            layerRTMS.begin_receive();
+            tempRTMS.begin_receive();
         }
         else
         {
-            layerRT.begin_receive();
+            rt.begin_receive();
         }
 
         glClearColor(0.0, 0.0, 0.0, 1.0);
@@ -955,18 +951,18 @@ struct Pipeline
         }
         if (fi.multisample_on)
         {
-            layerRTMS.end_receive();
+            tempRTMS.end_receive();
         }
         else
         {
-            layerRT.end_receive();
+            rt.end_receive();
         }
 
         if (fi.multisample_on)
         {
-            layerRT.begin_receive();
-            layerRTMS.resolve();
-            layerRT.end_receive();
+            rt.begin_receive();
+            tempRTMS.resolve();
+            rt.end_receive();
         }
     }
     
@@ -980,9 +976,9 @@ struct Pipeline
 
         for (u32 i = 0; i < ids.size(); ++i)
         {
-            build_layer(ids[i], fi);
+            build_layer(tempRT, ids[i], fi);
             composedRT.begin_receive();
-            fs.draw(layerRT.m_tex,
+            fs.draw(tempRT.m_tex,
                     GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_SRC_ALPHA);
             composedRT.end_receive();
         }
@@ -990,7 +986,8 @@ struct Pipeline
 
     void make_frame(const input_data &input, const output_data &output,
                     const output_data::drawcall *drawcalls, size_t drawcall_cnt,
-                    bool gamma_on, bool multisample_on)
+                    bool gamma_on, bool multisample_on,
+                    std::string &debugstr)
     {
         FrameInput fi;
         fi.drawcall_cnt = drawcall_cnt;
@@ -999,9 +996,10 @@ struct Pipeline
         fi.in2rt = { 2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn };
         fi.in2vp = { 2.0f / input.vpWidthIn, 2.0f / input.vpHeightIn };
 
-        bool rebuild_final_rt = false;
         bool rebuild_current_rt = false;
         bool augment_current_rt = false;
+
+        std::stringstream dbgss;
 
         for (u32 i = 0; i < drawcall_cnt; ++i)
         {
@@ -1016,7 +1014,7 @@ struct Pipeline
         for (u32 i = 0; i < drawcall_cnt; ++i)
         {
             const auto &dc = output.drawcalls[i];
-            if (dc.layer_id == output.currentLayer && (dc.id == output_data::CURRENTSTROKE || dc.id == output_data::IMAGEFIT))
+            if (dc.layer_id == output.currentLayer && dc.id == output_data::CURRENTSTROKE)
             {
                 augment_current_rt = true;
                 break;
@@ -1056,26 +1054,26 @@ struct Pipeline
 
         if (rebuild_below_rt)
         {
+            dbgss << "[*B]";
             compose_layers(belowLayersRT, belowIds, fi);
-            rebuild_final_rt = true;
         }
 
         if (rebuild_above_rt)
         {
+            dbgss << "[*A]";
             compose_layers(aboveLayersRT, aboveIds, fi);
-            rebuild_final_rt = true;
         }
 
         if (rebuild_current_rt)
         {
-            build_layer(output.currentLayer, fi);
-            augment_current_rt = true; // to blit from layerRT -> currentLayerRT
+            dbgss << "[*C]";
+            build_layer(currentLayerRT, output.currentLayer, fi);
         }
 
         if (augment_current_rt)
         {
+            dbgss << "[+C]";
             currentLayerRT.begin_receive();
-            fs.draw(layerRT.m_tex, GL_ONE, GL_ZERO);
             glClearDepth(0.0);
             glClear(GL_DEPTH_BUFFER_BIT);
             for (u32 i = 0; i < drawcall_cnt; ++i)
@@ -1087,24 +1085,14 @@ struct Pipeline
                 {
                     markerTech.draw(dc.mesh_id, dc.offset, dc.count, fi.in2rt);
                 }
-                if (dc.id == output_data::IMAGEFIT)
-                {
-                    basis2r basis =
-                    {
-                        {dc.params[0], dc.params[1]},
-                        {dc.params[2], dc.params[3]},
-                        {dc.params[4], dc.params[5]},
-                    };
-                    si.draw(textures[dc.texture_id].glid, basis, 0.5f, fi.in2rt);
-                }
             }
             currentLayerRT.end_receive();
-            rebuild_final_rt = true;
         }
         
-        if (rebuild_final_rt)
+        if (output.capture_on)
         {
-            finalDrawingRT.begin_receive();
+            dbgss << "[CAP]";
+            tempRT.begin_receive();
             glClearColor(0.0, 0.0, 0.0, 1.0);
             glClear(GL_COLOR_BUFFER_BIT);
             
@@ -1113,12 +1101,8 @@ struct Pipeline
             fs.draw(currentLayerRT.m_tex, GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_SRC_ALPHA);
             fs.draw(aboveLayersRT.m_tex, GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_SRC_ALPHA);
 
-            finalDrawingRT.end_receive();
-        }
-
-        if (output.capture_on)
-        {
-            finalDrawingRT.store_image(capture_data.data());
+            tempRT.end_receive();
+            tempRT.store_image(capture_data.data());
             normalize_capture_data();
         }
 
@@ -1151,7 +1135,38 @@ struct Pipeline
                    input.vpWidthPx, input.vpHeightPx);
 
         // Blit drawing with possible translations/rotations/scaling
-        fs.draw(finalDrawingRT.m_tex, GL_ONE, GL_SRC_ALPHA,
+        // TODO: maybe skip drawing these if bake baked nothing (empty layers)
+        dbgss << "[B]";
+        fs.draw(belowLayersRT.m_tex, GL_ONE, GL_SRC_ALPHA,
+                output.preTranslate, output.postTranslate,
+                output.scale, output.rotate,
+                input.vpWidthIn, input.vpHeightIn,
+                input.rtWidthIn, input.rtHeightIn);
+        dbgss << "[C]";
+        fs.draw(currentLayerRT.m_tex, GL_ONE, GL_SRC_ALPHA,
+                output.preTranslate, output.postTranslate,
+                output.scale, output.rotate,
+                input.vpWidthIn, input.vpHeightIn,
+                input.rtWidthIn, input.rtHeightIn);
+        for (u32 i = 0; i < drawcall_cnt; ++i)
+        {
+            const auto &dc = output.drawcalls[i];
+            if (dc.layer_id != output.currentLayer)
+                continue;
+            if (dc.id == output_data::IMAGEFIT)
+            {
+                basis2r basis =
+                {
+                    {dc.params[0], dc.params[1]},
+                    {dc.params[2], dc.params[3]},
+                    {dc.params[4], dc.params[5]},
+                };
+                dbgss << "[FIT]";
+                si.draw(textures[dc.texture_id].glid, basis, 0.5f, fi.in2rt);
+            }
+        }
+        dbgss << "[A]";
+        fs.draw(aboveLayersRT.m_tex, GL_ONE, GL_SRC_ALPHA,
                 output.preTranslate, output.postTranslate,
                 output.scale, output.rotate,
                 input.vpWidthIn, input.vpHeightIn,
@@ -1163,6 +1178,7 @@ struct Pipeline
             const auto &dc = output.drawcalls[i];
             if (dc.id == output_data::UI)
             {
+                dbgss << "[U]";
                 uirender.draw(dc.texture_id, dc.mesh_id,
                               dc.offset, dc.count,
                               static_cast<float>(input.vpWidthPt),
@@ -1174,6 +1190,7 @@ struct Pipeline
         {
             glDisable(GL_FRAMEBUFFER_SRGB);
         }
+        debugstr = dbgss.str();
     }
 };
 
@@ -1469,7 +1486,8 @@ int main(int argc, char *argv[])
 
             p.make_frame(input, output,
                          output.drawcalls, output.drawcall_cnt,
-                         gamma_enabled, multisample_enabled);
+                         gamma_enabled, multisample_enabled,
+                         input.debugstr);
 
             TIME; // finish ---------------------------------------------------------
             
