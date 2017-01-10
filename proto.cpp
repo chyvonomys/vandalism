@@ -860,6 +860,15 @@ struct Pipeline
     RenderTarget layerRT;
     RenderTargetMS layerRTMS;
 
+    // Make layer that contain premult color and alpha serve as amount of bg contain default correct values.
+    void clearRT(RenderTarget &rt)
+    {
+        rt.begin_receive();
+        glClearColor(0.0, 0.0, 0.0, 1.0);
+        glClear(GL_COLOR_BUFFER_BIT);
+        rt.end_receive();
+    }
+
     void setup(u32 w, u32 h)
     {
         quad.setup();
@@ -874,6 +883,11 @@ struct Pipeline
         finalDrawingRT.setup(w, h);
         layerRT.setup(w, h);
         layerRTMS.setup(w, h);
+
+        clearRT(belowLayersRT);
+        clearRT(aboveLayersRT);
+        clearRT(currentLayerRT);
+        clearRT(finalDrawingRT);
     }
 
     void cleanup()
@@ -1095,9 +1109,9 @@ struct Pipeline
             glClear(GL_COLOR_BUFFER_BIT);
             
             // TODO: maybe skip drawing these if bake baked nothing (empty layers)
-            fs.draw(belowLayersRT.m_tex, GL_ONE, GL_SRC_ALPHA);
-            fs.draw(currentLayerRT.m_tex, GL_ONE, GL_SRC_ALPHA);
-            fs.draw(aboveLayersRT.m_tex, GL_ONE, GL_SRC_ALPHA);
+            fs.draw(belowLayersRT.m_tex, GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_SRC_ALPHA);
+            fs.draw(currentLayerRT.m_tex, GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_SRC_ALPHA);
+            fs.draw(aboveLayersRT.m_tex, GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_SRC_ALPHA);
 
             finalDrawingRT.end_receive();
         }
