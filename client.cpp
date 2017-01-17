@@ -710,11 +710,11 @@ void collect_bake_data(const test_data& bake_data,
             const test_stroke& s = bake_data.strokes[vis.obj_id];
             const Masterpiece::Brush& brush = g_ism->art.get_brush(s.brush_id);
 
-            size_t vtxCountBefore = g_bake_quads.size();
+            u32 vtxCountBefore = static_cast<u32>(g_bake_quads.size());
             stroke_to_quads(bake_data.points + s.pi0,
                 bake_data.points + s.pi1,
                 g_bake_quads, vis.obj_id, tform, brush);
-            size_t vtxCountAfter = g_bake_quads.size();
+            u32 vtxCountAfter = static_cast<u32>(g_bake_quads.size());
 
             u32 remaining = vtxCountAfter - vtxCountBefore;
             while (remaining > 0)
@@ -860,18 +860,16 @@ void update_and_render(input_data *input, output_data *output)
     ism_input.fakepressure = gui_fake_pressure;
     ism_input.brushcolor = gui_brush_color;
     ism_input.eraseralpha = gui_eraser_alpha;
-    ism_input.brushdiameter =
-    gui_brush_diameter_units * cfg_brush_diameter_inches_per_unit;
+    ism_input.brushdiameter = gui_brush_diameter_units * cfg_brush_diameter_inches_per_unit;
     ism_input.brushangle = 3.1415926535f * gui_brush_angle / 180.0f;
-    ism_input.brushspread =
-    gui_brush_spread_units * cfg_brush_diameter_inches_per_unit;
+    ism_input.brushspread = gui_brush_spread_units * cfg_brush_diameter_inches_per_unit;
     ism_input.scrolly = input->scrollY;
     ism_input.scrolling = input->scrolling;
     ism_input.simplify = gui_draw_simplify;
     ism_input.smooth = static_cast<Vandalism::Smooth>(gui_draw_smooth);
+    ism_input.currentlayer = static_cast<u8>(gui_current_layer);
 
     // TODO: move all input to this point
-    g_ism->set_current_layer(static_cast<u8>(gui_current_layer));
     g_ism->update(&ism_input);
 
     bool scrollViewsDown = false;
@@ -929,7 +927,7 @@ void update_and_render(input_data *input, output_data *output)
     output->zbandwidth = cfg_depth_step;
     output->capture_on = false;
 
-    output->currentLayer = g_ism->get_current_layer_id();
+    output->currentLayer = static_cast<u8>(gui_current_layer);
 
     if (input->forceUpdate || g_ism->currentChanged)
     {
@@ -964,7 +962,7 @@ void update_and_render(input_data *input, output_data *output)
         dc.texture_id = 0; // not used
         dc.offset = 0;
         dc.count = idxCnt;
-        dc.layer_id = g_ism->get_current_layer_id();
+        dc.layer_id = static_cast<u8>(gui_current_layer);
 
         g_drawcalls.push_back(dc);
     }
@@ -1213,7 +1211,7 @@ void update_and_render(input_data *input, output_data *output)
         ImGui::SameLine();
         if (ImGui::Button("Show all strokes"))
         {
-            g_ism->show_all(input->vpWidthIn, input->vpHeightIn);
+            g_ism->show_all(input->vpWidthIn, input->vpHeightIn, static_cast<u8>(gui_current_layer));
         }
 
         ImGui::Text("[%s]", cfg_default_file);
@@ -1358,7 +1356,8 @@ void update_and_render(input_data *input, output_data *output)
             if (ImGui::Button("Place image"))
             {
                 g_ism->place_image(image_name_idx(g_fit_img.name.c_str()),
-                                   g_fit_img.width_in, g_fit_img.height_in);
+                                   g_fit_img.width_in, g_fit_img.height_in,
+                                   static_cast<u8>(gui_current_layer));
 
                 g_image_fitting = false;
             }
@@ -1370,7 +1369,7 @@ void update_and_render(input_data *input, output_data *output)
         output_data::drawcall dc;
         dc.texture_id = g_fit_img.texid;
         dc.id = output_data::IMAGEFIT;
-        dc.layer_id = g_ism->get_current_layer_id();
+        dc.layer_id = static_cast<u8>(gui_current_layer);
 
         dc.params[0] = -0.5f * g_fit_img.width_in;
         dc.params[1] = -0.5f * g_fit_img.height_in;

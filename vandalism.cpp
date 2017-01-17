@@ -377,7 +377,6 @@ struct Vandalism
 {
     Masterpiece art;
 
-    u8 currentLayer;
     size_t currentView;
 
     std::vector<Masterpiece::Point> currentPoints;
@@ -456,6 +455,7 @@ struct Vandalism
         float brushangle;
         float eraseralpha;
         float negligibledistance;
+        u8 currentlayer;
     };
 
     typedef void (Vandalism::*MC_FN)(const Input *);
@@ -464,16 +464,6 @@ struct Vandalism
     {
         visiblesChanged = true;
         currentChanged = true;
-    }
-
-    void set_current_layer(u8 id)
-    {
-        currentLayer = id;
-    }
-
-    u8 get_current_layer_id() const
-    {
-        return currentLayer;
     }
 
     bool current_view_is_last() const
@@ -520,7 +510,7 @@ struct Vandalism
             float dx = input->mousePos.x - rotateStartX;
             float angle = si_pi * dx;
 
-            art.change_view(make_rotate(-angle), currentLayer);
+            art.change_view(make_rotate(-angle), input->currentlayer);
             currentView = art.num_views() - 1;
         }
 
@@ -548,7 +538,7 @@ struct Vandalism
         if (append_allowed())
         {
             art.change_view(make_zoom(input->mousePos.x, zoomStartX),
-                            currentLayer);
+                            input->currentlayer);
             currentView = art.num_views() - 1;
         }
 
@@ -570,7 +560,7 @@ struct Vandalism
         if (append_allowed())
         {
             art.change_view(make_pan(panStart - input->mousePos),
-                            currentLayer);
+                            input->currentlayer);
             currentView = art.num_views() - 1;
         }
         common_done();
@@ -659,7 +649,7 @@ struct Vandalism
                 currentPoints = smoothed;
             }
 
-            art.add_stroke(currentLayer, currentBrush,
+            art.add_stroke(input->currentlayer, currentBrush,
                            currentStroke, currentPoints);
             currentView = art.num_views() - 1;
         }
@@ -710,10 +700,10 @@ struct Vandalism
             float a0 = static_cast<float>(::atan2f(d0.y, d0.x));
             float a1 = static_cast<float>(::atan2f(d1.y, d1.x));
 
-            art.change_view(make_pan(firstPos), currentLayer);
-            art.change_view(make_rotate(a0 - a1), currentLayer);
-            art.change_view(make_zoom(len(d1), len(d0)), currentLayer);
-            art.change_view(make_pan(-firstPos), currentLayer);
+            art.change_view(make_pan(firstPos), input->currentlayer);
+            art.change_view(make_rotate(a0 - a1), input->currentlayer);
+            art.change_view(make_zoom(len(d1), len(d0)), input->currentlayer);
+            art.change_view(make_pan(-firstPos), input->currentlayer);
             currentView = art.num_views() - 1;
         }
 
@@ -740,16 +730,16 @@ struct Vandalism
 
         if (append_allowed())
         {
-            art.change_view(make_pan(postShift), currentLayer);
-            art.change_view(make_zoom(zoomCoeff, 1.0f), currentLayer);
-            art.change_view(make_pan(preShift), currentLayer);
+            art.change_view(make_pan(postShift), input->currentlayer);
+            art.change_view(make_zoom(zoomCoeff, 1.0f), input->currentlayer);
+            art.change_view(make_pan(preShift), input->currentlayer);
             currentView = art.num_views() - 1;
         }
 
         common_done();
     }
     
-    void place_image(size_t imageId, float imageW, float imageH)
+    void place_image(size_t imageId, float imageW, float imageH, u8 currentLayer)
     {
         if (append_allowed())
         {
@@ -971,7 +961,7 @@ struct Vandalism
         set_dirty();
     }
 
-    void show_all(float vpW, float vpH)
+    void show_all(float vpW, float vpH, u8 currentLayer)
     {
         if (art.num_strokes() == 0 && art.num_images() == 0)
             return;
