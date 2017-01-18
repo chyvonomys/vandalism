@@ -1068,14 +1068,17 @@ struct Pipeline
         {
             dbgss << "[*C]";
             build_layer(currentLayerRT, output.currentLayer, fi);
+            glClearDepth(0.0);
+            glClear(GL_DEPTH_BUFFER_BIT);
         }
 
         if (augment_current_rt)
         {
             dbgss << "[+C]";
             currentLayerRT.begin_receive();
-            glClearDepth(0.0);
-            glClear(GL_DEPTH_BUFFER_BIT);
+            // NOTE: keep depth the same from previous time
+            // if it was clear we would stack all iterations of
+            // current stroke and transparent color would sum up.
             for (u32 i = 0; i < drawcall_cnt; ++i)
             {
                 const auto &dc = output.drawcalls[i];
