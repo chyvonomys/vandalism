@@ -69,6 +69,80 @@ struct input_data
 
 #include "math.h"
 
+struct GuiDrawcall
+{
+    kernel_services::TexID texture;
+    kernel_services::MeshID mesh;
+    u32 offset;
+    u32 count;
+};
+
+struct StrokesDrawcall
+{
+    kernel_services::MeshID mesh;
+    u32 offset;
+    u32 count;
+};
+
+struct ImageDrawcall
+{
+    kernel_services::TexID texture;
+    basis2r basis;
+};
+
+struct LayerRecipe
+{
+    struct ItemSpec
+    {
+        enum { STROKEBATCH, IMAGE } type;
+        u32 index;
+    };
+    std::vector<ItemSpec> items;
+};
+
+// we don't talk layer ids here, just above cur below and distinguish above layers to bake separately within that range
+struct RenderRecipe
+{
+    std::vector<StrokesDrawcall> strokeDCs;
+    std::vector<ImageDrawcall> imageDCs;
+
+    std::vector<LayerRecipe> belowBakery; // this should always contain actual info needed to reconstruct below layers.
+    std::vector<LayerRecipe> aboveBakery;
+    LayerRecipe currentBakery;
+
+    bool bakeBelow; // need this, because emptinness of bakery is also an update
+    bool bakeAbove;
+    bool bakeCurrent;
+
+    StrokesDrawcall currentStroke;
+    bool capture;
+    bool drawGrid;
+    bool blitBelow;
+    bool blitCurrent;
+    bool blitAbove;
+    bool fitImage;
+    ImageDrawcall fitDC;
+    std::vector<GuiDrawcall> guiDCs;
+
+    void clear()
+    {
+        strokeDCs.clear();
+        imageDCs.clear();
+        belowBakery.clear();
+        aboveBakery.clear();
+        currentBakery.items.clear();
+        bakeBelow = bakeAbove = bakeCurrent = true;
+        capture = drawGrid = blitBelow = blitCurrent = blitAbove = fitImage = false;
+        guiDCs.clear();
+    }
+};
+
+// moving towards `statelessness`
+// this object's contents should be enough for building a frame, no matter if baked RT contain or not
+// e.g. 
+
+// TODO: test case: all layers are turned off, drawing, what should happen?
+
 struct output_data
 {
     // TODO: should be somehow generated from layout
@@ -90,41 +164,13 @@ struct output_data
     color3f bg_color;
     color3f grid_bg_color;
     color3f grid_fg_color;
-    bool grid_on;
-
-    float grid_translation[2];
-    float grid_zoom;
 
     float zbandwidth;
 
     float capture_width;
     float capture_height;
-    bool capture_on;
 
-    u8 currentLayer;
-
-    enum techid
-    {
-        UI,
-        IMAGE,
-        BAKEBATCH,
-        CURRENTSTROKE,
-        IMAGEFIT
-    };
-
-    struct drawcall
-    {
-        techid id;
-        kernel_services::TexID texture_id;
-        kernel_services::MeshID mesh_id;
-        u32 offset;
-        u32 count;
-        u8 layer_id;
-        float params[8];
-    };
-
-    drawcall *drawcalls;
-    u32 drawcall_cnt;
+    const RenderRecipe *recipe;
 };
 
 void update_and_render(input_data *input, output_data *output);

@@ -904,15 +904,15 @@ struct Pipeline
 
     struct FrameInput
     {
-        const output_data::drawcall *drawcalls;
-        size_t drawcall_cnt;
+        const StrokesDrawcall *strokesDCs;
+        const ImageDrawcall *imageDCs;
         bool multisample_on;
         float2 in2rt;
         float2 in2vp;
     };
 
     // build layerRT with everything assigned to a given layer
-    void build_layer(RenderTarget &rt, u8 layerId, FrameInput &fi)
+    void build_layer(RenderTarget &rt, const LayerRecipe &recipe, FrameInput &fi)
     {
         if (fi.multisample_on)
         {
@@ -927,26 +927,19 @@ struct Pipeline
         glClearDepth(0.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        for (u32 j = 0; j < fi.drawcall_cnt; ++j)
+        for (u32 j = 0; j < recipe.items.size(); ++j)
         {
-            const auto &dc = fi.drawcalls[j];
-            if (dc.layer_id == layerId)
+            const auto &it = recipe.items[j];
+            if (it.type == LayerRecipe::ItemSpec::STROKEBATCH)
             {
-                if (dc.id == output_data::BAKEBATCH)
-                {
-                    markerTech.draw(dc.mesh_id, dc.offset, dc.count, fi.in2rt);
-                }
-                else if (dc.id == output_data::IMAGE)
-                {
-                    basis2r basis =
-                    {
-                        {dc.params[0], dc.params[1]},
-                        {dc.params[2], dc.params[3]},
-                        {dc.params[4], dc.params[5]}
-                    };
-                    si.draw(textures[dc.texture_id].glid,
-                            basis, 1.0f, fi.in2rt);
-                }
+                const auto &dc = fi.strokesDCs[it.index];
+                markerTech.draw(dc.mesh, dc.offset, dc.count, fi.in2rt);
+            }
+            else if (it.type == LayerRecipe::ItemSpec::IMAGE)
+            {
+                const auto &dc = fi.imageDCs[it.index];
+                si.draw(textures[dc.texture].glid,
+                        dc.basis, 1.0f, fi.in2rt);
             }
         }
         if (fi.multisample_on)
@@ -966,7 +959,7 @@ struct Pipeline
         }
     }
     
-    void compose_layers(RenderTarget &composedRT, const std::vector<u8> &ids,
+    void compose_layers(RenderTarget &composedRT, const std::vector<LayerRecipe> &layerRcps,
                         FrameInput &fi)
     {
         composedRT.begin_receive();
@@ -974,9 +967,9 @@ struct Pipeline
         glClear(GL_COLOR_BUFFER_BIT);
         composedRT.end_receive();
 
-        for (u32 i = 0; i < ids.size(); ++i)
+        for (u32 i = 0; i < layerRcps.size(); ++i)
         {
-            build_layer(tempRT, ids[i], fi);
+            build_layer(tempRT, layerRcps[i], fi);
             composedRT.begin_receive();
             fs.draw(tempRT.m_tex,
                     GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_SRC_ALPHA);
@@ -985,114 +978,53 @@ struct Pipeline
     }
 
     void make_frame(const input_data &input, const output_data &output,
-                    const output_data::drawcall *drawcalls, size_t drawcall_cnt,
                     bool gamma_on, bool multisample_on,
                     std::string &debugstr)
     {
+        const RenderRecipe &recipe = *output.recipe;
+
         FrameInput fi;
-        fi.drawcall_cnt = drawcall_cnt;
-        fi.drawcalls = drawcalls;
+        fi.strokesDCs = recipe.strokeDCs.data();
+        fi.imageDCs = recipe.imageDCs.data();
         fi.multisample_on = multisample_on;
         fi.in2rt = { 2.0f / input.rtWidthIn, 2.0f / input.rtHeightIn };
         fi.in2vp = { 2.0f / input.vpWidthIn, 2.0f / input.vpHeightIn };
 
-        bool rebuild_current_rt = false;
-        bool augment_current_rt = false;
-
         std::stringstream dbgss;
 
-        for (u32 i = 0; i < drawcall_cnt; ++i)
-        {
-            const auto &dc = output.drawcalls[i];
-            if (dc.layer_id == output.currentLayer && (dc.id == output_data::BAKEBATCH || dc.id == output_data::IMAGE))
-            {
-                rebuild_current_rt = true;
-                break;
-            }
-        }
-
-        for (u32 i = 0; i < drawcall_cnt; ++i)
-        {
-            const auto &dc = output.drawcalls[i];
-            if (dc.layer_id == output.currentLayer && dc.id == output_data::CURRENTSTROKE)
-            {
-                augment_current_rt = true;
-                break;
-            }
-        }
-
-        static std::vector<u8> belowIds;
-        static std::vector<u8> aboveIds;
-        belowIds.clear();
-        aboveIds.clear();
-
-        for (u32 i = 0; i < drawcall_cnt; ++i)
-        {
-            const auto &dc = output.drawcalls[i];
-            if (dc.id == output_data::BAKEBATCH || dc.id == output_data::IMAGE)
-            {
-                if (dc.layer_id > output.currentLayer)
-                {
-                    aboveIds.push_back(dc.layer_id);
-                }
-                else if (dc.layer_id < output.currentLayer)
-                {
-                    belowIds.push_back(dc.layer_id);
-                }
-            }
-        }
-
-        std::sort(aboveIds.begin(), aboveIds.end());
-        aboveIds.erase(std::unique(aboveIds.begin(), aboveIds.end()), aboveIds.end());
-
-        std::sort(belowIds.begin(), belowIds.end());
-        belowIds.erase(std::unique(belowIds.begin(), belowIds.end()), belowIds.end());
-
-        // TODO: emptiness may also mean a rebuild?
-        bool rebuild_below_rt = !belowIds.empty();
-        bool rebuild_above_rt = !aboveIds.empty();
-
-        if (rebuild_below_rt)
+        if (recipe.bakeBelow)
         {
             dbgss << "[*B]";
-            compose_layers(belowLayersRT, belowIds, fi);
+            compose_layers(belowLayersRT, recipe.belowBakery, fi);
         }
 
-        if (rebuild_above_rt)
+        if (recipe.bakeAbove)
         {
             dbgss << "[*A]";
-            compose_layers(aboveLayersRT, aboveIds, fi);
+            compose_layers(aboveLayersRT, recipe.aboveBakery, fi);
         }
 
-        if (rebuild_current_rt)
+        if (recipe.bakeCurrent)
         {
             dbgss << "[*C]";
-            build_layer(currentLayerRT, output.currentLayer, fi);
+            build_layer(currentLayerRT, recipe.currentBakery, fi);
             glClearDepth(0.0);
             glClear(GL_DEPTH_BUFFER_BIT);
         }
 
-        if (augment_current_rt)
+        if (recipe.currentStroke.count > 0)
         {
             dbgss << "[+C]";
             currentLayerRT.begin_receive();
             // NOTE: keep depth the same from previous time
             // if it was clear we would stack all iterations of
             // current stroke and transparent color would sum up.
-            for (u32 i = 0; i < drawcall_cnt; ++i)
-            {
-                const auto &dc = output.drawcalls[i];
-                if (dc.layer_id != output.currentLayer)
-                    continue;
-                if (dc.id == output_data::CURRENTSTROKE)
-                {
-                    markerTech.draw(dc.mesh_id, dc.offset, dc.count, fi.in2rt);
-                }
-            }
+            const auto &dc = recipe.currentStroke;
+            markerTech.draw(dc.mesh, dc.offset, dc.count, fi.in2rt);
             currentLayerRT.end_receive();
         }
         
-        if (output.capture_on)
+        if (recipe.capture)
         {
             dbgss << "[CAP]";
             tempRT.begin_receive();
@@ -1100,9 +1032,12 @@ struct Pipeline
             glClear(GL_COLOR_BUFFER_BIT);
             
             // TODO: maybe skip drawing these if bake baked nothing (empty layers)
-            fs.draw(belowLayersRT.m_tex, GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_SRC_ALPHA);
-            fs.draw(currentLayerRT.m_tex, GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_SRC_ALPHA);
-            fs.draw(aboveLayersRT.m_tex, GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_SRC_ALPHA);
+            if (recipe.blitBelow)
+                fs.draw(belowLayersRT.m_tex, GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_SRC_ALPHA);
+            if (recipe.blitCurrent)
+                fs.draw(currentLayerRT.m_tex, GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_SRC_ALPHA);
+            if (recipe.blitAbove)
+                fs.draw(aboveLayersRT.m_tex, GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_SRC_ALPHA);
 
             tempRT.end_receive();
             tempRT.store_image(capture_data.data());
@@ -1116,7 +1051,7 @@ struct Pipeline
             glEnable(GL_FRAMEBUFFER_SRGB);
         }
 
-        if (output.grid_on)
+        if (recipe.drawGrid)
         {
             grid.draw(output.grid_bg_color, output.grid_fg_color, fi.in2vp);
         }
@@ -1138,55 +1073,49 @@ struct Pipeline
                    input.vpWidthPx, input.vpHeightPx);
 
         // Blit drawing with possible translations/rotations/scaling
-        // TODO: maybe skip drawing these if bake baked nothing (empty layers)
-        dbgss << "[B]";
-        fs.draw(belowLayersRT.m_tex, GL_ONE, GL_SRC_ALPHA,
-                output.preTranslate, output.postTranslate,
-                output.scale, output.rotate,
-                input.vpWidthIn, input.vpHeightIn,
-                input.rtWidthIn, input.rtHeightIn);
-        dbgss << "[C]";
-        fs.draw(currentLayerRT.m_tex, GL_ONE, GL_SRC_ALPHA,
-                output.preTranslate, output.postTranslate,
-                output.scale, output.rotate,
-                input.vpWidthIn, input.vpHeightIn,
-                input.rtWidthIn, input.rtHeightIn);
-        for (u32 i = 0; i < drawcall_cnt; ++i)
+        if (recipe.blitBelow)
         {
-            const auto &dc = output.drawcalls[i];
-            if (dc.layer_id != output.currentLayer)
-                continue;
-            if (dc.id == output_data::IMAGEFIT)
-            {
-                basis2r basis =
-                {
-                    {dc.params[0], dc.params[1]},
-                    {dc.params[2], dc.params[3]},
-                    {dc.params[4], dc.params[5]},
-                };
-                dbgss << "[FIT]";
-                si.draw(textures[dc.texture_id].glid, basis, 0.5f, fi.in2rt);
-            }
-        }
-        dbgss << "[A]";
-        fs.draw(aboveLayersRT.m_tex, GL_ONE, GL_SRC_ALPHA,
+            dbgss << "[B]";
+            fs.draw(belowLayersRT.m_tex, GL_ONE, GL_SRC_ALPHA,
                 output.preTranslate, output.postTranslate,
                 output.scale, output.rotate,
                 input.vpWidthIn, input.vpHeightIn,
                 input.rtWidthIn, input.rtHeightIn);
+        }
+        if (recipe.blitCurrent)
+        {
+            dbgss << "[C]";
+            fs.draw(currentLayerRT.m_tex, GL_ONE, GL_SRC_ALPHA,
+                output.preTranslate, output.postTranslate,
+                output.scale, output.rotate,
+                input.vpWidthIn, input.vpHeightIn,
+                input.rtWidthIn, input.rtHeightIn);
+        }
+        if (recipe.fitImage)
+        {
+            dbgss << "[FIT]";
+            const auto &dc = recipe.fitDC;
+            si.draw(textures[dc.texture].glid, dc.basis, 0.5f, fi.in2rt);
+        }
+        if (recipe.blitAbove)
+        {
+            dbgss << "[A]";
+            fs.draw(aboveLayersRT.m_tex, GL_ONE, GL_SRC_ALPHA,
+                output.preTranslate, output.postTranslate,
+                output.scale, output.rotate,
+                input.vpWidthIn, input.vpHeightIn,
+                input.rtWidthIn, input.rtHeightIn);
+        }
 
         // Draw UI passes
-        for (u32 i = 0; i < output.drawcall_cnt; ++i)
+        for (u32 i = 0; i < recipe.guiDCs.size(); ++i)
         {
-            const auto &dc = output.drawcalls[i];
-            if (dc.id == output_data::UI)
-            {
-                dbgss << "[U]";
-                uirender.draw(dc.texture_id, dc.mesh_id,
-                              dc.offset, dc.count,
-                              static_cast<float>(input.vpWidthPt),
-                              static_cast<float>(input.vpHeightPt));
-            }
+            const auto &dc = recipe.guiDCs[i];
+            dbgss << "[U]";
+            uirender.draw(dc.texture, dc.mesh,
+                          dc.offset, dc.count,
+                          static_cast<float>(input.vpWidthPt),
+                          static_cast<float>(input.vpHeightPt));
         }
 
         if (gamma_on)
@@ -1254,8 +1183,8 @@ int main(int argc, char *argv[])
     ::printf("monitor: %f x %f in\n", monitorWidthIn, monitorHeightIn);
     ::printf("monitor: %f x %f dpi\n", monitorHorDPI, monitorVerDPI);
 
-    i32 initialVpWidthPt = monitorWidthPt / 2;
-    i32 initialVpHeightPt = monitorHeightPt / 2;
+    i32 initialVpWidthPt = 9 * monitorWidthPt / 10;
+    i32 initialVpHeightPt = 9 * monitorHeightPt / 10;
 
     i32 vpPaddingPt = 2;
 
@@ -1488,7 +1417,6 @@ int main(int argc, char *argv[])
             }
 
             p.make_frame(input, output,
-                         output.drawcalls, output.drawcall_cnt,
                          gamma_enabled, multisample_enabled,
                          input.debugstr);
 

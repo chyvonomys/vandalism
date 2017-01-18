@@ -52,7 +52,8 @@ struct ImageDesc
 // image ids in art are indexes in those vectors
 std::vector<ImageDesc> g_loaded_images;
 std::vector<std::string> g_loaded_image_names;
-std::vector<output_data::drawcall> g_drawcalls;
+
+RenderRecipe g_recipe;
 
 kernel_services::MeshID g_lines_mesh;
 std::vector<kernel_services::MeshID> g_bake_meshes;
@@ -150,16 +151,14 @@ void RenderImGuiDrawLists(ImDrawData *drawData)
             }
             else
             {
-                output_data::drawcall drawcall;
+                GuiDrawcall dc;
                 size_t texId = reinterpret_cast<size_t>(cmd.TextureId);
-                drawcall.texture_id = static_cast<kernel_services::TexID>(texId);
-                drawcall.mesh_id = g_ui_meshes[li];
-                drawcall.offset = idxOffs;
-                drawcall.count = idxCnt;
-                drawcall.id = output_data::UI;
-                drawcall.layer_id = 0xFF;
+                dc.texture = static_cast<kernel_services::TexID>(texId);
+                dc.mesh = g_ui_meshes[li];
+                dc.offset = idxOffs;
+                dc.count = idxCnt;
 
-                g_drawcalls.push_back(drawcall);
+                g_recipe.guiDCs.push_back(dc);
 
                 /*
                   float xmin = cmd.ClipRect.x;
@@ -386,7 +385,8 @@ void cleanup()
     g_services->delete_mesh(g_lines_mesh);
 
     g_ui_meshes.clear();
-    g_drawcalls.clear();
+    g_bake_meshes.clear();
+    g_recipe.clear();
 
     g_services->delete_texture(g_font_texture_id);
 
@@ -642,8 +642,8 @@ void stroke_to_quads(const test_point* begin, const test_point* end,
     }
 }
 
-void append_bake_drawcalls(u8 layer_id,
-                           std::vector<output_data::drawcall> &drawcalls,
+void append_bake_drawcalls(std::vector<StrokesDrawcall> &strokesDCs,
+                           LayerRecipe recipe,
                            u32 &vertexCount,
                            const std::vector<kernel_services::MeshID> &meshes,
                            std::vector<u32> &meshSizes,
@@ -651,9 +651,8 @@ void append_bake_drawcalls(u8 layer_id,
 {
     if (vertexCount > 0)
     {
-        if (drawcalls.empty() ||
-            drawcalls.back().id != output_data::BAKEBATCH ||
-            drawcalls.back().layer_id != layer_id ||
+        if (recipe.items.empty() ||
+            recipe.items.back().type != LayerRecipe::ItemSpec::STROKEBATCH ||
             meshesUsed == 0 ||
             meshSizes[meshesUsed - 1] == VTX_PER_MESH)
         {
@@ -662,21 +661,20 @@ void append_bake_drawcalls(u8 layer_id,
 
             if (nextMesh) ++meshesUsed;
 
-            output_data::drawcall dc;
-            dc.id = output_data::BAKEBATCH;
-            dc.mesh_id = meshes[meshesUsed - 1];
-            dc.texture_id = 0; // not used
+            StrokesDrawcall dc;
+            dc.mesh = meshes[meshesUsed - 1];
             dc.offset = offset;
             dc.count = 0;
-            dc.layer_id = layer_id;
 
-            drawcalls.push_back(dc);
+            recipe.items.push_back({ LayerRecipe::ItemSpec::STROKEBATCH, static_cast<u32>(strokesDCs.size()) });
+
+            strokesDCs.push_back(dc);
         }
 
         u32 room = VTX_PER_MESH - meshSizes[meshesUsed - 1];
         u32 portion = (vertexCount >= room ? room : vertexCount);
 
-        drawcalls.back().count += portion / 4 * 6;
+        strokesDCs[recipe.items.back().index].count += portion / 4 * 6;
         vertexCount -= portion;
         meshSizes[meshesUsed - 1] += portion;
     }
@@ -685,7 +683,7 @@ void append_bake_drawcalls(u8 layer_id,
 void collect_bake_data(const test_data& bake_data,
                        float width_in, float height_in,
                        float pixel_height_in,
-                       u8 layer_id)
+                       u8 layer_id, u8 current_id)
 {
     static std::vector<test_visible> s_visibles;
     static std::vector<basis2s> s_transforms;
@@ -700,6 +698,8 @@ void collect_bake_data(const test_data& bake_data,
     query(layer_id, bake_data, g_ism->currentView,
           viewbox, s_visibles, s_transforms,
           pixel_height_in);
+
+    LayerRecipe recipe;
 
     for (u32 visIdx = 0; visIdx < s_visibles.size(); ++visIdx)
     {
@@ -719,53 +719,36 @@ void collect_bake_data(const test_data& bake_data,
             u32 remaining = vtxCountAfter - vtxCountBefore;
             while (remaining > 0)
             {
-                append_bake_drawcalls(layer_id, g_drawcalls, remaining,
+                append_bake_drawcalls(g_recipe.strokeDCs, recipe, remaining,
                                       g_bake_meshes, g_bake_mesh_sizes, g_max_bake_mesh_idx);
             }
         }
         else if (vis.ty == test_visible::IMAGE)
         {
             const test_image &img = bake_data.images[vis.obj_id];
-
-            output_data::drawcall dc;
-            dc.id = output_data::IMAGE;
-            dc.mesh_id = 0; // not used
-            dc.texture_id = g_loaded_images[img.nameidx].texid;
-            dc.offset = 0; // not used
-            dc.count = 0; // not used
-            dc.layer_id = layer_id;
-
             float2 pos = point_in_basis(tform, img.basis.o);
 
             float2 ox = point_in_basis(tform, img.basis.o + img.basis.x);
             float2 oy = point_in_basis(tform, img.basis.o + img.basis.y);
 
-            // TODO: this is ugly
-            dc.params[0] = pos.x;
-            dc.params[1] = pos.y;
+            ImageDrawcall dc;
+            dc.basis.o = pos;
+            dc.basis.x = ox - pos;
+            dc.basis.y = oy - pos;
+            dc.texture = g_loaded_images[img.nameidx].texid;
 
-            dc.params[2] = ox.x - pos.x;
-            dc.params[3] = ox.y - pos.y;
+            recipe.items.push_back({ LayerRecipe::ItemSpec::IMAGE, static_cast<u32>(g_recipe.imageDCs.size()) });
 
-            dc.params[4] = oy.x - pos.x;
-            dc.params[5] = oy.y - pos.y;
-
-            g_drawcalls.push_back(dc);
+            g_recipe.imageDCs.push_back(dc);
         }
     }
 
-    if (s_visibles.empty())
-    {
-        output_data::drawcall dc;
-        dc.id = output_data::BAKEBATCH;
-        dc.mesh_id = 0; // doesn't matter
-        dc.texture_id = 0; // not used
-        dc.offset = 0;
-        dc.count = 0;
-        dc.layer_id = layer_id;
-
-        g_drawcalls.push_back(dc);
-    }
+    if (layer_id > current_id)
+        g_recipe.aboveBakery.push_back(recipe);
+    else if (layer_id < current_id)
+        g_recipe.belowBakery.push_back(recipe);
+    else
+        g_recipe.currentBakery = recipe;
 
     std::cout << "layer #" << static_cast<u32>(layer_id) << " update mesh: " << s_visibles.size() << " visibles" << std::endl;
 }
@@ -839,7 +822,8 @@ void update_and_render(input_data *input, output_data *output)
 {
     output->quit_flag = false;
 
-    g_drawcalls.clear();
+    g_recipe.clear();
+    output->recipe = &g_recipe;
 
     float mxnorm = input->vpMouseXPt / input->vpWidthPt - 0.5f;
     float mynorm = input->vpMouseYPt / input->vpHeightPt - 0.5f;
@@ -895,7 +879,7 @@ void update_and_render(input_data *input, output_data *output)
             collect_bake_data(bake_data,
                 input->rtWidthIn, input->rtHeightIn,
                 pixel_height_in,
-                layerIdx);
+                layerIdx, static_cast<u8>(gui_current_layer));
         }
 
         size_t remaining = g_bake_quads.size();
@@ -922,12 +906,8 @@ void update_and_render(input_data *input, output_data *output)
     output->bg_color = gui_background_color;
     output->grid_bg_color = gui_grid_bg_color;
     output->grid_fg_color = gui_grid_fg_color;
-    output->grid_on = false;
 
     output->zbandwidth = cfg_depth_step;
-    output->capture_on = false;
-
-    output->currentLayer = static_cast<u8>(gui_current_layer);
 
     if (input->forceUpdate || g_ism->currentChanged)
     {
@@ -956,15 +936,9 @@ void update_and_render(input_data *input, output_data *output)
         g_services->update_mesh_vb(g_curr_mesh,
                                    g_curr_quads.data(), vtxCnt);
 
-        output_data::drawcall dc;
-        dc.id = output_data::CURRENTSTROKE;
-        dc.mesh_id = g_curr_mesh;
-        dc.texture_id = 0; // not used
-        dc.offset = 0;
-        dc.count = idxCnt;
-        dc.layer_id = static_cast<u8>(gui_current_layer);
-
-        g_drawcalls.push_back(dc);
+        g_recipe.currentStroke.mesh = g_curr_mesh;
+        g_recipe.currentStroke.offset = 0;
+        g_recipe.currentStroke.count = idxCnt;
     }
 
     // Draw UI -----------------------------------------------------------------
@@ -1020,15 +994,13 @@ void update_and_render(input_data *input, output_data *output)
 
     g_services->update_mesh_vb(g_lines_mesh, g_lines_vb.data(), 24);
 
-    output_data::drawcall lines_drawcall;
-    lines_drawcall.texture_id = g_font_texture_id;
-    lines_drawcall.mesh_id = g_lines_mesh;
+    GuiDrawcall lines_drawcall;
+    lines_drawcall.texture = g_font_texture_id;
+    lines_drawcall.mesh = g_lines_mesh;
     lines_drawcall.offset = 0;
     lines_drawcall.count = 12;
-    lines_drawcall.id = output_data::UI;
-    lines_drawcall.layer_id = 0xFF;
 
-    g_drawcalls.push_back(lines_drawcall);
+    g_recipe.guiDCs.push_back(lines_drawcall);
 
     // Draw ImGui --------------------------------------------------------------
 
@@ -1133,9 +1105,8 @@ void update_and_render(input_data *input, output_data *output)
     {
         ImGui::ColorEdit3("grid bg", &gui_grid_bg_color.r);
         ImGui::ColorEdit3("grid fg", &gui_grid_fg_color.r);
-
-        output->grid_on = true;
     }
+    g_recipe.drawGrid = gui_grid_enabled;
 
     ImGui::Separator();
     // STROKE SETTINGS
@@ -1261,15 +1232,14 @@ void update_and_render(input_data *input, output_data *output)
         }
         else if (g_image_capturing == SELECTION)
         {
-            output_data::drawcall dc;
-            dc.texture_id = g_font_texture_id;
-            dc.mesh_id = g_lines_mesh;
+
+            GuiDrawcall dc;
+            dc.texture = g_font_texture_id;
+            dc.mesh = g_lines_mesh;
             dc.offset = 12;
             dc.count = 24;
-            dc.id = output_data::UI;
-            dc.layer_id = 0xFF;
 
-            g_drawcalls.push_back(dc);
+            g_recipe.guiDCs.push_back(lines_drawcall);
 
             ImGui::SameLine();
             if (ImGui::Button("Cancel capture"))
@@ -1278,9 +1248,10 @@ void update_and_render(input_data *input, output_data *output)
             }
 
             ImGui::SameLine();
+            g_recipe.capture = false;
             if (ImGui::Button("Save capture"))
             {
-                output->capture_on = true;
+                g_recipe.capture = true;
                 output->capture_width = cfg_capture_width_in;
                 output->capture_height = cfg_capture_height_in;
 
@@ -1366,22 +1337,12 @@ void update_and_render(input_data *input, output_data *output)
 
     if (g_image_fitting)
     {
-        output_data::drawcall dc;
-        dc.texture_id = g_fit_img.texid;
-        dc.id = output_data::IMAGEFIT;
-        dc.layer_id = static_cast<u8>(gui_current_layer);
-
-        dc.params[0] = -0.5f * g_fit_img.width_in;
-        dc.params[1] = -0.5f * g_fit_img.height_in;
-
-        dc.params[2] = g_fit_img.width_in;
-        dc.params[3] = 0.0f;
-
-        dc.params[4] = 0.0f;
-        dc.params[5] = g_fit_img.height_in;
-
-        g_drawcalls.push_back(dc);
+        g_recipe.fitDC.texture = g_fit_img.texid;
+        g_recipe.fitDC.basis.o = {-0.5f * g_fit_img.width_in, -0.5f * g_fit_img.height_in};
+        g_recipe.fitDC.basis.x = { g_fit_img.width_in, 0.0f };
+        g_recipe.fitDC.basis.y = { 0.0f, g_fit_img.height_in };
     }
+    g_recipe.fitImage = g_image_fitting;
 
     output->quit_flag = ImGui::Button("Quit");
 
@@ -1453,6 +1414,7 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::Text("win pos %d, %d pt",
                 input->windowPosXPt, input->windowPosYPt);
 
+    /*
     // debug drawcalls (ImGui calls are not included)
     std::stringstream ds;
     for (size_t i = 0; i < g_drawcalls.size(); ++i)
@@ -1479,6 +1441,7 @@ void update_and_render(input_data *input, output_data *output)
         ImGui::Text("%s (%d times)",
                     g_dclog.get_text(i), g_dclog.get_times(i));
     }
+    */
 
     ImGui::Separator();
     g_protolog.append(input->debugstr);
@@ -1493,7 +1456,4 @@ void update_and_render(input_data *input, output_data *output)
 
     gui_mouse_occupied = ImGui::IsAnyItemActive();
     gui_mouse_hover = ImGui::IsMouseHoveringAnyWindow();
-
-    output->drawcalls = g_drawcalls.data();
-    output->drawcall_cnt = static_cast<u32>(g_drawcalls.size());
 }
