@@ -131,7 +131,7 @@ struct RenderRecipe
         belowBakery.clear();
         aboveBakery.clear();
         currentBakery.items.clear();
-        bakeBelow = bakeAbove = bakeCurrent = true;
+        bakeBelow = bakeAbove = bakeCurrent = false;
         capture = drawGrid = blitBelow = blitCurrent = blitAbove = fitImage = false;
         guiDCs.clear();
     }

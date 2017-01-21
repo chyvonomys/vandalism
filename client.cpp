@@ -209,6 +209,8 @@ i32 gui_goto_idx;
 bool gui_layer_active[255];
 i32 gui_layer_cnt;
 i32 gui_current_layer;
+bool gui_current_layer_changed;
+bool gui_layer_active_changed[255];
 
 struct stringlog
 {
@@ -356,8 +358,11 @@ void setup(kernel_services *services)
     for (u8 i = 0; i < 255; ++i)
     {
         gui_layer_active[i] = true;
+        gui_layer_active_changed[i] = true;
     }
     gui_current_layer = 0;
+    gui_current_layer_changed = true;
+
     gui_layer_cnt = static_cast<i32>(5);
 
     g_image_fitting = false;
@@ -643,7 +648,7 @@ void stroke_to_quads(const test_point* begin, const test_point* end,
 }
 
 void append_bake_drawcalls(std::vector<StrokesDrawcall> &strokesDCs,
-                           LayerRecipe recipe,
+                           LayerRecipe &recipe,
                            u32 &vertexCount,
                            const std::vector<kernel_services::MeshID> &meshes,
                            std::vector<u32> &meshSizes,
@@ -853,6 +858,22 @@ void update_and_render(input_data *input, output_data *output)
     ism_input.smooth = static_cast<Vandalism::Smooth>(gui_draw_smooth);
     ism_input.currentlayer = static_cast<u8>(gui_current_layer);
 
+    bool currentChanged, abovesChanged, belowsChanged;
+
+    if (gui_current_layer_changed)
+    {
+        currentChanged = abovesChanged = belowsChanged = true;
+    }
+    else
+    {
+        const bool *beg = gui_layer_active_changed;
+        const bool *mid = beg + gui_current_layer;
+        belowsChanged = (std::find(beg, mid, true) != mid);
+        currentChanged = *mid;
+        const bool *end = beg + gui_layer_cnt;
+        abovesChanged = (std::find(mid + 1, end, true) != end);
+    }
+    
     // TODO: move all input to this point
     g_ism->update(&ism_input);
 
@@ -860,26 +881,48 @@ void update_and_render(input_data *input, output_data *output)
 
     const test_data &bake_data = g_ism->get_bake_data();
 
-    if (input->forceUpdate || g_ism->visiblesChanged)
+    abovesChanged |= g_ism->visiblesChanged;
+    currentChanged |= g_ism->visiblesChanged;
+    belowsChanged |= g_ism->visiblesChanged;
+
+    // split into
+    // a)all bakes changed -- movement
+    // b)current bake changed -- end of curr stroke)
+
+    // flag processed
+    // TODO: make this better
+    g_ism->visiblesChanged = false;
+
+    abovesChanged |= input->forceUpdate;
+    currentChanged |= input->forceUpdate;
+    belowsChanged |= input->forceUpdate;
+
+    if (abovesChanged || belowsChanged || currentChanged)
     {
         // TODO: this should not happen once per every stroke
         // implement some intermediate 'uncommited' strokes
-
-        // flag processed
-        // TODO: make this better
-        g_ism->visiblesChanged = false;
 
         g_bake_quads.clear();
         g_max_bake_mesh_idx = 0;
         std::fill(g_bake_mesh_sizes.begin(), g_bake_mesh_sizes.end(), 0);
 
-        // TODO: collect only active layers
-        for (u8 layerIdx = 0; layerIdx < gui_layer_cnt; ++layerIdx)
+        u8 from = static_cast<u8>(gui_current_layer);
+        u8 to = static_cast<u8>(gui_current_layer + 1);
+
+        if (abovesChanged) to = static_cast<u8>(gui_layer_cnt);
+        if (belowsChanged) from = 0;
+
+        ::printf("-----\n");
+        for (u8 layerIdx = from; layerIdx < to; ++layerIdx)
         {
-            collect_bake_data(bake_data,
-                input->rtWidthIn, input->rtHeightIn,
-                pixel_height_in,
-                layerIdx, static_cast<u8>(gui_current_layer));
+            bool cur = (layerIdx == gui_current_layer);
+            if (((cur && currentChanged) || !cur) && gui_layer_active[layerIdx])
+            {
+                collect_bake_data(bake_data,
+                                  input->rtWidthIn, input->rtHeightIn,
+                                  pixel_height_in,
+                                  layerIdx, static_cast<u8>(gui_current_layer));
+            }
         }
 
         size_t remaining = g_bake_quads.size();
@@ -896,6 +939,19 @@ void update_and_render(input_data *input, output_data *output)
         
         build_view_dbg_buffer(g_viewsBuf, bake_data);
         scrollViewsDown = true;
+    }
+
+    g_recipe.bakeBelow = belowsChanged;
+    g_recipe.bakeCurrent = currentChanged;
+    g_recipe.bakeAbove = abovesChanged;
+
+    {
+        const bool *beg = gui_layer_active;
+        const bool *mid = beg + gui_current_layer;
+        g_recipe.blitBelow = (std::find(beg, mid, true) != mid);
+        g_recipe.blitCurrent = *mid;
+        const bool *end = beg + gui_layer_cnt;
+        g_recipe.blitAbove = (std::find(mid + 1, end, true) != end);
     }
 
     output->preTranslate  = g_ism->preShift;
@@ -1155,18 +1211,21 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::Separator();
     // LAYERS
 
-    for (u8 i = 0; i < gui_layer_cnt; ++i)
+    for (u8 i = 0; i < static_cast<u8>(gui_layer_cnt); ++i)
     {
         if (i > 0) ImGui::SameLine();
-        ImGui::Checkbox(g_roman_numerals[i], &gui_layer_active[i]); 
+        gui_layer_active_changed[i] = ImGui::Checkbox(g_roman_numerals[i],
+                                                    &gui_layer_active[i]);
     }
 
     ImGui::PushID("curlayer");
-    for (u8 i = 0; i < gui_layer_cnt; ++i)
+    i32 was = gui_current_layer;
+    for (u8 i = 0; i < static_cast<u8>(gui_layer_cnt); ++i)
     {
         if (i > 0) ImGui::SameLine();
         ImGui::RadioButton(g_roman_numerals[i], &gui_current_layer, i);
     }
+    gui_current_layer_changed = (gui_current_layer != was);
     ImGui::PopID();
 
     ImGui::Separator();
