@@ -408,17 +408,17 @@ struct Vandalism
     // SCROLL related
     float scrollY0;
 
-    enum Mode
+    enum TopLevelModeId
     {
-        IDLE      = 0,
-        DRAWING   = 1,
-        PANNING   = 2,
-        ZOOMING   = 3,
-        ROTATING  = 4,
-        PLACING1  = 5,
-        MOVING2   = 6,
-        SCROLLING = 7,
-        MODECNT   = 8
+        TL_DRAWING = 0,
+        TL_PANNING = 1,
+        TL_ZOOMING = 2,
+        TL_ROTATING = 3,
+        TL_PLACING1 = 4,
+        TL_MOVING2 = 5,
+        TL_SCROLLING = 6,
+        TL_MODECNT = 7,
+        TL_IDLE = TL_MODECNT
     };
 
     enum Tool
@@ -458,7 +458,8 @@ struct Vandalism
         u8 currentlayer;
     };
 
-    typedef void (Vandalism::*MC_FN)(const Input *);
+    typedef void (Vandalism::*CB_FN)(const Input *);
+    typedef bool (Vandalism::*PR_FN)(const Input *);
 
     void set_dirty()
     {
@@ -493,10 +494,6 @@ struct Vandalism
         zoomCoeff = 1.0f;
         rotateAngle = 0.0f;
     }
-
-    void idle(const Input *) {}
-    void illegal(const Input *) {}
-
 
     void start_rotate(const Input *input)
     {
@@ -756,108 +753,70 @@ struct Vandalism
         set_dirty();
     }
 
-	MC_FN from_idle_handlers[MODECNT];
-	MC_FN to_idle_handlers[MODECNT];
-	MC_FN same_mode_handlers[MODECNT];
-
-    MC_FN mode_change_handlers(Mode from, Mode to)
+    struct Mode
     {
-        if (from == IDLE)
-            return from_idle_handlers[to];
-        if (to == IDLE)
-            return to_idle_handlers[from];
-        if (from == to)
-            return same_mode_handlers[from];
+        CB_FN enter_fn;
+        CB_FN leave_fn;
+        CB_FN stay_fn;
+        PR_FN check_fn;
+    };
 
-        return &Vandalism::illegal;
-    }
+    bool check_draw(const Input *input) { return input->mousedown && (input->tool == DRAW || input->tool == ERASE); }
+    bool check_pan(const Input *input) { return input->mousedown && input->tool == PAN; }
+    bool check_zoom(const Input *input) { return input->mousedown && input->tool == ZOOM; }
+    bool check_rotate(const Input *input) { return input->mousedown && input->tool == ROTATE; }
+    bool check_place1(const Input *input) { return input->mousedown && input->tool == FIRST; }
+    bool check_move2(const Input *input) { return input->mousedown && input->tool == SECOND; }
+    bool check_scroll(const Input *input) { return input->scrolling; }
 
-    void handle_mode_change(Mode prevMode, Mode currMode, Input *input)
+    static size_t update_modes(Input *input, Vandalism *ism, Mode *modes, size_t modecnt, size_t input_mode)
     {
-        MC_FN fn = mode_change_handlers(prevMode, currMode);
-        if (fn == &Vandalism::illegal)
+        // NOTE: modecnt == idle in the set
+        if (input_mode != modecnt && (ism->*modes[input_mode].check_fn)(input))
         {
-            MC_FN toIdle = mode_change_handlers(prevMode, IDLE);
-            MC_FN fromIdle = mode_change_handlers(IDLE, currMode);
-
-            (this->*toIdle)(input);
-            (this->*fromIdle)(input);
+            // still in current mode
+            (ism->*modes[input_mode].stay_fn)(input);
+            return input_mode;
         }
         else
         {
-            (this->*fn)(input);
-        }
-    }
-
-    Mode current_mode(Input *input)
-    {
-        if (input->mousedown)
-        {
-            switch (input->tool)
+            // figure out what mode we are in
+            for (size_t mi = 0; mi < modecnt; ++mi)
             {
-            case DRAW:
-            case ERASE:
-                return DRAWING;
-            case PAN:
-                return PANNING;
-            case ZOOM:
-                return ZOOMING;
-            case ROTATE:
-                return ROTATING;
-            case FIRST:
-                return PLACING1;
-            case SECOND:
-                return MOVING2;
+                if ((ism->*modes[mi].check_fn)(input))
+                {
+                    if (input_mode != modecnt) (ism->*modes[input_mode].leave_fn)(input);
+                    (ism->*modes[mi].enter_fn)(input);
+                    return mi;
+                }
             }
+            // no suitable mode found, must be idling then
+            if (input_mode != modecnt) (ism->*modes[input_mode].leave_fn)(input);
+            return modecnt;
         }
-        else if (input->scrolling)
-        {
-            return SCROLLING;
-        }
-        return IDLE;
     }
 
-    Mode currentMode;
+    Mode toplevel_modes[TL_MODECNT];
+    size_t currentMode;
 
     void update(Input *input)
     {
-        Mode mode = current_mode(input);
-        handle_mode_change(currentMode, mode, input);
-        currentMode = mode;
+        currentMode = update_modes(input, this, toplevel_modes, TL_MODECNT, currentMode);
     }
 
     void setup()
     {
-		// TODO: this should be statically initialized once (works in clang)
-		// doesn't work in vs2013
-		from_idle_handlers[IDLE] = &Vandalism::idle;
-		from_idle_handlers[DRAWING] = &Vandalism::start_draw;
-		from_idle_handlers[PANNING] = &Vandalism::start_pan;
-		from_idle_handlers[ZOOMING] = &Vandalism::start_zoom;
-		from_idle_handlers[ROTATING] = &Vandalism::start_rotate;
-		from_idle_handlers[PLACING1] = &Vandalism::place1;
-		from_idle_handlers[MOVING2] = &Vandalism::start_move2;
-		from_idle_handlers[SCROLLING] = &Vandalism::start_scroll;
+        // TODO: this should be statically initialized once (works in clang)
+        // doesn't work in vs2013
+        toplevel_modes[TL_DRAWING]   = {&Vandalism::start_draw, &Vandalism::done_draw, &Vandalism::do_draw, &Vandalism::check_draw};
+        toplevel_modes[TL_PANNING]   = {&Vandalism::start_pan, &Vandalism::done_pan, &Vandalism::do_pan, &Vandalism::check_pan};
+        toplevel_modes[TL_ZOOMING]   = {&Vandalism::start_zoom, &Vandalism::done_zoom, &Vandalism::do_zoom, &Vandalism::check_zoom};
+        toplevel_modes[TL_ROTATING]  = {&Vandalism::start_rotate, &Vandalism::done_rotate, &Vandalism::do_rotate, &Vandalism::check_rotate};
+        toplevel_modes[TL_PLACING1]  = {&Vandalism::place1, &Vandalism::place1, &Vandalism::place1, &Vandalism::check_place1};
+        toplevel_modes[TL_MOVING2]   = {&Vandalism::start_move2, &Vandalism::done_move2, &Vandalism::do_move2, &Vandalism::check_move2};
+        toplevel_modes[TL_SCROLLING] = {&Vandalism::start_scroll, &Vandalism::done_scroll, &Vandalism::do_scroll, &Vandalism::check_scroll};
 
-		to_idle_handlers[IDLE] = &Vandalism::idle;
-		to_idle_handlers[DRAWING] = &Vandalism::done_draw;
-		to_idle_handlers[PANNING] = &Vandalism::done_pan;
-		to_idle_handlers[ZOOMING] = &Vandalism::done_zoom;
-		to_idle_handlers[ROTATING] = &Vandalism::done_rotate;
-		to_idle_handlers[PLACING1] = &Vandalism::place1;
-		to_idle_handlers[MOVING2] = &Vandalism::done_move2;
-		to_idle_handlers[SCROLLING] = &Vandalism::done_scroll;
-
-		same_mode_handlers[IDLE] = &Vandalism::idle;
-		same_mode_handlers[DRAWING] = &Vandalism::do_draw;
-		same_mode_handlers[PANNING] = &Vandalism::do_pan;
-		same_mode_handlers[ZOOMING] = &Vandalism::do_zoom;
-		same_mode_handlers[ROTATING] = &Vandalism::do_rotate;
-		same_mode_handlers[PLACING1] = &Vandalism::place1;
-		same_mode_handlers[MOVING2] = &Vandalism::do_move2;
-		same_mode_handlers[SCROLLING] = &Vandalism::do_scroll;
-
-        currentMode = IDLE;
+        currentMode = TL_IDLE;
 
         // TODO: look for other missing initializations
         currentStroke.pi0 = 0;

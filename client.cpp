@@ -1231,7 +1231,7 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::Separator();
     // BUTTONS
 
-    if (g_ism->currentMode == Vandalism::IDLE)
+    if (g_ism->currentMode == Vandalism::TL_IDLE)
     {
         if (ImGui::Button("Clear canvas"))
         {
