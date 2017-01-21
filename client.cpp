@@ -1080,6 +1080,7 @@ void update_and_render(input_data *input, output_data *output)
     {
         ImGuiStyle& style = ImGui::GetStyle();
         style.Colors[ImGuiCol_Text]             = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+        style.Colors[ImGuiCol_WindowBg]         = ImVec4(0.0f, 0.0f, 0.0f, 0.9f);
         style.Colors[ImGuiCol_FrameBg]          = ImVec4(1.0f, 1.0f, 1.0f, 0.1f);
         style.Colors[ImGuiCol_TitleBg]          = ImVec4(0.4f, 0.5f, 0.1f, 1.0f);
         style.Colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.5f, 0.5f, 0.3f, 0.5f);
