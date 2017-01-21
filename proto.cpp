@@ -955,6 +955,10 @@ struct Pipeline
         {
             rt.begin_receive();
             tempRTMS.resolve();
+            // clear rt's depth
+            // NOTE: each rt has its own depth
+            glClearDepth(0.0);
+            glClear(GL_DEPTH_BUFFER_BIT);
             rt.end_receive();
         }
     }
@@ -1008,8 +1012,6 @@ struct Pipeline
         {
             dbgss << "[*C]";
             build_layer(currentLayerRT, recipe.currentBakery, fi);
-            glClearDepth(0.0);
-            glClear(GL_DEPTH_BUFFER_BIT);
         }
 
         if (recipe.currentStroke.count > 0)
