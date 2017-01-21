@@ -1093,12 +1093,11 @@ void update_and_render(input_data *input, output_data *output)
         style.AntiAliasedShapes = false;
         style.WindowPadding = ImVec2(4, 4);
         style.WindowRounding = 0;
-        style.WindowTitleAlign = ImGuiAlign_Center;
+        style.WindowTitleAlign = ImVec2(0.5f, 0.5f);
         style.FramePadding = ImVec2(3, 2);
         style.ItemInnerSpacing = ImVec2(3, 3);
         style.ItemSpacing = ImVec2(3, 3);
         style.ScrollbarRounding = 0;
-        style.WindowFillAlphaDefault = 0.9f;
     }
 
 	if (input->nTimeIntervals > 1)
@@ -1120,7 +1119,7 @@ void update_and_render(input_data *input, output_data *output)
     {
         if (gui_tool == Vandalism::DRAW)
         {
-            ImGui::ColorEdit4("color", &gui_brush_color.r);
+            ImGui::ColorPicker4("color", &gui_brush_color.r, ImGuiColorEditFlags_Alpha | ImGuiColorEditFlags_NoSliders);
         }
         else
         {

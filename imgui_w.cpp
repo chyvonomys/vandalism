@@ -11,6 +11,7 @@
 #pragma warning(disable: 4365)
 #pragma warning(disable: 4668)
 #pragma warning(disable: 4774)
+#pragma warning(disable: 4456)
 #include "imgui/imgui.cpp"
 #pragma warning(pop)
 #endif
