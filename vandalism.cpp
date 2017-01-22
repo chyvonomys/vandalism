@@ -826,22 +826,23 @@ struct Vandalism
     {
         if (input->tool != FITIMG)
         {
-            switch_modes(input, fitting_modes, FS_MODECNT, currentFittingMode, FS_IDLE);
+            switch_modes<FittingSubmodeId>(input, fitting_modes, FS_MODECNT, currentFittingMode, FS_IDLE);
             return false;
         }
 
-        currentFittingMode = update_modes(input, fitting_modes, FS_MODECNT, currentFittingMode);
-        if (currentFittingMode == FS_ACCEPTING) currentFittingMode = FS_IDLE;
+        currentFittingMode = update_modes<FittingSubmodeId>(input, fitting_modes, FS_MODECNT, currentFittingMode);
         return true;
     }
 
-    void switch_modes(const Input *input, Mode *modes, size_t modecnt, size_t from, size_t to)
+    template <typename M>
+    void switch_modes(const Input *input, Mode *modes, M modecnt, M from, M to)
     {
         if (from != modecnt) (this->*modes[from].leave_fn)(input);
-        if (to != modecnt) (this->*modes[to].leave_fn)(input);
+        if (to != modecnt) (this->*modes[to].enter_fn)(input);
     }
 
-    size_t update_modes(const Input *input, Mode *modes, size_t modecnt, size_t input_mode)
+    template <typename M>
+    M update_modes(const Input *input, Mode *modes, M modecnt, M input_mode)
     {
         // NOTE: modecnt == idle in the set
         if (input_mode != modecnt && (this->*modes[input_mode].check_fn)(input))
@@ -853,27 +854,27 @@ struct Vandalism
         else
         {
             // figure out what mode we are in
-            for (size_t mi = 0; mi < modecnt; ++mi)
+            for (u32 mi = 0; mi < static_cast<u32>(modecnt); ++mi)
             {
                 if ((this->*modes[mi].check_fn)(input))
                 {
-                    switch_modes(input, modes, modecnt, input_mode, mi);
-                    return mi;
+                    switch_modes<M>(input, modes, modecnt, input_mode, static_cast<M>(mi));
+                    return static_cast<M>(mi);
                 }
             }
-            switch_modes(input, modes, modecnt, input_mode, modecnt);
+            switch_modes<M>(input, modes, modecnt, input_mode, modecnt);
             return modecnt;
         }
     }
 
     Mode toplevel_modes[TL_MODECNT];
     Mode fitting_modes[FS_MODECNT];
-    size_t currentMode;
-    size_t currentFittingMode;
+    TopLevelModeId currentMode;
+    FittingSubmodeId currentFittingMode;
 
     void update(Input *input)
     {
-        currentMode = update_modes(input, toplevel_modes, TL_MODECNT, currentMode);
+        currentMode = update_modes<TopLevelModeId>(input, toplevel_modes, TL_MODECNT, currentMode);
     }
 
     void setup()

@@ -68,14 +68,11 @@ struct CurrentImage
     std::string name;
     float width_in;
     float height_in;
-    kernel_services::TexID texid;
-    // TODO: think of better approach to avoiding texture deletion than this flag
-    bool reuse;
+    u32 imageid;
     CurrentImage() :
         width_in(0.0f),
         height_in(0.0f),
-        texid(kernel_services::default_texid),
-        reuse(true)
+        imageid(0)
     {}
 } g_fit_img;
 
@@ -858,6 +855,13 @@ void update_and_render(input_data *input, output_data *output)
     ism_input.smooth = static_cast<Vandalism::Smooth>(gui_draw_smooth);
     ism_input.currentlayer = static_cast<u8>(gui_current_layer);
 
+    ism_input.fitgizmo = Vandalism::FG_NONE;
+    ism_input.fittool = static_cast<Vandalism::FitTool>(gui_fit_tool);
+
+    ism_input.imageid = g_fit_img.imageid;
+    ism_input.imagewidth = g_fit_img.width_in;
+    ism_input.imageheight = g_fit_img.height_in;
+
     bool currentChanged, abovesChanged, belowsChanged;
 
     if (gui_current_layer_changed)
@@ -996,15 +1000,6 @@ void update_and_render(input_data *input, output_data *output)
         g_recipe.currentStroke.offset = 0;
         g_recipe.currentStroke.count = idxCnt;
     }
-
-    if (g_ism->currentMode == Vandalism::FITIMG)
-    {
-        g_recipe.fitDC.texture = g_fit_img.texid;
-        g_recipe.fitDC.basis.o = {-0.5f * g_fit_img.width_in, -0.5f * g_fit_img.height_in};
-        g_recipe.fitDC.basis.x = { g_fit_img.width_in, 0.0f };
-        g_recipe.fitDC.basis.y = { 0.0f, g_fit_img.height_in };
-    }
-    g_recipe.fitImage = (g_ism->currentMode == Vandalism::FITIMG);
     
     // Draw UI -----------------------------------------------------------------
 
@@ -1153,9 +1148,14 @@ void update_and_render(input_data *input, output_data *output)
 
     if (gui_tool == Vandalism::FITIMG)
     {
+        if (gui_fit_tool == Vandalism::FT_ACCEPT)
+        {
+            gui_fit_tool = Vandalism::FT_START;
+        }
         if (gui_fit_tool == Vandalism::FT_START)
         {
             ImGui::Text("[%s]", cfg_default_image_file);
+            ImGui::SameLine();
             if (ImGui::Button("Load image"))
             {
                 gui_fit_tool = Vandalism::FT_LOAD;
@@ -1170,10 +1170,9 @@ void update_and_render(input_data *input, output_data *output)
                 const ImageDesc &desc = g_loaded_images[ism_img_name_idx];
                 float image_aspect = static_cast<float>(desc.height) / static_cast<float>(desc.width);
 
-                g_fit_img.texid = desc.texid;
-                g_fit_img.width_in = 0.5f * input->vpWidthIn;
+                g_fit_img.imageid = static_cast<u32>(ism_img_name_idx);
+                g_fit_img.width_in = 0.25f * input->vpWidthIn;
                 g_fit_img.height_in = g_fit_img.width_in * image_aspect;
-                g_fit_img.reuse = true;
 
                 gui_fit_tool = Vandalism::FT_ADJUST;
             }
@@ -1187,10 +1186,9 @@ void update_and_render(input_data *input, output_data *output)
 
                     float image_aspect = static_cast<float>(desc.height) / static_cast<float>(desc.width);
 
-                    g_fit_img.texid = desc.texid;
-                    g_fit_img.width_in = 4.0f;
+                    g_fit_img.imageid = static_cast<u32>(ism_img_name_idx);
+                    g_fit_img.width_in = 0.25f * input->vpWidthIn;
                     g_fit_img.height_in = g_fit_img.width_in * image_aspect;
-                    g_fit_img.reuse = false;
 
                     gui_fit_tool = Vandalism::FT_ADJUST;
                 }
@@ -1210,10 +1208,6 @@ void update_and_render(input_data *input, output_data *output)
             ImGui::SameLine();
             if (ImGui::Button("Cancel image"))
             {
-                if (!g_fit_img.reuse)
-                {
-                    g_services->delete_texture(g_fit_img.texid);
-                }
                 g_fit_img = CurrentImage();
 
                 gui_fit_tool = Vandalism::FT_START;
@@ -1221,11 +1215,19 @@ void update_and_render(input_data *input, output_data *output)
         }
     }
 
+    if (gui_fit_tool == Vandalism::FT_ADJUST)
+    {
+        g_recipe.fitDC.texture = g_loaded_images[g_fit_img.imageid].texid;
+        g_recipe.fitDC.basis.o = { -0.5f * g_fit_img.width_in, -0.5f * g_fit_img.height_in };
+        g_recipe.fitDC.basis.x = { g_fit_img.width_in, 0.0f };
+        g_recipe.fitDC.basis.y = { 0.0f, g_fit_img.height_in };
+    }
+    g_recipe.fitImage = (gui_fit_tool == Vandalism::FT_ADJUST);
+
     Undoee undoee = g_ism->undoable();
     const char *undolabels[] = { "", "Undo last stroke", "Undo image insertion", "Undo view change" };
     if (undoee != NOTHING)
     {
-        ImGui::SameLine();
         if (ImGui::Button(undolabels[undoee]))
         {
             g_ism->undo();
