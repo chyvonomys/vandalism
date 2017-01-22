@@ -430,9 +430,8 @@ struct Vandalism
     {
         FS_MOVING0   = 0,
         FS_MOVINGX   = 1,
-        FS_CANCELING = 2,
-        FS_ACCEPTING = 3,
-        FS_MODECNT   = 4,
+        FS_ACCEPTING = 2,
+        FS_MODECNT   = 3,
         FS_IDLE      = FS_MODECNT
     };
 
@@ -450,10 +449,17 @@ struct Vandalism
 
     enum FitTool
     {
-        MOVE0  = 0,
-        MOVEX  = 1,
-        CANCEL = 2,
-        ACCEPT = 3
+        FT_START  = 0,
+        FT_LOAD   = 1,
+        FT_ADJUST = 2,
+        FT_ACCEPT = 3
+    };
+
+    enum FitGizmo
+    {
+        FG_NONE   = 0,
+        FG_0POINT = 1,
+        FG_XPOINT = 2
     };
 
     enum Smooth
@@ -483,6 +489,7 @@ struct Vandalism
         float imagewidth;
         float imageheight;
         FitTool fittool;
+        FitGizmo fitgizmo;
         u8 currentlayer;
     };
 
@@ -811,17 +818,27 @@ struct Vandalism
     bool check_move2(const Input *input) { return input->mousedown && input->tool == SECOND; }
     bool check_scroll(const Input *input) { return input->scrolling; }
 
-    bool check_move0(const Input *input) { return input->mousedown && input->fittool == MOVE0; }
-    bool check_movex(const Input *input) { return input->mousedown && input->fittool == MOVEX; }
-    bool check_accept_img(const Input *input) { return input->fittool == ACCEPT; }
-    bool check_cancel_img(const Input *input) { return input->fittool == CANCEL; }
+    bool check_move0(const Input *input) { return input->mousedown && input->fittool == FT_ADJUST && input->fitgizmo == FG_0POINT; }
+    bool check_movex(const Input *input) { return input->mousedown && input->fittool == FT_ADJUST && input->fitgizmo == FG_XPOINT; }
+    bool check_accept_img(const Input *input) { return input->fittool == FT_ACCEPT; }
 
     bool check_fitting(const Input *input)
     {
+        if (input->tool != FITIMG)
+        {
+            switch_modes(input, fitting_modes, FS_MODECNT, currentFittingMode, FS_IDLE);
+            return false;
+        }
+
         currentFittingMode = update_modes(input, fitting_modes, FS_MODECNT, currentFittingMode);
-        bool shutdown = (currentFittingMode == FS_ACCEPTING || currentFittingMode == FS_CANCELING);
-        if (shutdown) currentFittingMode = FS_IDLE;
-        return !shutdown;
+        if (currentFittingMode == FS_ACCEPTING) currentFittingMode = FS_IDLE;
+        return true;
+    }
+
+    void switch_modes(const Input *input, Mode *modes, size_t modecnt, size_t from, size_t to)
+    {
+        if (from != modecnt) (this->*modes[from].leave_fn)(input);
+        if (to != modecnt) (this->*modes[to].leave_fn)(input);
     }
 
     size_t update_modes(const Input *input, Mode *modes, size_t modecnt, size_t input_mode)
@@ -840,13 +857,11 @@ struct Vandalism
             {
                 if ((this->*modes[mi].check_fn)(input))
                 {
-                    if (input_mode != modecnt) (this->*modes[input_mode].leave_fn)(input);
-                    (this->*modes[mi].enter_fn)(input);
+                    switch_modes(input, modes, modecnt, input_mode, mi);
                     return mi;
                 }
             }
-            // no suitable mode found, must be idling then
-            if (input_mode != modecnt) (this->*modes[input_mode].leave_fn)(input);
+            switch_modes(input, modes, modecnt, input_mode, modecnt);
             return modecnt;
         }
     }
@@ -878,7 +893,6 @@ struct Vandalism
 
         fitting_modes[FS_MOVING0]    = {&Vandalism::move0,        &Vandalism::move0,       &Vandalism::move0,     &Vandalism::check_move0};
         fitting_modes[FS_MOVINGX]    = {&Vandalism::movex,        &Vandalism::movex,       &Vandalism::movex,     &Vandalism::check_movex};
-        fitting_modes[FS_CANCELING]  = {&Vandalism::empty,        &Vandalism::empty,       &Vandalism::empty,     &Vandalism::check_cancel_img};
         fitting_modes[FS_ACCEPTING]  = {&Vandalism::accept_img,   &Vandalism::empty,       &Vandalism::empty,     &Vandalism::check_accept_img};
 
         currentFittingMode = FS_IDLE;

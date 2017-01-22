@@ -86,7 +86,6 @@ enum CapturingStage
     CAPTURE
 };
 
-bool g_image_fitting;
 CapturingStage g_image_capturing;
 
 void clear_loaded_images()
@@ -186,6 +185,7 @@ Vandalism *g_ism = nullptr;
 bool gui_showAllViews;
 i32 gui_viewIdx;
 i32 gui_tool;
+i32 gui_fit_tool;
 color4f gui_brush_color;
 i32 gui_brush_diameter_units;
 i32 gui_brush_spread_units;
@@ -326,7 +326,8 @@ void setup(kernel_services *services)
 
     gui_showAllViews = true;
     gui_viewIdx = 0;
-    gui_tool = static_cast<i32>(Vandalism::DRAW);
+    gui_tool = Vandalism::DRAW;
+    gui_fit_tool = Vandalism::FT_START;
 
     gui_brush_color = { 1.0, 1.0f, 1.0f, 1.0f };
     gui_background_color = { 0.3f, 0.3f, 0.3f };
@@ -365,7 +366,6 @@ void setup(kernel_services *services)
 
     gui_layer_cnt = static_cast<i32>(5);
 
-    g_image_fitting = false;
     g_image_capturing = INACTIVE;
 }
 
@@ -1150,72 +1150,73 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::SameLine();
     ImGui::RadioButton("pivot", &gui_tool, static_cast<i32>(Vandalism::SECOND));
     ImGui::RadioButton("image", &gui_tool, static_cast<i32>(Vandalism::FITIMG));
+
     if (gui_tool == Vandalism::FITIMG)
     {
-        ImGui::Text("[%s]", cfg_default_image_file);
-        if (!g_image_fitting)
+        if (gui_fit_tool == Vandalism::FT_START)
         {
-            ImGui::SameLine();
-            if (ImGui::Button("Insert image"))
+            ImGui::Text("[%s]", cfg_default_image_file);
+            if (ImGui::Button("Load image"))
             {
-                g_fit_img.name = cfg_default_image_file;
-                size_t ism_img_name_idx = image_name_idx(g_fit_img.name.c_str());
-                if (ism_img_name_idx < g_loaded_image_names.size())
+                gui_fit_tool = Vandalism::FT_LOAD;
+            }
+        }
+        if (gui_fit_tool == Vandalism::FT_LOAD)
+        {
+            g_fit_img.name = cfg_default_image_file;
+            size_t ism_img_name_idx = image_name_idx(g_fit_img.name.c_str());
+            if (ism_img_name_idx < g_loaded_image_names.size())
+            {
+                const ImageDesc &desc = g_loaded_images[ism_img_name_idx];
+                float image_aspect = static_cast<float>(desc.height) / static_cast<float>(desc.width);
+
+                g_fit_img.texid = desc.texid;
+                g_fit_img.width_in = 0.5f * input->vpWidthIn;
+                g_fit_img.height_in = g_fit_img.width_in * image_aspect;
+                g_fit_img.reuse = true;
+
+                gui_fit_tool = Vandalism::FT_ADJUST;
+            }
+            else
+            {
+                ImageDesc desc;
+                if (load_image(g_fit_img.name.c_str(), desc))
                 {
-                    const ImageDesc &desc = g_loaded_images[ism_img_name_idx];
+                    g_loaded_images.push_back(desc);
+                    g_loaded_image_names.push_back(g_fit_img.name);
+
                     float image_aspect = static_cast<float>(desc.height) / static_cast<float>(desc.width);
 
                     g_fit_img.texid = desc.texid;
-                    g_fit_img.width_in = 0.5f * input->vpWidthIn;
+                    g_fit_img.width_in = 4.0f;
                     g_fit_img.height_in = g_fit_img.width_in * image_aspect;
-                    g_fit_img.reuse = true;
+                    g_fit_img.reuse = false;
 
-                    g_image_fitting = true;
+                    gui_fit_tool = Vandalism::FT_ADJUST;
                 }
                 else
                 {
-                    ImageDesc desc;
-                    if (load_image(g_fit_img.name.c_str(), desc))
-                    {
-                        g_loaded_images.push_back(desc);
-                        g_loaded_image_names.push_back(g_fit_img.name);
-
-                        float image_aspect = static_cast<float>(desc.height) / static_cast<float>(desc.width);
-
-                        g_fit_img.texid = desc.texid;
-                        g_fit_img.width_in = 4.0f;
-                        g_fit_img.height_in = g_fit_img.width_in * image_aspect;
-                        g_fit_img.reuse = false;
-
-                        g_image_fitting = true;
-                    }
+                    gui_fit_tool = Vandalism::FT_START;
                 }
             }
         }
-        else
+        if (gui_fit_tool == Vandalism::FT_ADJUST)
         {
             ImGui::SameLine();
-            if (ImGui::Button("Cancel fitting"))
+            if (ImGui::Button("Accept image"))
             {
-                g_fit_tool = Vandalism::CANCEL;
+                gui_fit_tool = Vandalism::FT_ACCEPT;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel image"))
+            {
                 if (!g_fit_img.reuse)
                 {
                     g_services->delete_texture(g_fit_img.texid);
                 }
                 g_fit_img = CurrentImage();
 
-                g_image_fitting = false;
-            }
-
-            ImGui::SameLine();
-            if (ImGui::Button("Place image"))
-            {
-                g_fit_tool = Vandalism::ACCEPT;
-                g_ism->place_image(image_name_idx(g_fit_img.name.c_str()),
-                                   g_fit_img.width_in, g_fit_img.height_in,
-                                   static_cast<u8>(gui_current_layer));
-
-                g_image_fitting = false;
+                gui_fit_tool = Vandalism::FT_START;
             }
         }
     }
