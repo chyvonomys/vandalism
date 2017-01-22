@@ -214,7 +214,7 @@ struct box2
         min.x -= s;
         max.x += s;
         min.y -= s;
-        max.x += s;
+        max.y += s;
     }
 
     void add(const float2 &p)
@@ -237,6 +237,12 @@ struct box2
     bool empty() const
     {
         return min.x > max.x || min.y > max.y;
+    }
+
+    bool contains(const float2 &p)
+    {
+        return p.x >= min.x && p.x <= max.x &&
+               p.y >= min.y && p.y <= max.y;
     }
 
     float width() const
