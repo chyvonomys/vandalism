@@ -66,14 +66,9 @@ std::vector<ImDrawVert> g_lines_vb;
 struct CurrentImage
 {
     std::string name;
-    float width_in;
-    float height_in;
+    float aspect_ratio;
     u32 imageid;
-    CurrentImage() :
-        width_in(0.0f),
-        height_in(0.0f),
-        imageid(0)
-    {}
+    CurrentImage() : aspect_ratio(1.0f), imageid(0) {}
 } g_fit_img;
 
 enum CapturingStage
@@ -313,7 +308,7 @@ void setup(kernel_services *services)
     g_services->create_quad_mesh(*g_services->stroke_vertex_layout,
                                  CURR_QUADS_CNT * 4);
     g_lines_mesh =
-    g_services->create_quad_mesh(*g_services->ui_vertex_layout, 16);
+    g_services->create_quad_mesh(*g_services->ui_vertex_layout, 40);
 
     io.Fonts->ClearInputData();
     io.Fonts->ClearTexData();
@@ -858,9 +853,8 @@ void update_and_render(input_data *input, output_data *output)
     ism_input.fitgizmo = Vandalism::FG_NONE;
     ism_input.fittool = static_cast<Vandalism::FitTool>(gui_fit_tool);
 
-    ism_input.imageid = g_fit_img.imageid;
-    ism_input.imagewidth = g_fit_img.width_in;
-    ism_input.imageheight = g_fit_img.height_in;
+    ism_input.fitimageid = g_fit_img.imageid;
+    ism_input.fitimageaspectratio = g_fit_img.aspect_ratio;
 
     bool currentChanged, abovesChanged, belowsChanged;
 
@@ -1006,15 +1000,17 @@ void update_and_render(input_data *input, output_data *output)
     float uiResHor = static_cast<float>(input->vpWidthPt);
     float uiResVer = static_cast<float>(input->vpHeightPt);
 
-    float fXPx = (g_ism->firstPos.x / input->vpWidthIn + 0.5f) * uiResHor;
-    float fYPx = (0.5f - g_ism->firstPos.y / input->vpHeightIn) * uiResVer;
-
     // TODO: do not update this each frame
     ImDrawVert vtx;
-    vtx.col = 0xFF5555FF;
     vtx.uv = ImGui::GetIO().Fonts->TexUvWhitePixel;
 
     g_lines_vb.clear();
+
+    // pivoting 'first'
+    float fXPx = (g_ism->firstPos.x / input->vpWidthIn + 0.5f) * uiResHor;
+    float fYPx = (0.5f - g_ism->firstPos.y / input->vpHeightIn) * uiResVer;
+
+    vtx.col = 0xFF5555FF; // pink
     vtx.pos = ImVec2(fXPx-5.0f, fYPx-0.5f); g_lines_vb.push_back(vtx);
     vtx.pos = ImVec2(fXPx-5.0f, fYPx+0.5f); g_lines_vb.push_back(vtx);
     vtx.pos = ImVec2(fXPx+5.0f, fYPx+0.5f); g_lines_vb.push_back(vtx);
@@ -1025,13 +1021,14 @@ void update_and_render(input_data *input, output_data *output)
     vtx.pos = ImVec2(fXPx+0.5f, fYPx+5.0f); g_lines_vb.push_back(vtx);
     vtx.pos = ImVec2(fXPx-0.5f, fYPx+5.0f); g_lines_vb.push_back(vtx);
 
+    // capture 'frame'
     float cX0 = (0.5f - 0.5f * cfg_capture_width_in / input->vpWidthIn) * uiResHor;
     float cX1 = (0.5f + 0.5f * cfg_capture_width_in / input->vpWidthIn) * uiResHor;
 
     float cY0 = (0.5f + 0.5f * cfg_capture_height_in / input->vpHeightIn) * uiResVer;
     float cY1 = (0.5f - 0.5f * cfg_capture_height_in / input->vpHeightIn) * uiResVer;
 
-    vtx.col = 0xFF0000FF;
+    vtx.col = 0xFF00FF00; // green
     vtx.pos = ImVec2(cX0-0.5f, cY0); g_lines_vb.push_back(vtx);
     vtx.pos = ImVec2(cX0+0.5f, cY0); g_lines_vb.push_back(vtx);
     vtx.pos = ImVec2(cX0+0.5f, cY1); g_lines_vb.push_back(vtx);
@@ -1052,13 +1049,43 @@ void update_and_render(input_data *input, output_data *output)
     vtx.pos = ImVec2(cX1, cY1+0.5f); g_lines_vb.push_back(vtx);
     vtx.pos = ImVec2(cX1, cY1-0.5f); g_lines_vb.push_back(vtx);
 
-    g_services->update_mesh_vb(g_lines_mesh, g_lines_vb.data(), 24);
+    // fitting 'origin'
+    float oXPx = (g_ism->fitBasis.o.x / input->vpWidthIn + 0.5f) * uiResHor;
+    float oYPx = (0.5f - g_ism->fitBasis.o.y / input->vpHeightIn) * uiResVer;
+
+    vtx.col = 0xFF000000; // black
+    vtx.pos = ImVec2(oXPx - 5.0f, oYPx - 0.5f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(oXPx - 5.0f, oYPx + 0.5f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(oXPx + 5.0f, oYPx + 0.5f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(oXPx + 5.0f, oYPx - 0.5f); g_lines_vb.push_back(vtx);
+
+    vtx.pos = ImVec2(oXPx - 0.5f, oYPx - 5.0f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(oXPx + 0.5f, oYPx - 5.0f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(oXPx + 0.5f, oYPx + 5.0f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(oXPx - 0.5f, oYPx + 5.0f); g_lines_vb.push_back(vtx);
+
+    // fitting 'xpoint'
+    float rbXPx = ((g_ism->fitBasis.o.x + g_ism->fitBasis.x.x) / input->vpWidthIn + 0.5f) * uiResHor;
+    float rbYPx = (0.5f - (g_ism->fitBasis.o.y + g_ism->fitBasis.x.y) / input->vpHeightIn) * uiResVer;
+
+    vtx.col = 0xFF0000FF; // red
+    vtx.pos = ImVec2(rbXPx - 5.0f, rbYPx - 0.5f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(rbXPx - 5.0f, rbYPx + 0.5f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(rbXPx + 5.0f, rbYPx + 0.5f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(rbXPx + 5.0f, rbYPx - 0.5f); g_lines_vb.push_back(vtx);
+
+    vtx.pos = ImVec2(rbXPx - 0.5f, rbYPx - 5.0f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(rbXPx + 0.5f, rbYPx - 5.0f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(rbXPx + 0.5f, rbYPx + 5.0f); g_lines_vb.push_back(vtx);
+    vtx.pos = ImVec2(rbXPx - 0.5f, rbYPx + 5.0f); g_lines_vb.push_back(vtx);
+
+    g_services->update_mesh_vb(g_lines_mesh, g_lines_vb.data(), static_cast<u32>(g_lines_vb.size()));
 
     GuiDrawcall lines_drawcall;
     lines_drawcall.texture = g_font_texture_id;
     lines_drawcall.mesh = g_lines_mesh;
     lines_drawcall.offset = 0;
-    lines_drawcall.count = 12;
+    lines_drawcall.count = 12; // quad indexes
 
     g_recipe.guiDCs.push_back(lines_drawcall);
 
@@ -1152,8 +1179,9 @@ void update_and_render(input_data *input, output_data *output)
         {
             gui_fit_tool = Vandalism::FT_START;
         }
-        if (gui_fit_tool == Vandalism::FT_START)
+        else if (gui_fit_tool == Vandalism::FT_START)
         {
+            ImGui::SameLine();
             ImGui::Text("[%s]", cfg_default_image_file);
             ImGui::SameLine();
             if (ImGui::Button("Load image"))
@@ -1161,18 +1189,15 @@ void update_and_render(input_data *input, output_data *output)
                 gui_fit_tool = Vandalism::FT_LOAD;
             }
         }
-        if (gui_fit_tool == Vandalism::FT_LOAD)
+        else if (gui_fit_tool == Vandalism::FT_LOAD)
         {
             g_fit_img.name = cfg_default_image_file;
             size_t ism_img_name_idx = image_name_idx(g_fit_img.name.c_str());
             if (ism_img_name_idx < g_loaded_image_names.size())
             {
                 const ImageDesc &desc = g_loaded_images[ism_img_name_idx];
-                float image_aspect = static_cast<float>(desc.height) / static_cast<float>(desc.width);
-
+                g_fit_img.aspect_ratio = static_cast<float>(desc.height) / static_cast<float>(desc.width);
                 g_fit_img.imageid = static_cast<u32>(ism_img_name_idx);
-                g_fit_img.width_in = 0.25f * input->vpWidthIn;
-                g_fit_img.height_in = g_fit_img.width_in * image_aspect;
 
                 gui_fit_tool = Vandalism::FT_ADJUST;
             }
@@ -1184,11 +1209,8 @@ void update_and_render(input_data *input, output_data *output)
                     g_loaded_images.push_back(desc);
                     g_loaded_image_names.push_back(g_fit_img.name);
 
-                    float image_aspect = static_cast<float>(desc.height) / static_cast<float>(desc.width);
-
+                    g_fit_img.aspect_ratio = static_cast<float>(desc.height) / static_cast<float>(desc.width);
                     g_fit_img.imageid = static_cast<u32>(ism_img_name_idx);
-                    g_fit_img.width_in = 0.25f * input->vpWidthIn;
-                    g_fit_img.height_in = g_fit_img.width_in * image_aspect;
 
                     gui_fit_tool = Vandalism::FT_ADJUST;
                 }
@@ -1198,7 +1220,7 @@ void update_and_render(input_data *input, output_data *output)
                 }
             }
         }
-        if (gui_fit_tool == Vandalism::FT_ADJUST)
+        else if (gui_fit_tool == Vandalism::FT_ADJUST)
         {
             ImGui::SameLine();
             if (ImGui::Button("Accept image"))
@@ -1218,9 +1240,23 @@ void update_and_render(input_data *input, output_data *output)
     if (gui_fit_tool == Vandalism::FT_ADJUST)
     {
         g_recipe.fitDC.texture = g_loaded_images[g_fit_img.imageid].texid;
-        g_recipe.fitDC.basis.o = { -0.5f * g_fit_img.width_in, -0.5f * g_fit_img.height_in };
-        g_recipe.fitDC.basis.x = { g_fit_img.width_in, 0.0f };
-        g_recipe.fitDC.basis.y = { 0.0f, g_fit_img.height_in };
+        g_recipe.fitDC.basis = g_ism->fitBasis;
+
+        GuiDrawcall odc;
+        odc.texture = g_font_texture_id;
+        odc.mesh = g_lines_mesh;
+        odc.offset = 36;
+        odc.count = 12;
+
+        g_recipe.guiDCs.push_back(odc);
+
+        GuiDrawcall xdc;
+        xdc.texture = g_font_texture_id;
+        xdc.mesh = g_lines_mesh;
+        xdc.offset = 48;
+        xdc.count = 12;
+
+        g_recipe.guiDCs.push_back(xdc);
     }
     g_recipe.fitImage = (gui_fit_tool == Vandalism::FT_ADJUST);
 

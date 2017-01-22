@@ -304,16 +304,10 @@ public:
         append_new_view(basis, layeridx);
     }
 
-    void place_image(size_t imageId, float imageW, float imageH, size_t layeridx)
+    void place_image(size_t imageId, const basis2r &basis, size_t layeridx)
     {
         append_new_view(make_pan({ 0.0f, 0.0f }), layeridx);
 
-        basis2r basis =
-        {
-            { -0.5f * imageW, -0.5f * imageH },
-            { imageW, 0.0f },
-            { 0.0f, imageH }
-        };
         test_image i = { imageId, basis };
 
         // TODO: why do we keep imgbbox?
@@ -409,8 +403,7 @@ struct Vandalism
     float scrollY0;
 
     // FIT related
-    float2 originPos;
-    float2 rightBotPos;
+    basis2r fitBasis;
 
     enum TopLevelModeId
     {
@@ -428,10 +421,11 @@ struct Vandalism
 
     enum FittingSubmodeId
     {
-        FS_MOVING0   = 0,
-        FS_MOVINGX   = 1,
-        FS_ACCEPTING = 2,
-        FS_MODECNT   = 3,
+        FS_LOADING   = 0,
+        FS_MOVING0   = 1,
+        FS_MOVINGX   = 2,
+        FS_ACCEPTING = 3,
+        FS_MODECNT   = 4,
         FS_IDLE      = FS_MODECNT
     };
 
@@ -485,9 +479,8 @@ struct Vandalism
         float brushangle;
         float eraseralpha;
         float negligibledistance;
-        size_t imageid;
-        float imagewidth;
-        float imageheight;
+        u32 fitimageid;
+        float fitimageaspectratio;
         FitTool fittool;
         FitGizmo fitgizmo;
         u8 currentlayer;
@@ -773,23 +766,33 @@ struct Vandalism
 
     void empty(const Input *) {}
 
+    void load_img(const Input *input)
+    {
+        // adjust fit basis accordingly to new image (aspect ratio, position, size)
+        // should be a 'leave_fn' because at 'enter stage' fit image fields are not yet populated
+        fitBasis.y = perp(fitBasis.x) * input->fitimageaspectratio;
+    }
+
     void move0(const Input *input)
     {
-        originPos = input->mousePos;
+        fitBasis.o = input->mousePos;
     }
 
     void movex(const Input *input)
     {
-        rightBotPos = input->mousePos;
+        fitBasis =
+        {
+            fitBasis.o,
+            input->mousePos - fitBasis.o,
+            perp(input->mousePos - fitBasis.o) * input->fitimageaspectratio
+        };
     }
 
     void accept_img(const Input *input)
     {
         if (append_allowed())
         {
-            art.place_image(input->imageid,
-                            input->imagewidth, input->imageheight,
-                            input->currentlayer);
+            art.place_image(input->fitimageid, fitBasis, input->currentlayer);
             currentView = art.num_views() - 1;
         }
 
@@ -818,6 +821,7 @@ struct Vandalism
     bool check_move2(const Input *input) { return input->mousedown && input->tool == SECOND; }
     bool check_scroll(const Input *input) { return input->scrolling; }
 
+    bool check_load_img(const Input *input) { return input->fittool == FT_LOAD; }
     bool check_move0(const Input *input) { return input->mousedown && input->fittool == FT_ADJUST && input->fitgizmo == FG_0POINT; }
     bool check_movex(const Input *input) { return input->mousedown && input->fittool == FT_ADJUST && input->fitgizmo == FG_XPOINT; }
     bool check_accept_img(const Input *input) { return input->fittool == FT_ACCEPT; }
@@ -892,6 +896,7 @@ struct Vandalism
 
         currentMode = TL_IDLE;
 
+        fitting_modes[FS_LOADING]    = {&Vandalism::empty,        &Vandalism::load_img,    &Vandalism::empty,     &Vandalism::check_load_img};
         fitting_modes[FS_MOVING0]    = {&Vandalism::move0,        &Vandalism::move0,       &Vandalism::move0,     &Vandalism::check_move0};
         fitting_modes[FS_MOVINGX]    = {&Vandalism::movex,        &Vandalism::movex,       &Vandalism::movex,     &Vandalism::check_movex};
         fitting_modes[FS_ACCEPTING]  = {&Vandalism::accept_img,   &Vandalism::empty,       &Vandalism::empty,     &Vandalism::check_accept_img};
@@ -903,6 +908,7 @@ struct Vandalism
         currentStroke.pi1 = 0;
 
         firstPos = { 0.0f, 0.0f };
+        fitBasis = { {0.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 1.0f} };
 
         remove_alterations();
         clear();
