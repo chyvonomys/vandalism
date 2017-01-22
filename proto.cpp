@@ -1097,7 +1097,7 @@ struct Pipeline
         {
             dbgss << "[FIT]";
             const auto &dc = recipe.fitDC;
-            si.draw(textures[dc.texture].glid, dc.basis, 0.5f, fi.in2rt);
+            si.draw(textures[dc.texture].glid, dc.basis, 0.5f, fi.in2vp);
         }
         if (recipe.blitAbove)
         {
