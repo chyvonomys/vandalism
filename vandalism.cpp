@@ -408,17 +408,32 @@ struct Vandalism
     // SCROLL related
     float scrollY0;
 
+    // FIT related
+    float2 originPos;
+    float2 rightBotPos;
+
     enum TopLevelModeId
     {
-        TL_DRAWING = 0,
-        TL_PANNING = 1,
-        TL_ZOOMING = 2,
-        TL_ROTATING = 3,
-        TL_PLACING1 = 4,
-        TL_MOVING2 = 5,
+        TL_DRAWING   = 0,
+        TL_PANNING   = 1,
+        TL_ZOOMING   = 2,
+        TL_ROTATING  = 3,
+        TL_PLACING1  = 4,
+        TL_MOVING2   = 5,
         TL_SCROLLING = 6,
-        TL_MODECNT = 7,
-        TL_IDLE = TL_MODECNT
+        TL_FITTING   = 7,
+        TL_MODECNT   = 8,
+        TL_IDLE      = TL_MODECNT
+    };
+
+    enum FittingSubmodeId
+    {
+        FS_MOVING0   = 0,
+        FS_MOVINGX   = 1,
+        FS_CANCELING = 2,
+        FS_ACCEPTING = 3,
+        FS_MODECNT   = 4,
+        FS_IDLE      = FS_MODECNT
     };
 
     enum Tool
@@ -429,7 +444,16 @@ struct Vandalism
         ZOOM   = 3,
         ROTATE = 4,
         FIRST  = 5,
-        SECOND = 6
+        SECOND = 6,
+        FITIMG = 7
+    };
+
+    enum FitTool
+    {
+        MOVE0  = 0,
+        MOVEX  = 1,
+        CANCEL = 2,
+        ACCEPT = 3
     };
 
     enum Smooth
@@ -455,6 +479,10 @@ struct Vandalism
         float brushangle;
         float eraseralpha;
         float negligibledistance;
+        size_t imageid;
+        float imagewidth;
+        float imageheight;
+        FitTool fittool;
         u8 currentlayer;
     };
 
@@ -735,18 +763,32 @@ struct Vandalism
 
         common_done();
     }
-    
-    void place_image(size_t imageId, float imageW, float imageH, u8 currentLayer)
+
+    void empty(const Input *) {}
+
+    void move0(const Input *input)
+    {
+        originPos = input->mousePos;
+    }
+
+    void movex(const Input *input)
+    {
+        rightBotPos = input->mousePos;
+    }
+
+    void accept_img(const Input *input)
     {
         if (append_allowed())
         {
-            art.place_image(imageId, imageW, imageH, currentLayer);
+            art.place_image(input->imageid,
+                            input->imagewidth, input->imageheight,
+                            input->currentlayer);
             currentView = art.num_views() - 1;
         }
 
         set_dirty();
     }
-
+    
     void common_done()
     {
         remove_alterations();
@@ -769,13 +811,26 @@ struct Vandalism
     bool check_move2(const Input *input) { return input->mousedown && input->tool == SECOND; }
     bool check_scroll(const Input *input) { return input->scrolling; }
 
-    static size_t update_modes(Input *input, Vandalism *ism, Mode *modes, size_t modecnt, size_t input_mode)
+    bool check_move0(const Input *input) { return input->mousedown && input->fittool == MOVE0; }
+    bool check_movex(const Input *input) { return input->mousedown && input->fittool == MOVEX; }
+    bool check_accept_img(const Input *input) { return input->fittool == ACCEPT; }
+    bool check_cancel_img(const Input *input) { return input->fittool == CANCEL; }
+
+    bool check_fitting(const Input *input)
+    {
+        currentFittingMode = update_modes(input, fitting_modes, FS_MODECNT, currentFittingMode);
+        bool shutdown = (currentFittingMode == FS_ACCEPTING || currentFittingMode == FS_CANCELING);
+        if (shutdown) currentFittingMode = FS_IDLE;
+        return !shutdown;
+    }
+
+    size_t update_modes(const Input *input, Mode *modes, size_t modecnt, size_t input_mode)
     {
         // NOTE: modecnt == idle in the set
-        if (input_mode != modecnt && (ism->*modes[input_mode].check_fn)(input))
+        if (input_mode != modecnt && (this->*modes[input_mode].check_fn)(input))
         {
             // still in current mode
-            (ism->*modes[input_mode].stay_fn)(input);
+            (this->*modes[input_mode].stay_fn)(input);
             return input_mode;
         }
         else
@@ -783,40 +838,50 @@ struct Vandalism
             // figure out what mode we are in
             for (size_t mi = 0; mi < modecnt; ++mi)
             {
-                if ((ism->*modes[mi].check_fn)(input))
+                if ((this->*modes[mi].check_fn)(input))
                 {
-                    if (input_mode != modecnt) (ism->*modes[input_mode].leave_fn)(input);
-                    (ism->*modes[mi].enter_fn)(input);
+                    if (input_mode != modecnt) (this->*modes[input_mode].leave_fn)(input);
+                    (this->*modes[mi].enter_fn)(input);
                     return mi;
                 }
             }
             // no suitable mode found, must be idling then
-            if (input_mode != modecnt) (ism->*modes[input_mode].leave_fn)(input);
+            if (input_mode != modecnt) (this->*modes[input_mode].leave_fn)(input);
             return modecnt;
         }
     }
 
     Mode toplevel_modes[TL_MODECNT];
+    Mode fitting_modes[FS_MODECNT];
     size_t currentMode;
+    size_t currentFittingMode;
 
     void update(Input *input)
     {
-        currentMode = update_modes(input, this, toplevel_modes, TL_MODECNT, currentMode);
+        currentMode = update_modes(input, toplevel_modes, TL_MODECNT, currentMode);
     }
 
     void setup()
     {
         // TODO: this should be statically initialized once (works in clang)
         // doesn't work in vs2013
-        toplevel_modes[TL_DRAWING]   = {&Vandalism::start_draw, &Vandalism::done_draw, &Vandalism::do_draw, &Vandalism::check_draw};
-        toplevel_modes[TL_PANNING]   = {&Vandalism::start_pan, &Vandalism::done_pan, &Vandalism::do_pan, &Vandalism::check_pan};
-        toplevel_modes[TL_ZOOMING]   = {&Vandalism::start_zoom, &Vandalism::done_zoom, &Vandalism::do_zoom, &Vandalism::check_zoom};
+        toplevel_modes[TL_DRAWING]   = {&Vandalism::start_draw,   &Vandalism::done_draw,   &Vandalism::do_draw,   &Vandalism::check_draw};
+        toplevel_modes[TL_PANNING]   = {&Vandalism::start_pan,    &Vandalism::done_pan,    &Vandalism::do_pan,    &Vandalism::check_pan};
+        toplevel_modes[TL_ZOOMING]   = {&Vandalism::start_zoom,   &Vandalism::done_zoom,   &Vandalism::do_zoom,   &Vandalism::check_zoom};
         toplevel_modes[TL_ROTATING]  = {&Vandalism::start_rotate, &Vandalism::done_rotate, &Vandalism::do_rotate, &Vandalism::check_rotate};
-        toplevel_modes[TL_PLACING1]  = {&Vandalism::place1, &Vandalism::place1, &Vandalism::place1, &Vandalism::check_place1};
-        toplevel_modes[TL_MOVING2]   = {&Vandalism::start_move2, &Vandalism::done_move2, &Vandalism::do_move2, &Vandalism::check_move2};
+        toplevel_modes[TL_PLACING1]  = {&Vandalism::place1,       &Vandalism::place1,      &Vandalism::place1,    &Vandalism::check_place1};
+        toplevel_modes[TL_MOVING2]   = {&Vandalism::start_move2,  &Vandalism::done_move2,  &Vandalism::do_move2,  &Vandalism::check_move2};
         toplevel_modes[TL_SCROLLING] = {&Vandalism::start_scroll, &Vandalism::done_scroll, &Vandalism::do_scroll, &Vandalism::check_scroll};
+        toplevel_modes[TL_FITTING]   = {&Vandalism::empty,        &Vandalism::empty,       &Vandalism::empty,     &Vandalism::check_fitting};
 
         currentMode = TL_IDLE;
+
+        fitting_modes[FS_MOVING0]    = {&Vandalism::move0,        &Vandalism::move0,       &Vandalism::move0,     &Vandalism::check_move0};
+        fitting_modes[FS_MOVINGX]    = {&Vandalism::movex,        &Vandalism::movex,       &Vandalism::movex,     &Vandalism::check_movex};
+        fitting_modes[FS_CANCELING]  = {&Vandalism::empty,        &Vandalism::empty,       &Vandalism::empty,     &Vandalism::check_cancel_img};
+        fitting_modes[FS_ACCEPTING]  = {&Vandalism::accept_img,   &Vandalism::empty,       &Vandalism::empty,     &Vandalism::check_accept_img};
+
+        currentFittingMode = FS_IDLE;
 
         // TODO: look for other missing initializations
         currentStroke.pi0 = 0;

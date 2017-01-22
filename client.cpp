@@ -997,6 +997,15 @@ void update_and_render(input_data *input, output_data *output)
         g_recipe.currentStroke.count = idxCnt;
     }
 
+    if (g_ism->currentMode == Vandalism::FITIMG)
+    {
+        g_recipe.fitDC.texture = g_fit_img.texid;
+        g_recipe.fitDC.basis.o = {-0.5f * g_fit_img.width_in, -0.5f * g_fit_img.height_in};
+        g_recipe.fitDC.basis.x = { g_fit_img.width_in, 0.0f };
+        g_recipe.fitDC.basis.y = { 0.0f, g_fit_img.height_in };
+    }
+    g_recipe.fitImage = (g_ism->currentMode == Vandalism::FITIMG);
+    
     // Draw UI -----------------------------------------------------------------
 
     float uiResHor = static_cast<float>(input->vpWidthPt);
@@ -1140,6 +1149,76 @@ void update_and_render(input_data *input, output_data *output)
     ImGui::RadioButton("move center", &gui_tool, static_cast<i32>(Vandalism::FIRST));
     ImGui::SameLine();
     ImGui::RadioButton("pivot", &gui_tool, static_cast<i32>(Vandalism::SECOND));
+    ImGui::RadioButton("image", &gui_tool, static_cast<i32>(Vandalism::FITIMG));
+    if (gui_tool == Vandalism::FITIMG)
+    {
+        ImGui::Text("[%s]", cfg_default_image_file);
+        if (!g_image_fitting)
+        {
+            ImGui::SameLine();
+            if (ImGui::Button("Insert image"))
+            {
+                g_fit_img.name = cfg_default_image_file;
+                size_t ism_img_name_idx = image_name_idx(g_fit_img.name.c_str());
+                if (ism_img_name_idx < g_loaded_image_names.size())
+                {
+                    const ImageDesc &desc = g_loaded_images[ism_img_name_idx];
+                    float image_aspect = static_cast<float>(desc.height) / static_cast<float>(desc.width);
+
+                    g_fit_img.texid = desc.texid;
+                    g_fit_img.width_in = 0.5f * input->vpWidthIn;
+                    g_fit_img.height_in = g_fit_img.width_in * image_aspect;
+                    g_fit_img.reuse = true;
+
+                    g_image_fitting = true;
+                }
+                else
+                {
+                    ImageDesc desc;
+                    if (load_image(g_fit_img.name.c_str(), desc))
+                    {
+                        g_loaded_images.push_back(desc);
+                        g_loaded_image_names.push_back(g_fit_img.name);
+
+                        float image_aspect = static_cast<float>(desc.height) / static_cast<float>(desc.width);
+
+                        g_fit_img.texid = desc.texid;
+                        g_fit_img.width_in = 4.0f;
+                        g_fit_img.height_in = g_fit_img.width_in * image_aspect;
+                        g_fit_img.reuse = false;
+
+                        g_image_fitting = true;
+                    }
+                }
+            }
+        }
+        else
+        {
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel fitting"))
+            {
+                g_fit_tool = Vandalism::CANCEL;
+                if (!g_fit_img.reuse)
+                {
+                    g_services->delete_texture(g_fit_img.texid);
+                }
+                g_fit_img = CurrentImage();
+
+                g_image_fitting = false;
+            }
+
+            ImGui::SameLine();
+            if (ImGui::Button("Place image"))
+            {
+                g_fit_tool = Vandalism::ACCEPT;
+                g_ism->place_image(image_name_idx(g_fit_img.name.c_str()),
+                                   g_fit_img.width_in, g_fit_img.height_in,
+                                   static_cast<u8>(gui_current_layer));
+
+                g_image_fitting = false;
+            }
+        }
+    }
 
     Undoee undoee = g_ism->undoable();
     const char *undolabels[] = { "", "Undo last stroke", "Undo image insertion", "Undo view change" };
@@ -1291,7 +1370,6 @@ void update_and_render(input_data *input, output_data *output)
         }
         else if (g_image_capturing == SELECTION)
         {
-
             GuiDrawcall dc;
             dc.texture = g_font_texture_id;
             dc.mesh = g_lines_mesh;
@@ -1327,81 +1405,7 @@ void update_and_render(input_data *input, output_data *output)
                            4, data, 0);
             g_image_capturing = INACTIVE;
         }
-
-        ImGui::Text("[%s]", cfg_default_image_file);
-        if (!g_image_fitting)
-        {
-            ImGui::SameLine();
-            if (ImGui::Button("Insert image"))
-            {
-                g_fit_img.name = cfg_default_image_file;
-                size_t ism_img_name_idx = image_name_idx(g_fit_img.name.c_str());
-                if (ism_img_name_idx < g_loaded_image_names.size())
-                {
-                    const ImageDesc &desc = g_loaded_images[ism_img_name_idx];
-                    float image_aspect = static_cast<float>(desc.height) / static_cast<float>(desc.width);
-
-                    g_fit_img.texid = desc.texid;
-                    g_fit_img.width_in = 0.5f * input->vpWidthIn;
-                    g_fit_img.height_in = g_fit_img.width_in * image_aspect;
-                    g_fit_img.reuse = true;
-
-                    g_image_fitting = true;
-                }
-                else
-                {
-                    ImageDesc desc;
-                    if (load_image(g_fit_img.name.c_str(), desc))
-                    {
-                        g_loaded_images.push_back(desc);
-                        g_loaded_image_names.push_back(g_fit_img.name);
-
-                        float image_aspect = static_cast<float>(desc.height) / static_cast<float>(desc.width);
-
-                        g_fit_img.texid = desc.texid;
-                        g_fit_img.width_in = 4.0f;
-                        g_fit_img.height_in = g_fit_img.width_in * image_aspect;
-                        g_fit_img.reuse = false;
-
-                        g_image_fitting = true;
-                    }
-                }
-            }
-        }
-        else
-        {
-            ImGui::SameLine();
-            if (ImGui::Button("Cancel fitting"))
-            {
-                if (!g_fit_img.reuse)
-                {
-                    g_services->delete_texture(g_fit_img.texid);
-                }
-                g_fit_img = CurrentImage();
-
-                g_image_fitting = false;
-            }
-
-            ImGui::SameLine();
-            if (ImGui::Button("Place image"))
-            {
-                g_ism->place_image(image_name_idx(g_fit_img.name.c_str()),
-                                   g_fit_img.width_in, g_fit_img.height_in,
-                                   static_cast<u8>(gui_current_layer));
-
-                g_image_fitting = false;
-            }
-        }
     }
-
-    if (g_image_fitting)
-    {
-        g_recipe.fitDC.texture = g_fit_img.texid;
-        g_recipe.fitDC.basis.o = {-0.5f * g_fit_img.width_in, -0.5f * g_fit_img.height_in};
-        g_recipe.fitDC.basis.x = { g_fit_img.width_in, 0.0f };
-        g_recipe.fitDC.basis.y = { 0.0f, g_fit_img.height_in };
-    }
-    g_recipe.fitImage = g_image_fitting;
 
     output->quit_flag = ImGui::Button("Quit");
 
@@ -1457,7 +1461,7 @@ void update_and_render(input_data *input, output_data *output)
                 static_cast<u32>(g_curr_quads.size()),
                 static_cast<u32>(g_curr_quads.capacity()));
 
-    ImGui::Text("mode: %d", g_ism->currentMode);
+    ImGui::Text("mode: %d", static_cast<u32>(g_ism->currentMode));
 
     ImGui::Text("mouse occupied: %d", static_cast<i32>(gui_mouse_occupied));
     ImGui::Text("mouse hover: %d", static_cast<i32>(gui_mouse_hover));

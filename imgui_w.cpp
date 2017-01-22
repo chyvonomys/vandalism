@@ -4,6 +4,7 @@
 #pragma clang diagnostic ignored "-Wfloat-equal"
 #pragma clang diagnostic ignored "-Wfloat-conversion"
 #pragma clang diagnostic ignored "-Wformat-pedantic"
+#pragma clang diagnostic ignored "-Wshadow"
 #include "imgui/imgui.cpp"
 #pragma clang diagnostic pop
 #else
