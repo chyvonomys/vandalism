@@ -815,6 +815,8 @@ void build_view_dbg_buffer(ImGuiTextBuffer *buffer, const test_data &bake_data)
     buffer->append("%s", ss.str().c_str());
 }
 
+float2 g_prevMousePos;
+
 void update_and_render(input_data *input, output_data *output)
 {
     output->quit_flag = false;
@@ -850,7 +852,20 @@ void update_and_render(input_data *input, output_data *output)
     ism_input.smooth = static_cast<Vandalism::Smooth>(gui_draw_smooth);
     ism_input.currentlayer = static_cast<u8>(gui_current_layer);
 
-    ism_input.fitgizmo = Vandalism::FG_NONE;
+    box2 oBox;
+    oBox.add(g_ism->fitBasis.o);
+    oBox.grow(0.05f);
+
+    box2 xBox;
+    xBox.add(g_ism->fitBasis.o + g_ism->fitBasis.x);
+    xBox.grow(0.05f);
+
+    if (oBox.contains(g_prevMousePos)) ism_input.fitgizmo = Vandalism::FG_0POINT;
+    else if (xBox.contains(g_prevMousePos)) ism_input.fitgizmo = Vandalism::FG_XPOINT;
+    else ism_input.fitgizmo = Vandalism::FG_NONE;
+
+    g_prevMousePos = ism_input.mousePos; // TODO: figure out better way to do this
+
     ism_input.fittool = static_cast<Vandalism::FitTool>(gui_fit_tool);
 
     ism_input.fitimageid = g_fit_img.imageid;
@@ -994,7 +1009,7 @@ void update_and_render(input_data *input, output_data *output)
         g_recipe.currentStroke.offset = 0;
         g_recipe.currentStroke.count = idxCnt;
     }
-    
+
     // Draw UI -----------------------------------------------------------------
 
     float uiResHor = static_cast<float>(input->vpWidthPt);
@@ -1053,7 +1068,8 @@ void update_and_render(input_data *input, output_data *output)
     float oXPx = (g_ism->fitBasis.o.x / input->vpWidthIn + 0.5f) * uiResHor;
     float oYPx = (0.5f - g_ism->fitBasis.o.y / input->vpHeightIn) * uiResVer;
 
-    vtx.col = 0xFF000000; // black
+    vtx.col = (ism_input.fitgizmo == Vandalism::FG_0POINT ? 0xFFAAAAAA : 0xFF000000); // gray/black
+
     vtx.pos = ImVec2(oXPx - 5.0f, oYPx - 0.5f); g_lines_vb.push_back(vtx);
     vtx.pos = ImVec2(oXPx - 5.0f, oYPx + 0.5f); g_lines_vb.push_back(vtx);
     vtx.pos = ImVec2(oXPx + 5.0f, oYPx + 0.5f); g_lines_vb.push_back(vtx);
@@ -1068,7 +1084,8 @@ void update_and_render(input_data *input, output_data *output)
     float rbXPx = ((g_ism->fitBasis.o.x + g_ism->fitBasis.x.x) / input->vpWidthIn + 0.5f) * uiResHor;
     float rbYPx = (0.5f - (g_ism->fitBasis.o.y + g_ism->fitBasis.x.y) / input->vpHeightIn) * uiResVer;
 
-    vtx.col = 0xFF0000FF; // red
+    vtx.col = (ism_input.fitgizmo == Vandalism::FG_XPOINT ? 0xFF0000FF : 0xFF0000AA); // red
+
     vtx.pos = ImVec2(rbXPx - 5.0f, rbYPx - 0.5f); g_lines_vb.push_back(vtx);
     vtx.pos = ImVec2(rbXPx - 5.0f, rbYPx + 0.5f); g_lines_vb.push_back(vtx);
     vtx.pos = ImVec2(rbXPx + 5.0f, rbYPx + 0.5f); g_lines_vb.push_back(vtx);
