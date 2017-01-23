@@ -82,7 +82,7 @@ public:
                 {
                     std::istringstream ss(line);
                     ss.seekg(2);
-                    test_point pt;
+                    Point pt;
                     ok = !(ss >> pt.x >> pt.y >> pt.w).fail();
                     if (ok)
                     {
@@ -93,7 +93,7 @@ public:
                 {
                     std::istringstream ss(line);
                     ss.seekg(2);
-                    test_stroke st;
+                    Stroke st;
                     ok = !(ss >> st.pi0 >> st.pi1 >> st.brush_id).fail();
                     if (ok)
                     {
@@ -308,7 +308,7 @@ public:
     {
         append_new_view(make_pan({ 0.0f, 0.0f }), layeridx);
 
-        test_image i = { imageId, basis };
+        Image i = { imageId, basis };
 
         // TODO: why do we keep imgbbox?
         views.back().cached_imgbbox = i.get_bbox();
@@ -504,15 +504,6 @@ struct Vandalism
     {
         return current_view_is_last();
     }
-    /*
-    void append_new_view(const basis2s &tr)
-    {
-        currentPin.viewidx = views.size();
-        views.push_back(test_view(tr,
-                                  strokes.size(), strokes.size(),
-                                  currentPin.layeridx));
-    }
-    */
 
     void remove_alterations()
     {

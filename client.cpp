@@ -174,8 +174,6 @@ const char *g_roman_numerals[11] =
 
 Vandalism *g_ism = nullptr;
 
-bool gui_showAllViews;
-i32 gui_viewIdx;
 i32 gui_tool;
 i32 gui_fit_tool;
 color4f gui_brush_color;
@@ -316,8 +314,6 @@ void setup(kernel_services *services)
     g_ism = new Vandalism();
     g_ism->setup();
 
-    gui_showAllViews = true;
-    gui_viewIdx = 0;
     gui_tool = Vandalism::DRAW;
     gui_fit_tool = Vandalism::FT_START;
 
