@@ -4,6 +4,8 @@
 struct float2
 {
     float x, y;
+    float2() {}
+    float2(float a, float b) : x(a), y(b) {}
 };
 
 inline float si_absf(float x)
@@ -197,72 +199,72 @@ const float si_pi = 3.1415926535f;
 
 struct box2
 {
-    float2 min, max;
+    float2 lb, rt;
 
     box2() :
-        min{ FLT_MAX,  FLT_MAX },
-        max{ -FLT_MAX, -FLT_MAX }
+        lb(FLT_MAX, FLT_MAX),
+        rt(-FLT_MAX, -FLT_MAX)
     {}
 
     box2(float l, float r, float b, float t) :
-        min{ l, b },
-        max{ r, t }
+        lb(l, b),
+        rt(r, t)
     {}
 
     void grow(float s)
     {
-        min.x -= s;
-        max.x += s;
-        min.y -= s;
-        max.y += s;
+        lb.x -= s;
+        rt.x += s;
+        lb.y -= s;
+        rt.y += s;
     }
 
     void add(const float2 &p)
     {
-        if (p.x > max.x) max.x = p.x;
-        if (p.x < min.x) min.x = p.x;
-        if (p.y > max.y) max.y = p.y;
-        if (p.y < min.y) min.y = p.y;
+        if (p.x > rt.x) rt.x = p.x;
+        if (p.x < lb.x) lb.x = p.x;
+        if (p.y > rt.y) rt.y = p.y;
+        if (p.y < lb.y) lb.y = p.y;
     }
 
     void add_box(const box2 &b)
     {
         if (!b.empty())
         {
-            add(b.min);
-            add(b.max);
+            add(b.lb);
+            add(b.rt);
         }
     }
 
     bool empty() const
     {
-        return min.x > max.x || min.y > max.y;
+        return lb.x > rt.x || lb.y > rt.y;
     }
 
     bool contains(const float2 &p)
     {
-        return p.x >= min.x && p.x <= max.x &&
-               p.y >= min.y && p.y <= max.y;
+        return p.x >= lb.x && p.x <= rt.x &&
+               p.y >= lb.y && p.y <= rt.y;
     }
 
     float width() const
     {
-        return max.x - min.x;
+        return rt.x - lb.x;
     }
 
     float height() const
     {
-        return max.y - min.y;
+        return rt.y - lb.y;
     }
 
     float2 get_tl() const
     {
-        return{ min.x, max.y };
+        return{ lb.x, rt.y };
     }
 
     float2 get_br() const
     {
-        return{ max.x, min.y };
+        return{ rt.x, lb.y };
     }
 };
 

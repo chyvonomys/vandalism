@@ -106,17 +106,17 @@ bool liang_barsky(float L, float R, float B, float T,
 
 bool intersects(const box2 &viewport, const float2 &p0, const float2 &p1)
 {
-    return liang_barsky(viewport.min.x, viewport.max.x, viewport.min.y, viewport.max.y,
+    return liang_barsky(viewport.lb.x, viewport.rt.x, viewport.lb.y, viewport.rt.y,
                         p0.x, p0.y, p1.x, p1.y);
 }
 
 bool overlaps(const box2 &b1, const box2 &b2)
 {
     if (b1.empty() || b2.empty()) return false;
-    if (b1.min.y > b2.max.y) return false;
-    if (b2.min.y > b1.max.y) return false;
-    if (b1.min.x > b2.max.x) return false;
-    if (b2.min.x > b1.max.x) return false;
+    if (b1.lb.y > b2.rt.y) return false;
+    if (b2.lb.y > b1.rt.y) return false;
+    if (b1.lb.x > b2.rt.x) return false;
+    if (b2.lb.x > b1.rt.x) return false;
     return true;
 }
 
@@ -224,9 +224,9 @@ box2 box_in_basis(const basis2s &t, const box2 &b)
         return b;
 
     box2 result;
-    result.add(point_in_basis(t, b.min)); // BL
+    result.add(point_in_basis(t, b.lb)); // BL
     result.add(point_in_basis(t, b.get_tl())); // TL
-    result.add(point_in_basis(t, b.max)); // TR
+    result.add(point_in_basis(t, b.rt)); // TR
     result.add(point_in_basis(t, b.get_br())); // BR
     return result;
 }

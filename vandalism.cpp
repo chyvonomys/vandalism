@@ -1014,7 +1014,7 @@ struct Vandalism
         currentView = art.num_views() - 1;
         box2 all_box = query_bbox(get_bake_data(), currentView);
 
-        float2 center = 0.5f * (all_box.min + all_box.max);
+        float2 center = 0.5f * (all_box.lb + all_box.rt);
         art.change_view(make_pan(center), currentLayer);
 
         float vpAspect = vpH / vpW;
