@@ -257,12 +257,12 @@ struct box2
         return rt.y - lb.y;
     }
 
-    float2 get_tl() const
+    float2 get_lt() const
     {
         return{ lb.x, rt.y };
     }
 
-    float2 get_br() const
+    float2 get_rb() const
     {
         return{ rt.x, lb.y };
     }

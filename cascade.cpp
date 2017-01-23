@@ -224,10 +224,10 @@ box2 box_in_basis(const basis2s &t, const box2 &b)
         return b;
 
     box2 result;
-    result.add(point_in_basis(t, b.lb)); // BL
-    result.add(point_in_basis(t, b.get_tl())); // TL
-    result.add(point_in_basis(t, b.rt)); // TR
-    result.add(point_in_basis(t, b.get_br())); // BR
+    result.add(point_in_basis(t, b.lb)); // LB
+    result.add(point_in_basis(t, b.get_lt())); // LT
+    result.add(point_in_basis(t, b.rt)); // RT
+    result.add(point_in_basis(t, b.get_rb())); // RB
     return result;
 }
 
