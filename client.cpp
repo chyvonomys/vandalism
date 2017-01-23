@@ -806,6 +806,9 @@ void build_view_dbg_buffer(ImGuiTextBuffer *buffer, const test_data &bake_data)
         if (view.has_image())
             ss << " i:" << view.ii;
 
+        if (view.ll)
+            ss << " local";
+
         ss << "\n";
     }
     buffer->append("%s", ss.str().c_str());

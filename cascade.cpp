@@ -43,10 +43,11 @@ struct test_view
     size_t si1;
     size_t ii;
     size_t li;
+    bool ll;
     box2 cached_bbox;
     box2 cached_imgbbox;
-    test_view(const basis2s& t, size_t s0, size_t s1, size_t l)
-        : tr(t), si0(s0), si1(s1), ii(NPOS), li(l)
+    test_view(const basis2s& t, size_t s0, size_t s1, size_t l, bool loc)
+        : tr(t), si0(s0), si1(s1), ii(NPOS), li(l), ll(loc)
     {}
 
     bool has_image() const { return ii != NPOS; }

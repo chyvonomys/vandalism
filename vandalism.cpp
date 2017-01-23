@@ -38,9 +38,11 @@ private:
     std::vector<Brush> brushes;
 
 private:
-    void append_new_view(const basis2s &basis, size_t layeridx)
+    void append_new_view(const basis2s &basis, size_t layeridx, bool layerlocal)
     {
-        views.push_back(View(basis, strokes.size(), strokes.size(), layeridx));
+        views.push_back(View(basis,
+                             strokes.size(), strokes.size(),
+                             layeridx, layerlocal));
     }
 
 public:
@@ -56,7 +58,7 @@ public:
     void reset()
     {
         clear();
-        views.push_back(test_view(make_pan({ 0.0f, 0.0f }), 0, 0, 0));
+        views.push_back(View(make_pan({ 0.0f, 0.0f }), 0, 0, 0, false));
     }
 
     bool load(const char *filename, std::vector<std::string> &imgNames)
@@ -104,13 +106,20 @@ public:
                 {
                     std::istringstream ss(line);
                     ss.seekg(2);
-                    test_view vi(make_pan({ 0.0f, 0.0f }), 0, 0, 0);
+                    View vi(make_pan({ 0.0f, 0.0f }), 0, 0, 0, false);
                     i32 imgidx;
                     ok = !(ss >> vi.tr.o.x >> vi.tr.o.y >> vi.tr.x.x >> vi.tr.x.y
                            >> vi.si0 >> vi.si1 >> imgidx >> vi.li).fail();
+                    bool layerlocal = false;
+                    i32 ll;
+                    if (!(ss >> ll).fail())
+                    {
+                        layerlocal = (ll > 0);
+                    }
                     if (ok)
                     {
                         vi.ii = (imgidx == -1 ? NPOS : static_cast<u32>(imgidx));
+                        vi.ll = layerlocal;
                         views.push_back(vi);
                     }
                 }
@@ -232,6 +241,7 @@ public:
                << ' ' << views[i].si0 << ' ' << views[i].si1
                << ' ' << (!views[i].has_image() ? -1 : static_cast<i32>(views[i].ii))
                << ' ' << views[i].li
+               << ' ' << (views[i].ll ? '1' : '0')
                << '\n';
         }
         // TODO: maybe separate codes for regular brush, eraser, etc
@@ -301,12 +311,18 @@ public:
     void change_view(const basis2s &basis, size_t layeridx)
     {
         // TODO: combination of views
-        append_new_view(basis, layeridx);
+        append_new_view(basis, layeridx, false);
+    }
+
+    void change_layer_view(const basis2s &basis, size_t layeridx)
+    {
+        // TODO: combination of views
+        append_new_view(basis, layeridx, true);
     }
 
     void place_image(size_t imageId, const basis2r &basis, size_t layeridx)
     {
-        append_new_view(make_pan({ 0.0f, 0.0f }), layeridx);
+        append_new_view(make_pan({ 0.0f, 0.0f }), layeridx, false);
 
         Image i = { imageId, basis };
 
@@ -327,7 +343,7 @@ public:
 
         if (views.back().li != layeridx)
         {
-            append_new_view(make_pan({ 0.0f, 0.0f }), layeridx);
+            append_new_view(make_pan({ 0.0f, 0.0f }), layeridx, false);
         }
 
         strokes.push_back(newStroke);
